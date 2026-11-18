@@ -192,10 +192,42 @@
     if(!res.geral || res.geral.perdas==null) return null;
     const perdas=res.produtos.filter(p=>p.valor<0).sort((a,b)=>a.valor-b.valor), sobras=res.produtos.filter(p=>p.valor>0).sort((a,b)=>b.valor-a.valor);
     res.totalProdutos=res.produtos.length; res.produtosComPerda=perdas.length; res.produtosComSobra=sobras.length;
-    res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8); delete res.produtos;
+    res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8); res.perdasProdutos=perdas.map(p=>[p.codigo, round2(-p.valor)]); delete res.produtos;
     res.valorPerda = res.geral.perdas<0 ? round2(-res.geral.perdas) : 0;
     return res;
   }
-  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema };
+
+  /* ---------- "RELACAO DE VENDAS COM RENTABILIDADE" (produtos por departamento) ---------- */
+  const numBR = t => { let x=String(t).trim(); if(x.includes(',')) x=x.replace(/\./g,'').replace(',','.'); const v=parseFloat(x); return isNaN(v)?null:v; };
+  function analisarRelatorioVendas(linhas){
+    const textos = linhas.map(l => typeof l==='string' ? l : String(l.text||''));
+    if(!textos.some(t=>/RELACAO DE VENDAS/i.test(t))) return null;
+    const res={ tipo:'vendas_rentabilidade', emitido:null, periodo:{ini:null,fim:null}, filial:null, cupons:null, totalGeral:null, departamentos:[] };
+    let dep=null;
+    for(const raw of textos){
+      const t=raw.replace(/\s+/g,' ').trim(); if(!t) continue;
+      if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
+      let m=t.match(/RENTABILIDADE DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+      if(m){ if(!res.periodo.ini){ res.periodo.ini=dataBR(m[1]); res.periodo.fim=dataBR(m[2]); } const f=t.match(/FILIAL:?\s*(\d+)/i); if(f) res.filial=f[1]; continue; }
+      m=t.match(/PRODUTOS DO DEPTO:?\s*(\d+)\s*-\s*(.+)$/i);
+      if(m){ const cod=parseInt(m[1],10); dep=res.departamentos.find(d=>d.codigo===cod); if(!dep){ dep={codigo:cod, nome:m[2].trim(), produtos:[]}; res.departamentos.push(dep); } continue; }
+      m=t.match(/^TOTAL GERAL:?\s*(.*)$/i);
+      if(m){ const tk=m[1].split(' '); res.totalGeral={ itens:parseInt(tk[0],10)||null, qt:numBR(tk[1]), venda:numBR(tk[5]) }; dep=null; continue; }
+      m=t.match(/TOTAL DE CUPONS:?\s*(\d+)/i); if(m){ res.cupons=+m[1]; continue; }
+      if(dep && /^\d+\s+\S/.test(t)){
+        const tk=t.split(' '); if(tk.length<14) continue;
+        const nums=tk.slice(-12).map(numBR); if(nums.some(v=>v==null)) continue;
+        const desc=tk.slice(1,-12).join(' '); if(!desc) continue;
+        // QT.VENDA CUSTO_UN ENC_UN VENDA_UN TOT_CUSTO TOT_VENDA TOT_LUCRO LS/CUS LS/VEN %S/VEN %S/LUC MG.TRA
+        dep.produtos.push({ c:tk[0], d:desc, q:nums[0], v:round2(nums[5]), m:nums[8], mt:nums[11], z:nums[1]<=0 });
+      }
+    }
+    res.departamentos=res.departamentos.filter(d=>d.produtos.length);
+    if(!res.periodo.ini || !res.departamentos.length) return null;
+    res.itens=res.departamentos.reduce((a,d)=>a+d.produtos.length,0);
+    res.venda=round2(res.departamentos.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0));
+    return res;
+  }
+  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Parser = api;
 })(typeof window !== 'undefined' ? window : globalThis);

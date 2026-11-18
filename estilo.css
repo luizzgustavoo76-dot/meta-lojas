@@ -138,3 +138,23 @@ textarea{width:100%}
 .abas-setor{margin:0 0 12px}
 .abas-setor button{padding:8px 16px;font-size:15px}
 #bConta.on{outline:2px solid var(--yellow)}
+/* análise de vendas em cascata */
+.an-olg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.an-ol{border:1px solid var(--line);border-radius:12px;padding:10px}
+.an-olt{font-weight:700;margin-bottom:6px;font-size:14px}
+.an-oli{display:flex;width:100%;gap:8px;justify-content:space-between;align-items:baseline;background:none;border:0;border-top:1px solid var(--line);padding:6px 0;cursor:pointer;text-align:left;font:inherit;font-size:13px;color:inherit}
+.an-oli:first-of-type{border-top:0}.an-oli:hover span{text-decoration:underline}.an-oli b{white-space:nowrap}
+.an-dep{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff;overflow:hidden}
+.an-dep.open{border-color:#cfc9bd}
+.an-dh{display:grid;grid-template-columns:20px minmax(0,1fr) 110px 110px 90px 70px 70px;gap:10px;align-items:center;width:100%;background:none;border:0;padding:11px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.an-dh:hover{background:#faf8f4}
+.an-chev{font-size:16px;color:var(--ink2)}
+.an-dn{min-width:0}
+.an-bar{display:block;height:5px;border-radius:3px;background:#eee9df;margin-top:6px}.an-bar i{display:block;height:5px;border-radius:3px;background:var(--dark)}
+.an-dc{text-align:right;font-variant-numeric:tabular-nums}.an-dc .l{display:block;font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:.3px}
+.an-pt{border-top:1px solid var(--line);margin:0}.an-pt table{font-size:13px}
+.an-abc{display:inline-block;min-width:18px;text-align:center;border-radius:6px;font-size:11px;font-weight:800;padding:1px 4px;margin-left:4px}
+.an-A{background:var(--dark);color:#fff}.an-B{background:#e5e0d6;color:#3a352c}.an-C{background:#f3f0ea;color:#8a8479}
+.an-novo{color:var(--good);font-weight:700}
+tr.an-foco td{background:var(--warn-bg)!important;transition:background .4s}
+@media(max-width:760px){.an-dh{grid-template-columns:18px minmax(0,1fr) 92px 74px}.an-dh .hm,.an-dh .an-dc:nth-of-type(4){display:none}}
