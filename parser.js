@@ -198,7 +198,7 @@
   }
 
   /* ---------- "RELACAO DE VENDAS COM RENTABILIDADE" (produtos por departamento) ---------- */
-  const numBR = t => { let x=String(t).trim(); if(x.includes(',')) x=x.replace(/\./g,'').replace(',','.'); const v=parseFloat(x); return isNaN(v)?null:v; };
+  const numBR = t => { let x=String(t).trim(); if(/^\*+[,.]?\*+$/.test(x)) return 0; if(x.includes(',')) x=x.replace(/\./g,'').replace(',','.'); const v=parseFloat(x); return isNaN(v)?null:v; };
   function analisarRelatorioVendas(linhas){
     const textos = linhas.map(l => typeof l==='string' ? l : String(l.text||''));
     if(!textos.some(t=>/RELACAO DE VENDAS/i.test(t))) return null;
@@ -209,7 +209,7 @@
       if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
       let m=t.match(/RENTABILIDADE DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
       if(m){ if(!res.periodo.ini){ res.periodo.ini=dataBR(m[1]); res.periodo.fim=dataBR(m[2]); } const f=t.match(/FILIAL:?\s*(\d+)/i); if(f) res.filial=f[1]; continue; }
-      m=t.match(/PRODUTOS DO DEPTO:?\s*(\d+)\s*-\s*(.+)$/i);
+      m=t.match(/PRODUTOS D[OA] (?:DEPTO|DEPARTAMENTO|SECAO|SETOR|GRUPO):?\s*(\d+)\s*-?\s*(.+)$/i);
       if(m){ const cod=parseInt(m[1],10); dep=res.departamentos.find(d=>d.codigo===cod); if(!dep){ dep={codigo:cod, nome:m[2].trim(), produtos:[]}; res.departamentos.push(dep); } continue; }
       m=t.match(/^TOTAL GERAL:?\s*(.*)$/i);
       if(m){ const tk=m[1].split(' '); res.totalGeral={ itens:parseInt(tk[0],10)||null, qt:numBR(tk[1]), venda:numBR(tk[5]) }; dep=null; continue; }
