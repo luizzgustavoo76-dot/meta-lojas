@@ -134,3 +134,154 @@ async function lancarPorRelatorio(r, f){
   }
   reviewImport({ vendas, perdas:{}, data:fim, avisos, obs, fonte:f.name });
 }
+
+/* ===================== cascatas (abrir/fechar linhas de tabela) ===================== */
+document.addEventListener('click', e=>{
+  const t=e.target.closest('[data-cx]'); if(!t || e.target.closest('button,a,input,select,textarea')) return;
+  const tb=t.closest('table'); if(!tb) return; const k=t.dataset.cx; const abrir=!t.classList.contains('cx-open');
+  t.classList.toggle('cx-open',abrir);
+  if(abrir) tb.querySelectorAll(`[data-cx-of="${k}"]`).forEach(r=>r.classList.remove('hide'));
+  else tb.querySelectorAll(`[data-cx-of="${k}"],[data-root="${k}"]`).forEach(r=>{ r.classList.add('hide'); r.classList.remove('cx-open'); });
+});
+
+/* ---------- comparativo: dia a dia e setores do dia ---------- */
+function dailyDe(doc, cut, sid){ if(!doc) return null; const r=calc(doc,cut); const x= sid ? r.setores.find(z=>z.id===sid) : r.loja; return x? x.daily : null; }
+function compDetalheDias(c, campo){
+  const mes=c.atual.cut.slice(0,7); const dA=dailyDe(c.doc, c.atual.cut, c.sid);
+  const dM=c.pm? dailyDe(S.months[c.mp], c.pm.cut, c.sid) : null, dY=c.pa? dailyDe(S.months[c.ma], c.pa.cut, c.sid) : null;
+  const val=(arr,k)=>{ const d=arr?.find(z=>z.k===k); return d? d[campo] : null; };
+  const ruim=campo==='perda'; const of=campo==='perda'?'cperda':'cacum';
+  const cel=(arr,k,base)=>{ if(!arr) return '<td class="n muted">—</td><td></td>'; const v=val(arr,k); return `<td class="n">${v?brl0(v):'—'}<div class="small muted">${fDateL(k)}</div></td><td class="n">${v&&base!=null?varTxt(base,v,ruim):''}</td>`; };
+  let html='';
+  for(let d=1; d<=c.dia; d++){ const kA=`${mes}-${String(d).padStart(2,'0')}`; const vA=val(dA,kA);
+    html+=`<tr class="cx-det hide" data-cx-of="${of}"><td class="small">${fDateL(kA)}${marcaData(kA)}</td><td class="n">${vA?brl0(vA):'—'}</td>${cel(dM, mesmoDiaEm(c.mp,d), vA)}${cel(dY, mesmoDiaEm(c.ma,d), vA)}</tr>`; }
+  return html;
+}
+function compDetalheSetoresDia(c){
+  const rA=calc(c.doc, c.atual.cut).setores; const rM=c.pm?.diaK? calc(S.months[c.mp], c.pm.diaK).setores : null; const rY=c.pa?.diaK? calc(S.months[c.ma], c.pa.diaK).setores : null;
+  const dia=(lista,id,k)=> lista?.find(x=>x.id===id)?.daily.find(z=>z.k===k)?.real || 0;
+  return rA.map(s=>({s, a:dia(rA,s.id,c.atual.cut), m:rM?dia(rM,s.id,c.pm.diaK):null, y:rY?dia(rY,s.id,c.pa.diaK):null})).sort((x,y)=>y.a-x.a).map(x=>
+    `<tr class="cx-det hide" data-cx-of="cdia"><td class="small"><b>${esc(x.s.nome)}</b></td><td class="n">${x.a?brl0(x.a):'—'}</td>${x.m==null?'<td class="n muted">—</td><td></td>':`<td class="n">${x.m?brl0(x.m):'—'}</td><td class="n">${x.m&&x.a?varTxt(x.a,x.m):''}</td>`}${x.y==null?'<td class="n muted">—</td><td></td>':`<td class="n">${x.y?brl0(x.y):'—'}</td><td class="n">${x.y&&x.a?varTxt(x.a,x.y):''}</td>`}</tr>`).join('');
+}
+
+/* ---------- painel: setor detalhado abre aqui mesmo ---------- */
+function detalheSetorHtml(doc, sid){
+  const {loja,setores}=calc(doc,S.cutoff); const s=setores.find(x=>x.id===sid); if(!s) return '';
+  const c=comparativos(doc,S.cutoff,sid);
+  const dias=s.daily.filter(d=>d.k<=S.cutoff);
+  return `<div class="sd-in">
+    <div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px"><h2 style="margin:0">${esc(s.nome)} — até ${fDateL(S.cutoff)}</h2><div class="sp"></div><button class="btn" data-abrir-setor="${sid}">Abrir o setor completo →</button><button class="btn" data-fechar-setor>▴ Fechar</button></div>
+    <div class="grid kpis">
+      <div class="kpi hero"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
+      <div class="kpi"><div class="l">Realizado</div><div class="v">${brl0(s.real)}</div><div class="d">Meta até a data ${brl0(s.metaAte)}</div></div>
+      <div class="kpi"><div class="l">Meta do mês</div><div class="v">${brl0(s.meta)}</div><div class="d">${pct(s.pMes)} · falta ${brl0(s.falta)}</div>${barH(s.pMes)}</div>
+      <div class="kpi"><div class="l">Projeção</div><div class="v">${brl0(s.proj)}</div><div class="d">${pct(s.proj/s.meta)} da meta</div></div>
+      <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(s.necDia)}</div><div class="d">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}: ${brl0(s.metaProx)}</div></div>
+      <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui ${brl0(s.perdaBal)} de balanço`:''}</div></div>
+      ${kpisComparativos(c)}
+    </div>
+    ${alertasPainel(doc, loja, [s], true)}
+    ${cardComparativos(c, s.nome)}
+    <div class="card" style="margin-top:12px"><h2>Dia a dia</h2><div class="tw" style="max-height:420px"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th></tr></thead><tbody>
+      ${(()=>{ let am=0,ar=0; return dias.map(d=>{ am+=d.meta; ar+=d.real; return `<tr><td>${fDateL(d.k)}${marcaData(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(d.real/d.meta):''}</td><td class="n">${brl0(ar)}</td><td class="n">${pct(ar/(am||1))}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?' 📦':''}</td></tr>`; }).join(''); })()}
+    </tbody></table></div></div>
+  </div>`;
+}
+function abrirSetorNoPainel(el, doc, soAbrir){
+  const sid=el.dataset.s; const ehTr=el.tagName==='TR';
+  const prox=el.nextElementSibling; const aberto = prox && prox.classList.contains('setor-det') && prox.dataset.sid===sid;
+  document.querySelectorAll('.setor-det').forEach(x=>x.remove()); document.querySelectorAll('[data-s].sd-aberto').forEach(x=>x.classList.remove('sd-aberto'));
+  if(aberto && !soAbrir) return;
+  let det;
+  if(ehTr){ det=document.createElement('tr'); det.className='setor-det'; det.dataset.sid=sid; det.innerHTML=`<td colspan="${el.children.length}">${detalheSetorHtml(doc,sid)}</td>`; }
+  else { det=document.createElement('div'); det.className='setor-det'; det.dataset.sid=sid; det.innerHTML=detalheSetorHtml(doc,sid); }
+  el.after(det); el.classList.add('sd-aberto'); ajustarLargura(det);
+  det.querySelector('[data-fechar-setor]').onclick=()=>{ det.remove(); el.classList.remove('sd-aberto'); el.scrollIntoView({block:'center'}); };
+  det.querySelector('[data-abrir-setor]').onclick=()=>{ S.setorSel=sid; S.setorAba='dia'; S.painelScroll=window.scrollY; S.voltarPainel=true; location.hash='#setor'; };
+}
+
+/* ---------- histórico em cascata: ano → meses → setores ---------- */
+function historicoCascata(rows){
+  const anos=[...new Set(rows.map(r=>r.k.slice(0,4)))].sort().reverse();
+  const anoAtual=anos[0];
+  const baseAnt=(r, sid)=>{ const [y,m]=r.k.split('-'); const ant=S.months[`${+y-1}-${m}`]; if(!ant) return null;
+    if(r.fechado){ const c=resumoMes(ant); const x= sid ? c.setores.find(z=>z.id===sid) : c.loja; return x?.real||null; }
+    const cut=lastSetorDay(r.d)||lastDataDay(r.d); if(!cut) return null; const b=numerosAte(ant, mesmoDiaEm(`${+y-1}-${m}`, +cut.slice(8)), sid); return b?.real||null; };
+  const varC=(a,b)=> b ? `<span style="color:${a>=b?'var(--good)':'var(--bad)'};font-weight:700">${a>=b?'+':''}${pct(a/b-1)}</span>` : '—';
+  let html=`<div class="tw"><table class="hist-cx"><thead><tr><th>Período</th><th class="n">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n">Diferença</th><th class="n">vs. ano anterior</th><th class="n">Perdas</th><th></th></tr></thead><tbody>`;
+  for(const y of anos){
+    const rs=rows.filter(r=>r.k.startsWith(y)).sort((a,b)=>b.k.localeCompare(a.k));
+    const metaRef=rs.reduce((a,r)=>a+(r.fechado?r.metaMes:r.c.loja.metaAte),0), real=rs.reduce((a,r)=>a+r.real,0), perda=rs.reduce((a,r)=>a+(r.perda||0),0);
+    let ant=0, temAnt=false; for(const r of rs){ const b=baseAnt(r,null); if(b){ ant+=b; temAnt=true; } }
+    const aberto = y===anoAtual;
+    html+=`<tr class="cx-row cx-ano ${aberto?'cx-open':''}" data-cx="y${y}"><td><span class="cx-chev">▸</span> <b style="font-size:16px">${y}</b> <span class="small muted">${rs.length} mês(es)</span></td><td class="n">${brl0(metaRef)}</td><td class="n"><b>${brl0(real)}</b></td><td>${badge(metaRef?real/metaRef:null)}</td><td class="n">${brl0(real-metaRef)}</td><td class="n">${temAnt?varC(real,ant):'—'}</td><td class="n">${perda?brl0(perda):'—'}</td><td></td></tr>`;
+    for(const r of rs){
+      const b=baseAnt(r,null); const mk=`m${r.k}`;
+      html+=`<tr class="cx-row cx-mes ${aberto?'':'hide'}" data-cx="${mk}" data-cx-of="y${y}" data-root="y${y}"><td style="padding-left:28px"><span class="cx-chev">▸</span> <b>${mesLabel(r.k)}</b>${r.fechado?'':' <span class="badge b-none">em andamento</span>'}</td><td class="n">${brl0(r.metaMes)}</td><td class="n"><b>${brl0(r.real)}</b></td><td>${badge(r.fechado?r.pMes:r.pAte)}</td><td class="n">${r.fechado?brl0(r.real-r.metaMes):'—'}</td><td class="n">${varC(r.real,b)}</td><td class="n">${r.perda?brl0(r.perda):'—'}</td><td><button class="btn" data-open="${r.k}" style="padding:3px 9px" title="Abrir este mês no painel">Painel</button></td></tr>`;
+      const sets=[...r.c.setores].sort((a,b)=>b.real-a.real);
+      html+=`<tr class="cx-det hide" data-cx-of="${mk}" data-root="y${y}"><td colspan="8" style="padding:6px 10px 12px 40px"><table class="hist-set"><thead><tr><th>Setor</th><th class="n">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n">vs. ano anterior</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead><tbody>
+        ${sets.map(s=>{ const p=r.fechado?s.pMes:s.pAte; const ba=baseAnt(r,s.id); return `<tr><td><b>${esc(s.nome)}</b></td><td class="n">${brl0(r.fechado?s.meta:s.metaAte)}</td><td class="n">${brl0(s.real)}</td><td>${badge(p)}</td><td class="n">${varC(s.real,ba)}</td><td class="n">${s.perda?brl0(s.perda):'—'}</td><td class="n">${s.perda&&s.real?pct(s.perda/s.real,2):'—'}</td></tr>`; }).join('')}
+      </tbody></table></td></tr>`;
+    }
+  }
+  return html+'</tbody></table></div>';
+}
+
+/* conteúdo aberto dentro de uma linha de tabela fica da largura da tela (não estica a tabela) */
+function ajustarLargura(det){ const tw=det.closest('.tw'); const inn=det.querySelector('.sd-in,.bx-in'); if(tw && inn){ inn.style.width=(tw.clientWidth-6)+'px'; inn.style.position='sticky'; inn.style.left='0'; inn.style.boxSizing='border-box'; } }
+window.addEventListener('resize',()=>document.querySelectorAll('tr.setor-det,tr.bx-det').forEach(ajustarLargura));
+/* ---------- balanços: abrir em cascata ---------- */
+function alternarBalancoInline(tr, b){
+  const prox=tr.nextElementSibling;
+  if(prox && prox.classList.contains('bx-det')){ prox.remove(); tr.classList.remove('sd-aberto'); return; }
+  const det=document.createElement('tr'); det.className='bx-det'; det.innerHTML=`<td colspan="${tr.children.length}"></td>`;
+  tr.after(det); tr.classList.add('sd-aberto'); abrirBalanco(b, det.firstElementChild).then(()=>ajustarLargura(det)); ajustarLargura(det);
+}
+function fecharBalancoInline(alvo){ const tr=alvo.closest('tr.bx-det'); tr?.previousElementSibling?.classList.remove('sd-aberto'); tr?.remove(); }
+
+/* ===================== DIÁRIAS ===================== */
+function renderDiarias(app, doc){
+  const di=doc.diarias||{orcamento:0,lancamentos:[]}; const ls=[...(di.lancamentos||[])].sort((a,b)=>b.data.localeCompare(a.data)||(b.id||0)-(a.id||0));
+  const teto=+di.orcamento||0, usado=ls.reduce((a,l)=>a+(+l.valor||0),0), saldo=teto-usado;
+  const dias=diasDoMes(doc.mes); const hoje=dias.includes(todayIso())?todayIso():dias[dias.length-1];
+  const porDia={}; ls.forEach(l=>{ (porDia[l.data]=porDia[l.data]||[]).push(l); });
+  const restDias=dias.filter(k=>k>=todayIso()).length;
+  app.innerHTML=`
+  <div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Diárias — ${mesLabel(doc.mes)}</h1><p class="sub" style="margin:0">Teto do mês, diárias lançadas por dia e quanto ainda pode ser usado.</p></div></div>
+  <div class="grid kpis">
+    <div class="kpi hero"><div class="l">Saldo disponível</div><div class="v" style="${saldo<0?'color:#ff8a80':''}">${brl0(saldo)}</div><div class="d">${saldo<0?'acima do teto!':restDias?`≈ ${brl0(saldo/restDias)} por dia nos ${restDias} dia(s) que faltam`:'mês encerrado'}</div></div>
+    <div class="kpi"><div class="l">Teto do mês</div><div class="row" style="gap:6px;margin-top:4px;flex-wrap:nowrap"><input class="in" id="djTeto" value="${nf(teto,0)}" style="max-width:140px;font-size:18px;font-weight:700"><button class="btn" id="djTetoS">Salvar</button></div><div class="d">valor máximo de diárias</div></div>
+    <div class="kpi"><div class="l">Utilizado</div><div class="v">${brl0(usado)}</div><div class="d">${pct(teto?usado/teto:null)} do teto · ${ls.length} diária(s)</div>${barH(teto?usado/teto:0)}</div>
+    <div class="kpi"><div class="l">Dias com diária</div><div class="v">${Object.keys(porDia).length}</div><div class="d">média ${brl0(Object.keys(porDia).length?usado/Object.keys(porDia).length:0)} por dia</div></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h2>＋ Nova diária</h2>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <label class="f">Dia<input type="date" id="djData" value="${S.djData&&dias.includes(S.djData)?S.djData:hoje}" min="${dias[0]}" max="${dias[dias.length-1]}"></label>
+      <label class="f" style="width:150px">Valor (R$)<input class="in" id="djValor" inputmode="decimal" placeholder="0,00"></label>
+      <label class="f" style="flex:1;min-width:220px">Observação<input id="djObs" placeholder="Ex.: Maria — reposição no açougue" style="border:1px solid var(--line);border-radius:9px;padding:8px 10px"></label>
+      <button class="btn p" id="djAdd">Adicionar</button>
+    </div>
+    <div id="djAviso" class="small" style="margin-top:6px"></div>
+  </div>
+  <div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Diárias por dia</h2><div class="sp"></div><span class="small muted">clique no dia para abrir ou fechar</span></div>
+    ${ls.length?`<div class="tw"><table><thead><tr><th>Dia</th><th class="n">Valor</th><th>Observação</th><th></th></tr></thead><tbody>
+      ${Object.keys(porDia).sort().reverse().map(k=>{ const it=porDia[k]; const tot=it.reduce((a,l)=>a+(+l.valor||0),0); return `<tr class="cx-row cx-open" data-cx="dj${k}"><td><span class="cx-chev">▸</span> <b>${fDateL(k)}</b>${marcaData(k)} <span class="small muted">${it.length} diária(s)</span></td><td class="n"><b>${brl(tot)}</b></td><td></td><td></td></tr>
+        ${it.map(l=>`<tr data-cx-of="dj${k}"><td style="padding-left:30px" class="small muted">${fDate(l.data)}</td><td class="n">${brl(+l.valor)}</td><td>${l.obs?esc(l.obs):'<span class="muted">—</span>'}</td><td style="white-space:nowrap;width:1%"><button class="btn" data-dje="${l.id}" style="padding:3px 9px">Editar</button> <button class="btn" data-djx="${l.id}" style="padding:3px 9px;color:var(--bad)" title="Excluir">✕</button></td></tr>`).join('')}`; }).join('')}
+    </tbody><tfoot><tr><td>Total do mês</td><td class="n">${brl(usado)}</td><td colspan="2"></td></tr></tfoot></table></div>`:'<div class="empty">Nenhuma diária lançada neste mês.</div>'}
+  </div>`;
+  const recarregar=async msg=>{ try{ await carregarMes(doc.mes); }catch(_){} toast(msg); render(); };
+  $('#djTetoS').onclick=async()=>{ const v=parseNum($('#djTeto').value); if(isNaN(v)) return toast('Informe o teto.'); try{ await q(S.sb.from('meses').update({diarias_orcamento:round2(v), atualizado_em:new Date().toISOString()}).eq('mes',doc.mes)); recarregar('Teto salvo ✔'); }catch(e){ toast(e.message,5000); } };
+  const aviso=()=>{ const v=parseNum($('#djValor').value)||0; $('#djAviso').innerHTML = v && v>saldo ? `<span style="color:var(--bad)">Esta diária passa do teto em ${brl(v-saldo)}.</span>` : (v?`Saldo depois: <b>${brl(saldo-v)}</b>`:''); };
+  $('#djValor').oninput=aviso;
+  $('#djAdd').onclick=async()=>{ const data=$('#djData').value, v=parseNum($('#djValor').value), obs=$('#djObs').value.trim();
+    if(!data || !dias.includes(data)) return toast('Escolha um dia deste mês.'); if(isNaN(v)||v<=0) return toast('Informe o valor da diária.');
+    S.djData=data; $('#djAdd').disabled=true;
+    try{ await q(S.sb.from('diarias').insert({mes:doc.mes, data, valor:round2(v), observacao:obs||null})); recarregar('Diária lançada ✔'); }catch(e){ toast(e.message,5000); $('#djAdd').disabled=false; } };
+  app.querySelectorAll('[data-djx]').forEach(b=>b.onclick=()=>{ const l=ls.find(x=>String(x.id)===b.dataset.djx); confirmBox(`Excluir a diária de ${brl(+l.valor)} do dia ${fDate(l.data)}?`, async()=>{ try{ await q(S.sb.from('diarias').delete().eq('id',l.id)); recarregar('Diária excluída'); }catch(e){ toast(e.message,5000); } }); });
+  app.querySelectorAll('[data-dje]').forEach(b=>b.onclick=()=>{ const l=ls.find(x=>String(x.id)===b.dataset.dje);
+    const m=modal(`<h2>Editar diária</h2><div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end"><label class="f">Dia<input type="date" id="deD" value="${l.data}" min="${dias[0]}" max="${dias[dias.length-1]}"></label><label class="f" style="width:140px">Valor<input class="in" id="deV" value="${nf(+l.valor)}"></label></div>
+      <label class="f" style="margin-top:8px">Observação<input id="deO" value="${esc(l.obs||'')}" style="border:1px solid var(--line);border-radius:9px;padding:8px 10px"></label>
+      <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar</button></div>`);
+    $('#mN',m).onclick=closeModal;
+    $('#mY',m).onclick=async()=>{ const v=parseNum($('#deV',m).value); if(isNaN(v)||v<=0) return toast('Valor inválido'); try{ await q(S.sb.from('diarias').update({data:$('#deD',m).value, valor:round2(v), observacao:$('#deO',m).value.trim()||null}).eq('id',l.id)); closeModal(); recarregar('Diária salva ✔'); }catch(e){ toast(e.message,5000); } }; });
+}

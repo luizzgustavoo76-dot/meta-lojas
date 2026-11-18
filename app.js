@@ -106,6 +106,7 @@ function render(){
   else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
   else if(S.view==='metas' && S.gerente) renderMetas(app,doc);
+  else if(S.view==='diarias' && S.gerente) renderDiarias(app,doc);
   else renderPainel(app,doc);
 }
 
@@ -160,7 +161,7 @@ function renderPainel(app, doc){
   </div>
 
   <div class="card" style="margin-top:12px">
-    <div class="row" style="margin-bottom:10px"><h2 style="margin:0">Setores — detalhado</h2><div class="sp"></div><span class="small muted">Clique em um setor para ver o dia a dia</span></div>
+    <div class="row" style="margin-bottom:10px"><h2 style="margin:0">Setores — detalhado</h2><div class="sp"></div><span class="small muted">Clique em um setor para abrir o detalhe aqui mesmo</span></div>
     ${diffSet?`<div class="note small" style="margin-bottom:10px">O realizado da loja (${brl0(loja.real)}) usa o total do caixa quando ele foi lançado; a soma dos setores é ${brl0(loja.totSetores)}.</div>`:''}
     <div class="tw dtable"><table>
       <thead><tr>
@@ -176,10 +177,10 @@ function renderPainel(app, doc){
       <div class="g"><div>Realizado<span>${brl0(s.real)}</span></div><div>Meta até data<span>${brl0(s.metaAte)}</span></div><div>Meta mês<span>${brl0(s.meta)}</span></div><div>% mês<span>${pct(s.pMes)}</span></div><div>Precisa/dia<span>${brl0(s.necDia)}</span></div><div>Perda<span>${s.perda?brl0(s.perda):'—'}</span></div></div></div>`).join('')}</div>
   </div>
 
-  ${S.gerente?renderDiariasCard(doc):''}
   `;
   bindCutoff();
-  app.querySelectorAll('[data-s]').forEach(el=>el.onclick=()=>{ S.setorSel=el.dataset.s; S.setorAba='dia'; S.painelScroll=window.scrollY; S.voltarPainel=true; location.hash='#setor'; });
+  app.querySelectorAll('.dtable tr[data-s], .mcards [data-s]').forEach(el=>el.onclick=e=>{ if(e.target.closest('[data-abrir-setor]')) return; abrirSetorNoPainel(el, doc); });
+  app.querySelectorAll('.rk-l[data-s]').forEach(el=>el.onclick=()=>{ const alvo=app.querySelector(`.dtable tr[data-s="${el.dataset.s}"]`); if(alvo && alvo.offsetParent){ alvo.scrollIntoView({block:'center'}); abrirSetorNoPainel(alvo, doc, true); } else { const c=app.querySelector(`.mcards [data-s="${el.dataset.s}"]`); if(c){ c.scrollIntoView({block:'center'}); abrirSetorNoPainel(c, doc, true); } } });
   app.querySelectorAll('th.sort').forEach(th=>th.onclick=()=>{ const k=th.dataset.k; if(S.sortKey===k) S.sortDir=-(S.sortDir||-1); else {S.sortKey=k;S.sortDir=k==='nome'?1:-1;} render(); });
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   $('#btnXlsx').onclick=()=>exportXlsx(doc);
@@ -254,7 +255,7 @@ function comparativos(doc, cutoff, sid){
   const pa=S.months[ma]? numerosAte(S.months[ma], mesmoDiaEm(ma,dia), sid) : null;
   // venda do dia: compara com o mesmo dia da semana (terça com terça…)
   for(const [ref,mm] of [[pm,mp],[pa,ma]]){ if(!ref) continue; const v=vendaNoDia(S.months[mm], mesmoDiaSemanaEm(mm,cutoff), sid); ref.diaK=v?.k||null; ref.dia=v?.real||0; }
-  return { atual, pm:(pm&&pm.real)?pm:null, pa:(pa&&pa.real)?pa:null, mp, ma, dia };
+  return { atual, pm:(pm&&pm.real)?pm:null, pa:(pa&&pa.real)?pa:null, mp, ma, dia, doc, sid };
 }
 function varTxt(a, b, ruimSeSobe){ if(!b) return '<span class="muted">—</span>'; const v=a/b-1; const bom = ruimSeSobe ? v<=0 : v>=0;
   return `<span style="color:${Math.abs(v)<0.0005?'inherit':bom?'var(--good)':'var(--bad)'};font-weight:700">${v>0?'▲ +':v<0?'▼ ':''}${pct(v)}</span>`; }
@@ -273,9 +274,12 @@ function cardComparativos(c, titulo){
   return `<div class="card" style="margin-top:12px">
     <div class="row" style="margin-bottom:8px"><h2 style="margin:0">📊 Comparativo ${titulo?'— '+esc(titulo):''}</h2><div class="sp"></div><span class="small muted">Acumulado: dia 1 até dia ${c.dia} · Venda do dia: mesmo dia da semana</span></div>
     <div class="tw"><table><thead><tr><th></th><th class="n">Atual<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(c.atual.cut.slice(0,7))}</span></th><th class="n">${hd(pm,'Mês passado')}</th><th class="n">Variação</th><th class="n">${hd(pa,'Ano passado')}</th><th class="n">Variação</th></tr></thead><tbody>
-      <tr><td><b>Venda acumulada</b><div class="small muted">dia 1 até dia ${c.dia}</div></td><td class="n"><b>${brl0(a.real)}</b></td>${col(pm,'real')}${col(pa,'real')}</tr>
-      <tr><td><b>Venda do dia</b><div class="small muted">mesmo dia da semana: ${fDateL(a.cut)}${pm?.diaK?` · ${fDateL(pm.diaK)}`:''}${pa?.diaK?` · ${fDateL(pa.diaK)}/${pa.diaK.slice(2,4)}`:''}</div></td><td class="n"><b>${a.dia?brl0(a.dia):'—'}</b></td>${col(pm,'dia')}${col(pa,'dia')}</tr>
-      <tr><td><b>Perda acumulada</b><div class="small muted">inclui balanços</div></td><td class="n"><b>${brl0(a.perda)}</b></td>${col(pm,'perda',true)}${col(pa,'perda',true)}</tr>
+      <tr class="cx-row" data-cx="cacum"><td><span class="cx-chev">▸</span> <b>Venda acumulada</b><div class="small muted">dia 1 até dia ${c.dia} · clique para ver dia a dia</div></td><td class="n"><b>${brl0(a.real)}</b></td>${col(pm,'real')}${col(pa,'real')}</tr>
+      ${compDetalheDias(c,'real')}
+      <tr class="${c.sid?'':'cx-row'}" ${c.sid?'':'data-cx="cdia"'}><td>${c.sid?'':'<span class="cx-chev">▸</span> '}<b>Venda do dia</b><div class="small muted">mesmo dia da semana: ${fDateL(a.cut)}${pm?.diaK?` · ${fDateL(pm.diaK)}`:''}${pa?.diaK?` · ${fDateL(pa.diaK)}/${pa.diaK.slice(2,4)}`:''}${c.sid?'':' · clique para ver por setor'}</div></td><td class="n"><b>${a.dia?brl0(a.dia):'—'}</b></td>${col(pm,'dia')}${col(pa,'dia')}</tr>
+      ${c.sid?'':compDetalheSetoresDia(c)}
+      <tr class="cx-row" data-cx="cperda"><td><span class="cx-chev">▸</span> <b>Perda acumulada</b><div class="small muted">inclui balanços · clique para ver dia a dia</div></td><td class="n"><b>${brl0(a.perda)}</b></td>${col(pm,'perda',true)}${col(pa,'perda',true)}</tr>
+      ${compDetalheDias(c,'perda')}
       <tr><td><b>% de perda sobre a venda</b></td><td class="n"><b>${a.pPerda!=null?pct(a.pPerda,2):'—'}</b></td>${colP(pm)}${colP(pa)}</tr>
     </tbody></table></div>
     <div class="small muted" style="margin-top:8px">Verde = melhor que antes (venda maior ou perda menor). Vermelho = pior.</div>
@@ -300,17 +304,15 @@ function renderHistorico(app){
   <div class="card"><div class="row"><h2 style="margin:0">Realizado × meta por mês</h2></div>
     <div class="legend"><span><i class="lg-bar"></i>Realizado</span><span><i class="lg-line"></i>Meta</span></div>
     <div class="chartbox" style="height:320px"><canvas id="chHist"></canvas></div></div>
-  <div class="card" style="margin-top:12px"><h2>Meses</h2>
-    <div class="tw dtable"><table><thead><tr><th>Mês</th><th class="n">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n">Diferença</th><th class="n">vs. ano anterior</th><th class="n">Perdas</th><th></th></tr></thead>
-    <tbody>${rows.slice().reverse().map(r=>`<tr><td><b>${mesLabel(r.k)}</b>${r.fechado?'':' <span class="badge b-none">em andamento</span>'}</td><td class="n">${brl0(r.metaMes)}</td><td class="n"><b>${brl0(r.real)}</b></td><td>${badge(r.fechado?r.pMes:r.pAte)}</td><td class="n">${r.fechado?brl0(r.real-r.metaMes):'—'}</td><td class="n" style="color:${r.cresc==null?'':r.cresc>=0?'var(--good)':'var(--bad)'}">${r.cresc==null?'—':(r.cresc>=0?'+':'')+pct(r.cresc)}</td><td class="n">${r.perda?brl0(r.perda):'—'}</td><td><button class="btn" data-open="${r.k}" style="padding:4px 10px">Abrir</button></td></tr>`).join('')}</tbody></table></div>
-    <div class="mcards">${rows.slice().reverse().map(r=>`<div class="sc" data-open="${r.k}"><div class="t"><b>${mesLabel(r.k)}</b>${badge(r.fechado?r.pMes:r.pAte)}</div><div class="g"><div>Realizado<span>${brl0(r.real)}</span></div><div>Meta<span>${brl0(r.metaMes)}</span></div><div>vs. ano ant.<span>${r.cresc==null?'—':pct(r.cresc)}</span></div></div></div>`).join('')}</div>
-    <p class="small muted">Meses fechados: % sobre a meta do mês. Mês em andamento: % sobre a meta até a data.</p>
+  <div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Anos e meses</h2><div class="sp"></div><span class="small muted">Clique no ano para ver os meses e no mês para ver os setores</span></div>
+    ${historicoCascata(rows)}
+    <p class="small muted">Meses fechados: % sobre a meta do mês. Mês em andamento: % sobre a meta até a data. vs. ano anterior: mesmo período.</p>
   </div>
   <div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:10px"><h2 style="margin:0">Setores mês a mês</h2><div class="sp"></div><div class="tabs2" id="hModo"><button data-m="pct" class="${modo==='pct'?'on':''}">% da meta</button><button data-m="val" class="${modo==='val'?'on':''}">Realizado (R$ mil)</button></div></div>
     <div class="tw" style="max-height:620px"><table><thead><tr><th>Mês</th>${ids.map(i=>`<th class="n" style="white-space:normal;min-width:74px">${esc(nomes[i]||i)}</th>`).join('')}</tr></thead>
     <tbody>${rows.slice().reverse().map(r=>`<tr><td style="white-space:nowrap"><b>${mesLabel(r.k)}</b></td>${ids.map(i=>cell(r,i)).join('')}</tr>`).join('')}</tbody></table></div>
   </div>`;
-  app.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{ S.mes=b.dataset.open; S.cutoff=null; location.hash='#painel'; render(); });
+  app.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); trocarMes(b.dataset.open).then(()=>{ location.hash='#painel'; }); });
   $('#hModo').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.histModo=b.dataset.m; render();});
   const cv=$('#chHist'); if(cv&&window.Chart){ const ch=new Chart(cv,{data:{labels:rows.map(r=>{const [y,m]=r.k.split('-'); return MESES[+m-1].slice(0,3)+'/'+y.slice(2);}),datasets:[
     {type:'bar',label:'Realizado',data:rows.map(r=>r.real),backgroundColor:rows.map(r=>r.real>=r.metaMes?'#2f5d8a':'#9db6cf'),borderRadius:4,maxBarThickness:26,order:2},
@@ -395,7 +397,7 @@ async function renderBalancosSetor(box, s, doc){
     </tbody></table></div>`:`<div class="empty">Nenhum balanço do ${esc(s.nome)} ainda.${S.gerente?' Clique em “Novo balanço” para lançar.':''}</div>`}
   </div>`;
   const bn=$('#bsNovo'); if(bn) bn.onclick=()=>{ S.balSetor=sid; formBalanco(null); };
-  box.querySelectorAll('[data-b]').forEach(r=>r.onclick=()=>abrirBalanco(lista.find(b=>String(b.id)===r.dataset.b)));
+  box.querySelectorAll('[data-b]').forEach(r=>r.onclick=()=>alternarBalancoInline(r, lista.find(b=>String(b.id)===r.dataset.b)));
 }
 
 /* ---------- LANÇAR ---------- */
@@ -564,7 +566,7 @@ function renderMetas(app, doc){
   const somaDias=sum(dias.map(k=>+(doc.dias?.[k]?.meta)||0)); const somaSet=sum(doc.setores.map(s=>+s.meta||0));
   const di=doc.diarias||{orcamento:0,lancamentos:[]};
   host.innerHTML = `
-  <h1>Metas — ${mesLabel(doc.mes)}</h1><p class="sub">Defina a meta da loja, quanto cada setor representa e a meta de cada dia. A meta diária de cada setor é calculada automaticamente: meta do dia × representação do setor.</p>
+  <h1>Metas do mês — ${mesLabel(doc.mes)}</h1><p class="sub">Configuração do mês: defina a meta da loja, quanto cada setor representa e a meta de cada dia. A meta diária de cada setor é calculada automaticamente: meta do dia × representação do setor.</p>
   <div class="grid two">
     <div class="card">
       <h2>Meta da loja e dos setores</h2>
@@ -584,11 +586,6 @@ function renderMetas(app, doc){
     </div>
   </div>
   <div class="grid two" style="margin-top:12px">
-    <div class="card"><h2>Diárias</h2>
-      <label class="f" style="max-width:220px">Orçamento do mês<input class="in" id="dOrc" value="${nf(di.orcamento,0)}"></label>
-      <div class="tw" style="margin-top:10px"><table><thead><tr><th>Data</th><th class="n">Valor</th><th></th></tr></thead><tbody>${(di.lancamentos||[]).map((l,i)=>`<tr><td>${fDateL(l.data)}</td><td class="n">${brl(l.valor)}</td><td style="width:40px"><button class="btn" data-dx="${i}" style="padding:4px 8px">✕</button></td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nenhum lançamento</td></tr>'}</tbody></table></div>
-      <div class="row" style="margin-top:10px"><label class="f">Data<input type="date" id="dData" value="${dias.includes(todayIso())?todayIso():dias[0]}" min="${dias[0]}" max="${dias[dias.length-1]}"></label><label class="f" style="width:140px">Valor<input class="in" id="dVal" placeholder="0,00"></label><button class="btn" id="dAdd" style="margin-top:18px">＋ Adicionar</button><div class="sp"></div><button class="btn p" id="dSave" style="margin-top:18px">Salvar</button></div>
-    </div>
     ${novoMesCard(doc)}
   </div>
   <div class="card" style="margin-top:12px"><h2>🎯 Metas por departamento</h2><p class="small muted" style="margin-top:-4px">Divida a meta de cada setor entre os departamentos do sistema. A meta aparece na Análise de vendas do setor, com o % atingido.</p><div id="mdBox"><div class="empty"><span class="spin"></span></div></div></div>
@@ -605,11 +602,6 @@ function renderMetas(app, doc){
   host.querySelectorAll('[data-dm]').forEach(i=>i.oninput=recalcD); recalcD();
   $('#mAjust',host).onclick=()=>{ const ml=parseNum($('#mLoja',host).value)||0; let s=0; host.querySelectorAll('[data-dm]').forEach(i=>s+=parseNum(i.value)||0); if(!s) return; let acc=0; const ins=[...host.querySelectorAll('[data-dm]')]; ins.forEach((i,ix)=>{ let v=Math.round((parseNum(i.value)||0)/s*ml/100)*100; if(ix===ins.length-1) v=ml-acc; acc+=v; i.value=nf(v,0); }); recalcD(); };
   $('#mSaveDias',host).onclick=()=>{ const nd=clone(doc); host.querySelectorAll('[data-dm]').forEach(i=>{ const k=i.dataset.dm; nd.dias[k]=nd.dias[k]||{}; nd.dias[k].meta=parseNum(i.value)||0; }); saveDoc(nd,'Metas diárias salvas ✔'); };
-  // diárias
-  let lanc=[...(di.lancamentos||[])];
-  host.querySelectorAll('[data-dx]').forEach(b=>b.onclick=()=>{ const nd=clone(doc); nd.diarias=nd.diarias||{orcamento:0,lancamentos:[]}; nd.diarias.lancamentos.splice(+b.dataset.dx,1); saveDoc(nd,'Lançamento removido'); });
-  $('#dAdd',host).onclick=()=>{ const v=parseNum($('#dVal',host).value); const dt=$('#dData',host).value; if(!v||!dt) return toast('Informe data e valor'); const nd=clone(doc); nd.diarias=nd.diarias||{orcamento:0,lancamentos:[]}; nd.diarias.orcamento=parseNum($('#dOrc',host).value)||0; nd.diarias.lancamentos.push({data:dt,valor:round2(v)}); nd.diarias.lancamentos.sort((a,b)=>a.data.localeCompare(b.data)); saveDoc(nd,'Diária lançada ✔'); };
-  $('#dSave',host).onclick=()=>{ const nd=clone(doc); nd.diarias=nd.diarias||{orcamento:0,lancamentos:[]}; nd.diarias.orcamento=parseNum($('#dOrc',host).value)||0; saveDoc(nd,'Orçamento salvo ✔'); };
   bindNovoMes(host,doc); bindImportarPlanilhas(host); bindDatasEspeciais(host); cardMetasDepartamento(host, doc);
 }
 function novoMesCard(doc){
@@ -682,7 +674,7 @@ function montarDoc(mes, metaLoja, orc, metas, diasRows, lanc, diarias, metasDiaS
   if(metasDiaSetor) metasDiaSetor.forEach(r=>{ if(dias[r.data]) dias[r.data].meta=round2((dias[r.data].meta||0)+(+r.meta||0)); });
   lanc.forEach(r=>{ const d=dias[r.data]; if(!d) return; if(r.venda!=null) (d.vendas=d.vendas||{})[r.setor_id]=+r.venda; if(r.perda!=null&&+r.perda) (d.perdas=d.perdas||{})[r.setor_id]=+r.perda; });
   const doc={mes, metaLoja: metaLoja!=null? +metaLoja : sum(setores.map(x=>x.meta)), setores, dias};
-  if(diarias) doc.diarias={orcamento:+orc||0, lancamentos:diarias.map(r=>({id:r.id,data:r.data,valor:+r.valor})).sort((a,b)=>a.data.localeCompare(b.data))};
+  if(diarias) doc.diarias={orcamento:+orc||0, lancamentos:diarias.map(r=>({id:r.id,data:r.data,valor:+r.valor,obs:r.observacao||''})).sort((a,b)=>a.data.localeCompare(b.data))};
   return doc;
 }
 async function carregarMes(mes){
@@ -694,7 +686,7 @@ async function carregarMes(mes){
   if(S.gerenteReal){
     const m=(await q(S.sb.from('meses').select('*').eq('mes',mes)))[0]||{};
     const diasRows=await q(S.sb.from('dias').select('data,meta,total_caixa').eq('mes',mes));
-    const diar=await q(S.sb.from('diarias').select('id,data,valor').eq('mes',mes));
+    const diar=await q(S.sb.from('diarias').select('id,data,valor,observacao').eq('mes',mes));
     doc=montarDoc(mes, m.meta_loja, m.diarias_orcamento, metas, diasRows, lanc, diar, null);
   } else {
     const mds=await q(S.sb.rpc('metas_diarias_setor',{p_mes:mes}));
@@ -710,7 +702,7 @@ async function carregarTudo(){ // para o histórico
     const metas=await todasLinhas(()=>S.sb.from('metas_setor').select('mes,setor_id,meta').order('mes').order('setor_id'));
     const dias=await todasLinhas(()=>S.sb.from('dias').select('data,mes,meta,total_caixa').order('data'));
     const lanc=await todasLinhas(()=>S.sb.from('lancamentos').select('data,setor_id,venda,perda').order('data').order('setor_id'));
-    const diar=await todasLinhas(()=>S.sb.from('diarias').select('id,mes,data,valor').order('id'));
+    const diar=await todasLinhas(()=>S.sb.from('diarias').select('id,mes,data,valor,observacao').order('id'));
     const bals=await todasLinhas(()=>S.sb.from('balancos').select('data,setor_id,valor_perda').order('id'));
     for(const m of meses){ const mes=m.mes, ini=`${mes}-01`, fim=fimDoMes(mes);
       S.months[mes]=montarDoc(mes,m.meta_loja,m.diarias_orcamento,metas.filter(x=>x.mes===mes),dias.filter(x=>x.mes===mes),lanc.filter(x=>x.data>=ini&&x.data<=fim),diar.filter(x=>x.mes===mes),null); S.months[mes].balancos=bals.filter(x=>x.data>=ini&&x.data<=fim); if(S.preview) S.months[mes]=docComoEncarregado(S.months[mes],S.preview.setores); }
@@ -740,9 +732,9 @@ async function gravarDoc(nd, old, opts={}){
       if(!old || !eqNum(+n.meta||0,+o.meta||0) || (!opts.soMetas && !eqNum(n.total??null,o.total??null)))
         diasUp.push(opts.soMetas && old ? {data:k, mes, meta:+n.meta||0} : {data:k, mes, meta:+n.meta||0, total_caixa:n.total??null}); }
     if(diasUp.length) await q(S.sb.from('dias').upsert(diasUp));
-    if(!opts.soMetas && JSON.stringify((old?.diarias?.lancamentos||[]).map(l=>[l.data,l.valor]))!==JSON.stringify((nd.diarias?.lancamentos||[]).map(l=>[l.data,l.valor]))){
+    if(!opts.soMetas && JSON.stringify((old?.diarias?.lancamentos||[]).map(l=>[l.data,l.valor,l.obs||''])) !==JSON.stringify((nd.diarias?.lancamentos||[]).map(l=>[l.data,l.valor,l.obs||'']))){
       await q(S.sb.from('diarias').delete().eq('mes',mes));
-      const ls=(nd.diarias?.lancamentos||[]).map(l=>({mes,data:l.data,valor:l.valor})); if(ls.length) await q(S.sb.from('diarias').insert(ls));
+      const ls=(nd.diarias?.lancamentos||[]).map(l=>({mes,data:l.data,valor:l.valor,observacao:l.obs||null})); if(ls.length) await q(S.sb.from('diarias').insert(ls));
     }
   }
   if(opts.soMetas) return;
@@ -990,7 +982,7 @@ async function renderBalancos(app){
   $('#bFiltro').onchange=e=>{ S.balSetor=e.target.value; renderBalancos(app); };
   app.querySelectorAll('[data-fs]').forEach(k=>k.onclick=()=>{ S.balSetor = S.balSetor===k.dataset.fs?'':k.dataset.fs; renderBalancos(app); });
   const bn=$('#bNovo'); if(bn) bn.onclick=()=>formBalanco(null);
-  app.querySelectorAll('[data-b]').forEach(r=>r.onclick=()=>abrirBalanco(lista.find(b=>String(b.id)===r.dataset.b)));
+  app.querySelectorAll('[data-b]').forEach(r=>r.onclick=()=>alternarBalancoInline(r, lista.find(b=>String(b.id)===r.dataset.b)));
 }
 async function aposMudarBalanco(data){ const mes=data.slice(0,7); if(S.months[mes]) { try{ await carregarMes(mes); }catch(_){} } S._tudo=false; render(); }
 function formBalanco(b){
@@ -1047,8 +1039,8 @@ function formBalanco(b){
     }catch(e){ err('Não foi possível salvar: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar'; }
   };
 }
-async function abrirBalanco(b){
-  const m=modal(`<div class="row"><h2 style="margin:0">📋 Balanço — ${esc(nomeSetor(b.setor_id))}</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
+async function abrirBalanco(b, alvo){
+  const html=(`<div class="row"><h2 style="margin:0">📋 Balanço — ${esc(nomeSetor(b.setor_id))}</h2><div class="sp"></div><button class="btn" id="mN">${alvo?'▴ Fechar':'Fechar'}</button></div>
    <div class="grid kpis" style="margin-top:12px"><div class="kpi"><div class="l">${b.periodo_inicio?'Período':'Data'}</div><div class="v" style="font-size:22px">${b.periodo_inicio?`${fDate(b.periodo_inicio)} a ${fDate(b.data)}`:fDateL(b.data)}</div></div><div class="kpi"><div class="l">Perda apurada</div><div class="v" style="font-size:22px">${brl(+b.valor_perda)}</div></div></div>
    ${(()=>{ const a=S._anteriorDe?.(b); if(!a) return '<p class="small muted" style="margin-top:8px">Primeiro balanço registrado deste setor.</p>'; const dif=(+b.valor_perda)-(+a.valor_perda); return `<div class="note small" style="margin-top:10px">Balanço anterior: <b>${fDateL(a.data)}</b> · ${brl(+a.valor_perda)} → variação <b style="color:${dif>0?'var(--bad)':'var(--good)'}">${dif>0?'▲ +':'▼ '}${brl(dif)}${+a.valor_perda?` (${dif>0?'+':''}${pct(dif/(+a.valor_perda),0)})`:''}</b> ${dif>0?'— a perda aumentou':'— a perda diminuiu'}</div>`; })()}
    ${b.observacao?`<div class="note small" style="margin-top:10px;white-space:pre-wrap">${esc(b.observacao)}</div>`:''}
@@ -1057,7 +1049,8 @@ async function abrirBalanco(b){
    <h3 style="margin:16px 0 8px">Análise e comentários</h3><div id="bxCom"><span class="spin"></span></div>
    <div class="row" style="margin-top:8px;align-items:flex-end"><label class="f" style="flex:1">Escreva sua análise (ex.: causa da perda, o que fazer)<textarea id="bxTxt" rows="2" style="border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit"></textarea></label><button class="btn p" id="bxEnv">Enviar</button></div>
    ${S.gerente?'<div class="row" style="margin-top:14px"><button class="btn" id="bxDel" style="color:var(--bad)">Excluir balanço</button><div class="sp"></div><button class="btn" id="bxEd">Editar</button></div>':''}`);
-  $('#mN',m).onclick=closeModal;
+  let m; if(alvo){ alvo.innerHTML=`<div class="bx-in">${html}</div>`; m=alvo; } else m=modal(html);
+  $('#mN',m).onclick=()=>{ if(alvo) fecharBalancoInline(alvo); else closeModal(); };
   if(S.gerente){ $('#bxEd',m).onclick=()=>{ closeModal(); formBalanco(b); };
     $('#bxDel',m).onclick=()=>{ closeModal(); confirmBox(`Excluir o balanço de ${nomeSetor(b.setor_id)} de ${fDate(b.data)} (${brl(+b.valor_perda)})? O arquivo e os comentários também serão apagados.`, async()=>{ try{ if(b.arquivo_path) await S.sb.storage.from('balancos').remove([b.arquivo_path]); await q(S.sb.from('balancos').delete().eq('id',b.id)); toast('Balanço excluído'); await aposMudarBalanco(b.data); }catch(e){ toast(e.message,5000); } }); }; }
   // comentários
@@ -1095,7 +1088,7 @@ async function abrirBalanco(b){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['diarias','Diárias'],['historico','Histórico'],['metas','Metas do mês']];
 const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);

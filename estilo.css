@@ -168,3 +168,14 @@ tr.an-foco td{background:var(--warn-bg)!important;transition:background .4s}
 .an-meta{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
 .hoje-enc{border:2px solid var(--dark)}.hoje-sep{width:1px;align-self:stretch;background:var(--line)}
 @media(max-width:760px){.hoje-sep{display:none}}
+.cx-row{cursor:pointer}.cx-row:hover td{background:#faf8f4}
+.cx-chev{display:inline-block;transition:transform .15s;color:var(--ink2);width:12px}
+.cx-open .cx-chev{transform:rotate(90deg)}
+tr.cx-det td{background:#fcfbf8;font-size:13px}
+tr.cx-ano td{background:#f4f1ea;border-top:2px solid var(--line)}
+.hist-set{width:100%;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:10px}
+tr.sd-aberto td, .sc.sd-aberto{background:var(--warn-bg)!important}
+tr.setor-det>td, tr.bx-det>td{padding:0!important;background:#f6f4ef!important}
+.sd-in, .bx-in{padding:14px;border-left:4px solid var(--dark)}
+div.setor-det{margin:6px 0 12px;background:#f6f4ef;border-radius:12px}
+.mcards .setor-det{grid-column:1/-1}
