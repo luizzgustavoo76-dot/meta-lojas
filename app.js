@@ -859,10 +859,12 @@ function formBalanco(b){
       else dica.innerHTML='<span style="color:var(--bad)">Não achei o valor da perda no arquivo.</span> Digite o valor acima.';
       if(r.data && ($('#fbData',m).value===dataPadrao || r.analise)){ $('#fbData',m).value=r.data; }
       if(r.ini) $('#fbIni',m).value=r.ini;
+      if(r.analise && !setorEscolhido){ const sug=setorSiteSugerido(r.analise); if(sug && $('#fbSetor',m).querySelector(`option[value="${sug}"]`)) $('#fbSetor',m).value=sug; }
       $('#fbAn',m).innerHTML = r.analise ? resumoAnaliseHtml(r.analise,true) : '';
       return r; }).catch(e=>{ dica.innerHTML='<span style="color:var(--bad)">Não consegui ler o arquivo.</span> Digite o valor acima.'; return {valor:null}; });
   };
   $('#fbArq',m).onchange=lerArquivo;
+  let setorEscolhido=!novo; $('#fbSetor',m).addEventListener('change',()=>{ setorEscolhido=true; });
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#fbErr',m); e.textContent=t; e.classList.remove('hide'); };
     const f=$('#fbArq',m).files[0];
@@ -1325,13 +1327,27 @@ function resumoAnaliseHtml(a, curto){
     <div class="kpi"><div class="l">Vendas do período</div><div class="v" style="font-size:22px">${brl0(g.vendas)}</div><div class="d">Lucro ${pct(g.pctLucro)} · ${brl0(g.lucro)}</div></div>
     <div class="kpi"><div class="l">Produtos</div><div class="v" style="font-size:22px">${a.totalProdutos||0}</div><div class="d">${a.produtosComPerda||0} com perda · ${a.produtosComSobra||0} com sobra</div></div></div>`;
   const per=a.periodo?.ini?`<p class="small muted" style="margin:0">Período ${fDate(a.periodo.ini)} a ${fDate(a.periodo.fim)}${a.emitido?` · relatório emitido em ${fDate(a.emitido)}`:''}</p>`:'';
-  if(curto) return `<div class="card" style="margin-top:10px;padding:12px"><b>📊 Relatório de balanço reconhecido</b>${per}${kp}<p class="small muted" style="margin:0">${(a.setores||[]).length} setor(es) do sistema · a análise completa fica salva junto com o balanço.</p></div>`;
+  if(curto) return `<div class="card" style="margin-top:10px;padding:12px"><b>📊 Relatório de balanço reconhecido</b>${per}${kp}<p class="small muted" style="margin:0">Setores do sistema: ${(a.setores||[]).map(x=>`${parseInt(x.codigo,10)} ${esc(nomeSetorSistema(x.codigo)||'')}`).join(' · ')} · a análise completa fica salva junto com o balanço.</p></div>`;
   const setTab=(a.setores||[]).length>1?`<div class="tw" style="margin-top:8px"><table><thead><tr><th>Setor do sistema</th><th class="n">Produtos</th><th class="n">Resultado</th><th class="n">% s/ custo</th><th class="n">Vendas</th><th class="n">% lucro</th></tr></thead><tbody>
-    ${[...a.setores].sort((x,y)=>(x.perdas||0)-(y.perdas||0)).map(x=>`<tr><td><b>${esc(x.codigo)}</b> <span class="muted small">${esc(x.grupo||'')}</span></td><td class="n">${x.itens}</td><td class="n" style="color:${cor(x.perdas)}"><b>${brl(x.perdas)}</b></td><td class="n">${pct(x.pctPerdas)}</td><td class="n">${brl0(x.vendas)}</td><td class="n">${pct(x.pctLucro)}</td></tr>`).join('')}
+    ${[...a.setores].sort((x,y)=>(x.perdas||0)-(y.perdas||0)).map(x=>`<tr><td><b>${esc(x.codigo)}</b> ${esc(nomeSetorSistema(x.codigo)||x.grupo||'')}</td><td class="n">${x.itens}</td><td class="n" style="color:${cor(x.perdas)}"><b>${brl(x.perdas)}</b></td><td class="n">${pct(x.pctPerdas)}</td><td class="n">${brl0(x.vendas)}</td><td class="n">${pct(x.pctLucro)}</td></tr>`).join('')}
     </tbody></table></div>`:'';
   const prodTab=(lista,titulo)=>lista&&lista.length?`<h4 style="margin:14px 0 6px">${titulo}</h4><div class="tw"><table><thead><tr><th>Produto</th><th>Setor</th><th class="n">Qtde</th><th class="n">Custo médio</th><th class="n">Valor</th><th class="n">% perda</th></tr></thead><tbody>
-    ${lista.map(p=>`<tr><td><b>${esc(p.produto)}</b> <span class="muted small">${esc(p.codigo)}${p.tipo==='ASS'?' · associado':''}</span></td><td class="small">${esc(p.setor)}</td><td class="n">${String(p.qtdPerdas.toFixed(3)).replace('.',',')}</td><td class="n">${brl(p.custoMedio)}</td><td class="n" style="color:${cor(p.valor)}"><b>${brl(p.valor)}</b></td><td class="n">${p.pctPerdas?String(p.pctPerdas).replace('.',',')+'%':'—'}</td></tr>`).join('')}
+    ${lista.map(p=>`<tr><td><b>${esc(p.produto)}</b> <span class="muted small">${esc(p.codigo)}${p.tipo==='ASS'?' · associado':''}</span></td><td class="small" title="${esc(nomeSetorSistema(p.setor))}">${esc(p.setor)} ${esc(nomeSetorSistema(p.setor))}</td><td class="n">${String(p.qtdPerdas.toFixed(3)).replace('.',',')}</td><td class="n">${brl(p.custoMedio)}</td><td class="n" style="color:${cor(p.valor)}"><b>${brl(p.valor)}</b></td><td class="n">${p.pctPerdas?String(p.pctPerdas).replace('.',',')+'%':'—'}</td></tr>`).join('')}
     </tbody></table></div>`:'';
   return per+kp+setTab+prodTab(a.top,'🔻 Produtos com maior perda')+prodTab(a.sobras,'🔺 Produtos com sobra (estoque maior que o esperado)')+
     `<p class="small muted" style="margin-top:6px">Valor = quantidade de perda × custo médio, como no relatório do sistema. Produtos "associados" usam o custo do produto principal, por isso uma perda no principal pode aparecer como sobra no associado.</p>`;
 }
+
+
+/* ===================== setores do sistema da loja (relatório de balanço) ===================== */
+const SETORES_SISTEMA={1:'Açougue Boi/Porco',2:'Feirinha',3:'Frios',4:'Panificadora',5:'Frente Caixa',6:'Loja',7:'Almoxarifado',8:'Cozinha',9:'Bovino Miúdos',10:'Suíno Resfriado',
+ 11:'Aves',12:'Feirinha - Verduras',13:'Feirinha - Legumes',14:'Feirinha - Frutas',15:'Mortadela/Salame',16:'Feirinha - Ovos',17:'Feirinha - Alho',18:'Linguiça/Salsicha',19:'Frios',20:'Suíno Congelado',
+ 21:'Defumados',22:'Queijos',23:'Bovino Dianteiro',24:'Bovino Traseiro',25:'Pães Terceiros',26:'Peixes',27:'Iogurtes',28:'Diversos',29:'Costela Bovina',30:'Panificadora Transf',
+ 31:'Claudemir/Eliane',32:'Aluizio/Joana',33:'Norma',34:'Olinda/Carlos',35:'Perdas Osso',36:'Cajus',37:'São Luiz Utilidades',38:'Bom Dia Terra Boa'};
+// setor do site sugerido para cada setor do sistema
+const SISTEMA_PARA_SITE={1:'acougue',9:'acougue',10:'acougue',11:'acougue',20:'acougue',23:'acougue',24:'acougue',29:'acougue',35:'acougue',
+ 2:'hortifruti',12:'hortifruti',13:'hortifruti',14:'hortifruti',16:'hortifruti',17:'hortifruti',
+ 3:'pereciveis',15:'pereciveis',18:'pereciveis',19:'pereciveis',21:'pereciveis',22:'pereciveis',27:'pereciveis',
+ 4:'padaria',30:'padaria',25:'panif_terc'};
+function nomeSetorSistema(cod){ const n=parseInt(cod,10); return SETORES_SISTEMA[n] || ''; }
+function setorSiteSugerido(an){ const c={}; for(const x of (an.setores||[])){ const id=SISTEMA_PARA_SITE[parseInt(x.codigo,10)]; if(id) c[id]=(c[id]||0)+(x.itens||1); } const top=Object.entries(c).sort((a,b)=>b[1]-a[1])[0]; return top?top[0]:null; }
