@@ -564,7 +564,7 @@ function nomeSetor(id){ return S.setoresAll.find(x=>x.id===id)?.nome || id; }
 function ordemSetor(id){ const i=S.setoresAll.findIndex(x=>x.id===id); return i<0?99:i; }
 
 async function carregarListaMeses(){
-  if(S.gerente){ const d=await q(S.sb.from('meses').select('mes').order('mes')); S.mesList=d.map(r=>r.mes); }
+  if(S.gerenteReal){ const d=await q(S.sb.from('meses').select('mes').order('mes')); S.mesList=d.map(r=>r.mes); }
   else { const d=await q(S.sb.from('metas_setor').select('mes')); S.mesList=[...new Set(d.map(r=>r.mes))].sort(); }
 }
 function montarDoc(mes, metaLoja, orc, metas, diasRows, lanc, diarias, metasDiaSetor){
@@ -583,7 +583,7 @@ async function carregarMes(mes){
   const bals=await q(S.sb.from('balancos').select('data,setor_id,valor_perda').gte('data',ini).lte('data',fim));
   const metas=await q(S.sb.from('metas_setor').select('setor_id,meta').eq('mes',mes));
   let doc;
-  if(S.gerente){
+  if(S.gerenteReal){
     const m=(await q(S.sb.from('meses').select('*').eq('mes',mes)))[0]||{};
     const diasRows=await q(S.sb.from('dias').select('data,meta,total_caixa').eq('mes',mes));
     const diar=await q(S.sb.from('diarias').select('id,data,valor').eq('mes',mes));
@@ -592,12 +592,12 @@ async function carregarMes(mes){
     const mds=await q(S.sb.rpc('metas_diarias_setor',{p_mes:mes}));
     doc=montarDoc(mes, null, 0, metas, null, lanc, null, mds);
   }
-  doc.balancos=bals; S.months[mes]=doc; return doc;
+  doc.balancos=bals; if(S.preview) doc=docComoEncarregado(doc,S.preview.setores); S.months[mes]=doc; return doc;
 }
 async function garantirMes(mes){ if(!S.months[mes] && S.mesList.includes(mes)) await carregarMes(mes); return S.months[mes]; }
 async function carregarTudo(){ // para o histórico
   if(S._tudo) return; 
-  if(S.gerente){
+  if(S.gerenteReal){
     const meses=await q(S.sb.from('meses').select('*'));
     const metas=await todasLinhas(()=>S.sb.from('metas_setor').select('mes,setor_id,meta').order('mes').order('setor_id'));
     const dias=await todasLinhas(()=>S.sb.from('dias').select('data,mes,meta,total_caixa').order('data'));
@@ -605,7 +605,7 @@ async function carregarTudo(){ // para o histórico
     const diar=await todasLinhas(()=>S.sb.from('diarias').select('id,mes,data,valor').order('id'));
     const bals=await todasLinhas(()=>S.sb.from('balancos').select('data,setor_id,valor_perda').order('id'));
     for(const m of meses){ const mes=m.mes, ini=`${mes}-01`, fim=fimDoMes(mes);
-      S.months[mes]=montarDoc(mes,m.meta_loja,m.diarias_orcamento,metas.filter(x=>x.mes===mes),dias.filter(x=>x.mes===mes),lanc.filter(x=>x.data>=ini&&x.data<=fim),diar.filter(x=>x.mes===mes),null); S.months[mes].balancos=bals.filter(x=>x.data>=ini&&x.data<=fim); }
+      S.months[mes]=montarDoc(mes,m.meta_loja,m.diarias_orcamento,metas.filter(x=>x.mes===mes),dias.filter(x=>x.mes===mes),lanc.filter(x=>x.data>=ini&&x.data<=fim),diar.filter(x=>x.mes===mes),null); S.months[mes].balancos=bals.filter(x=>x.data>=ini&&x.data<=fim); if(S.preview) S.months[mes]=docComoEncarregado(S.months[mes],S.preview.setores); }
   } else { for(const m of S.mesList) if(!S.months[m]) await carregarMes(m); }
   S._tudo=true;
 }
@@ -648,6 +648,7 @@ async function gravarDoc(nd, old, opts={}){
   for(const [k,ids] of Object.entries(porDia)) await q(S.sb.from('lancamentos').delete().eq('data',k).in('setor_id',ids));
 }
 function saveDoc(nd, msg, opts={}){
+  if(S.preview){ toast('Modo visualização: nada é salvo. Saia da visualização para lançar.',4000); return Promise.resolve(false); }
   const old = S.months[nd.mes] ? clone(S.months[nd.mes]) : null;
   S.months[nd.mes]=nd; if(!S.mesList.includes(nd.mes)){ S.mesList.push(nd.mes); S.mesList.sort(); } S._tudo=false; render();
   S.writeChain = S.writeChain.then(async()=>{
@@ -729,12 +730,14 @@ async function renderUsuarios(app){
   let us=[]; try{ us=(await chamarUsuarios({acao:'listar'})).usuarios; }catch(e){ app.innerHTML=`<div class="note err">${esc(e.message)}</div>`; return; }
   if(S.view!=='usuarios') return;
   const nomeSet = ids => ids.map(nomeSetor).join(', ');
-  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Usuários</h1><p class="sub" style="margin:0">Cada encarregado vê e lança apenas os setores marcados. Só o gerente vê a loja inteira e mexe nas metas.</p></div><div class="sp"></div><button class="btn p" id="uNovo">＋ Novo usuário</button></div>
+  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Usuários</h1><p class="sub" style="margin:0">Cada encarregado vê e lança apenas os setores marcados. Só o gerente vê a loja inteira e mexe nas metas.</p></div><div class="sp"></div><button class="btn" id="uVer">👁 Ver como encarregado</button><button class="btn p" id="uNovo">＋ Novo usuário</button></div>
   <div class="card"><div class="tw"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Acesso</th><th>Setores</th><th>Último acesso</th><th></th></tr></thead><tbody>
-  ${us.map(u=>`<tr><td><b>${esc(u.nome||'—')}</b>${u.id===S.user.id?' <span class="badge b-none">você</span>':''}</td><td class="small">${esc(u.email)}</td><td>${u.papel==='gerente'?'<span class="badge b-good">Gerente</span>':'<span class="badge b-none">Encarregado</span>'}</td><td class="small">${u.papel==='gerente'?'Todos':esc(nomeSet(u.setores||[]))}</td><td class="small muted">${u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'nunca entrou'}</td><td style="white-space:nowrap"><button class="btn" data-ed="${u.id}" style="padding:4px 10px">Editar</button></td></tr>`).join('')}
+  ${us.map(u=>`<tr><td><b>${esc(u.nome||'—')}</b>${u.id===S.user.id?' <span class="badge b-none">você</span>':''}</td><td class="small">${esc(u.email)}</td><td>${u.papel==='gerente'?'<span class="badge b-good">Gerente</span>':'<span class="badge b-none">Encarregado</span>'}</td><td class="small">${u.papel==='gerente'?'Todos':esc(nomeSet(u.setores||[]))}</td><td class="small muted">${u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'nunca entrou'}</td><td style="white-space:nowrap">${u.papel==='encarregado'?`<button class="btn" data-ver="${u.id}" style="padding:4px 10px" title="Ver o site como este encarregado vê">👁</button> `:''}<button class="btn" data-ed="${u.id}" style="padding:4px 10px">Editar</button></td></tr>`).join('')}
   </tbody></table></div></div>
   <div class="note small" style="margin-top:12px">Para mandar o acesso: passe ao encarregado o endereço deste site, o e-mail e a senha inicial. Ele pode trocar a senha em “Minha conta”.</div>`;
   $('#uNovo').onclick=()=>formUsuario(null);
+  $('#uVer').onclick=()=>escolherVisualizacao();
+  app.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>{ const u=us.find(x=>x.id===b.dataset.ver); entrarVisualizacao(u.nome||u.email, u.setores||[]); });
   app.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>formUsuario(us.find(u=>u.id===b.dataset.ed)));
 }
 function formUsuario(u){
@@ -778,7 +781,8 @@ function mostrarAcesso(nome,email,senha){
 
 /* ===================== BALANÇOS ===================== */
 const SETORES_BALANCO=['acougue','hortifruti','padaria','pereciveis'];
-function setoresVisiveis(){ return S.gerente ? S.setoresAll : S.setoresAll.filter(x=>(S.perfil.setores||[]).includes(x.id)); }
+function setoresVisiveis(){ return S.gerente ? S.setoresAll : S.setoresAll.filter(x=>meusSetoresIds().includes(x.id)); }
+function meusSetoresIds(){ return S.preview ? S.preview.setores : (S.perfil.setores||[]); }
 function nomeArquivoSeguro(n){ return String(n||'arquivo').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9._-]+/g,'_').slice(-80); }
 async function renderBalancos(app){
   const mes=S.mes||todayIso().slice(0,7); const ini=`${mes}-01`, fim=fimDoMes(mes);
@@ -787,6 +791,7 @@ async function renderBalancos(app){
   try{ lista=await q(S.sb.from('balancos').select('*, balanco_comentarios(count)').gte('data',ini).lte('data',fim).order('data',{ascending:false}).order('id',{ascending:false})); }
   catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(S.view!=='balancos') return;
+  if(S.preview) lista=lista.filter(b=>S.preview.setores.includes(b.setor_id));
   const doc=S.months[mes]; const calcRes = doc ? calc(doc, fim) : null;
   const filtro=S.balSetor||'';
   const vis=setoresVisiveis();
@@ -872,7 +877,7 @@ async function abrirBalanco(b){
       m.querySelectorAll('[data-dc]').forEach(a=>a.onclick=async e=>{ e.preventDefault(); try{ await q(S.sb.from('balanco_comentarios').delete().eq('id',+a.dataset.dc)); carregarCom(); }catch(x){ toast(x.message); } });
     }catch(e){ $('#bxCom',m).innerHTML=`<p class="note err small">${esc(e.message)}</p>`; } };
   carregarCom();
-  $('#bxEnv',m).onclick=async()=>{ const t=$('#bxTxt',m).value.trim(); if(!t) return; $('#bxEnv',m).disabled=true;
+  $('#bxEnv',m).onclick=async()=>{ if(S.preview) return toast('Modo visualização: comentários desativados.'); const t=$('#bxTxt',m).value.trim(); if(!t) return; $('#bxEnv',m).disabled=true;
     try{ await q(S.sb.from('balanco_comentarios').insert({balanco_id:b.id, texto:t})); $('#bxTxt',m).value=''; carregarCom(); }catch(e){ toast(e.message,5000); } $('#bxEnv',m).disabled=false; };
   // arquivo
   if(b.arquivo_path){
@@ -902,13 +907,13 @@ async function abrirBalanco(b){
 
 /* ===================== conta, login e navegação ===================== */
 function minhaConta(){
-  const m=modal(`<h2>Minha conta</h2><p class="small muted">${esc(S.perfil.nome||'')} · ${esc(S.user.email)} · ${S.gerente?'Gerente':'Encarregado: '+esc((S.perfil.setores||[]).map(nomeSetor).join(', '))}</p>
+  const m=modal(`<h2>Minha conta</h2><p class="small muted">${esc(S.perfil.nome||'')} · ${esc(S.user.email)} · ${S.gerenteReal?'Gerente':'Encarregado: '+esc((S.perfil.setores||[]).map(nomeSetor).join(', '))}</p>
    <label class="f">Nova senha<input id="cS1" type="password" placeholder="mínimo 8 caracteres"></label>
    <label class="f" style="margin-top:8px">Repita a nova senha<input id="cS2" type="password"></label>
    <div id="cErr" class="note err small hide" style="margin-top:10px"></div>
    <div class="row" style="margin-top:14px"><button class="btn" id="cSair">Sair</button><div class="sp"></div><button class="btn" id="mN">Fechar</button><button class="btn p" id="mY">Trocar senha</button></div>`);
   $('#mN',m).onclick=closeModal;
-  $('#cSair',m).onclick=async()=>{ closeModal(); await S.sb.auth.signOut(); location.hash=''; location.reload(); };
+  $('#cSair',m).onclick=async()=>{ closeModal(); await sair(); };
   $('#mY',m).onclick=async()=>{ const a=$('#cS1',m).value, b=$('#cS2',m).value; const e=$('#cErr',m);
     if(a.length<8){ e.textContent='A senha precisa ter pelo menos 8 caracteres.'; e.classList.remove('hide'); return; }
     if(a!==b){ e.textContent='As senhas não conferem.'; e.classList.remove('hide'); return; }
@@ -953,7 +958,7 @@ function telaLogin(msg){
   $('#fLogin').onsubmit=async e=>{ e.preventDefault(); const er=$('#lErr'); er.classList.add('hide'); $('#lBtn').disabled=true;
     const { error } = await S.sb.auth.signInWithPassword({ email:$('#lEmail').value.trim(), password:$('#lSenha').value });
     if(error){ er.textContent = /invalid/i.test(error.message)?'E-mail ou senha incorretos.':error.message; er.classList.remove('hide'); $('#lBtn').disabled=false; return; }
-    iniciarSessao(); };
+    marcarAtividade(); iniciarSessao(); };
   $('#lPrim').onclick=e=>{ e.preventDefault(); telaPrimeiroAcesso(); };
 }
 function telaPrimeiroAcesso(){
@@ -975,18 +980,20 @@ function telaPrimeiroAcesso(){
 async function iniciarSessao(){
   const { data:{ session } } = await S.sb.auth.getSession();
   if(!session) return telaLogin();
+  let ult=0; try{ ult=+localStorage.getItem('metas_ultima_atividade')||0; }catch(_){ }
+  if(ult && Date.now()-ult>LIMITE_INATIVO){ return sair('Sua sessão expirou por inatividade. Entre novamente.'); }
   S.user=session.user;
   $('#app').innerHTML='<div class="empty"><span class="spin"></span> Carregando dados…</div>';
   try{
     const p=await q(S.sb.from('perfis').select('*').eq('id',S.user.id));
     if(!p.length){ await S.sb.auth.signOut(); return telaLogin('Seu usuário ainda não foi liberado pelo gerente.'); }
-    S.perfil=p[0]; S.gerente=S.perfil.papel==='gerente';
+    S.perfil=p[0]; S.gerente=S.gerenteReal=S.perfil.papel==='gerente'; S.preview=null;
     S.setoresAll=await q(S.sb.from('setores').select('*').order('ordem'));
     await carregarListaMeses();
     const cur=todayIso().slice(0,7); S.mes = S.mesList.includes(cur)?cur:(S.mesList[S.mesList.length-1]||null);
     if(S.mes) await carregarMes(S.mes);
     if(S.mes){ const [y,mm]=S.mes.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); }
-    S.loaded=true; document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route();
+    S.loaded=true; document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route(); iniciarInatividade();
   }catch(e){ console.error(e); $('#app').innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message||e)}</div>`; }
 }
 
@@ -995,6 +1002,75 @@ async function iniciarSessao(){
   S.sb = window.supabase.createClient(METAS_CONFIG.url, METAS_CONFIG.anonKey, { auth:{ persistSession:true, autoRefreshToken:true } });
   window.addEventListener('hashchange',()=>{ if(S.loaded) route(); });
   $('#selMes').addEventListener('change',e=>trocarMes(e.target.value));
-  S.sb.auth.onAuthStateChange((ev)=>{ if(ev==='SIGNED_OUT'){ S.loaded=false; telaLogin(); } });
+  S.sb.auth.onAuthStateChange((ev)=>{ if(ev==='SIGNED_OUT' && !S._saindo){ S.loaded=false; telaLogin(); } });
   iniciarSessao();
 })();
+
+/* ===================== ver como encarregado (só para o gerente conferir) ===================== */
+function docComoEncarregado(doc, setores){
+  const sh=doc.setores.filter(x=>setores.includes(x.id)); const tot=sum(sh.map(x=>x.meta)); const f=tot/(doc.metaLoja||1);
+  const dias={};
+  for(const [k,d] of Object.entries(doc.dias||{})){ const n={meta:round2((+d.meta||0)*f)};
+    const v={}, p={}; for(const id of setores){ if(d.vendas?.[id]!=null) v[id]=d.vendas[id]; if(d.perdas?.[id]!=null) p[id]=d.perdas[id]; }
+    if(Object.keys(v).length) n.vendas=v; if(Object.keys(p).length) n.perdas=p; dias[k]=n; }
+  return { mes:doc.mes, metaLoja:tot, setores:clone(sh), dias, balancos:(doc.balancos||[]).filter(b=>setores.includes(b.setor_id)) };
+}
+function escolherVisualizacao(){
+  const m=modal(`<h2>👁 Ver o site como um encarregado</h2><p class="small muted">Marque os setores do encarregado. Você verá exatamente as telas e os números que ele vê. Nada é salvo nesse modo.</p>
+   <div class="chk">${S.setoresAll.map(x=>`<label><input type="checkbox" value="${x.id}" ${x.id==='acougue'?'checked':''}>${esc(x.nome)}</label>`).join('')}</div>
+   <div class="row" style="margin-top:14px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Ver como encarregado</button></div>`);
+  $('#mN',m).onclick=closeModal;
+  $('#mY',m).onclick=()=>{ const ss=[...m.querySelectorAll('.chk input:checked')].map(i=>i.value); if(!ss.length) return toast('Marque pelo menos um setor.'); closeModal(); entrarVisualizacao('Encarregado de '+ss.map(nomeSetor).join(', '), ss); };
+}
+async function entrarVisualizacao(nome, setores){
+  if(!S.gerenteReal) return;
+  S.preview={nome, setores}; S.gerente=false; S.months={}; S._tudo=false;
+  document.body.classList.add('enc'); montarCabecalho(); mostrarFaixaVisualizacao();
+  const cur=S.mes; $('#app').innerHTML='<div class="empty"><span class="spin"></span> Montando a visão do encarregado…</div>';
+  try{ await carregarMes(cur); const [y,mm]=cur.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); }catch(e){ toast(e.message); }
+  location.hash='#painel'; route();
+}
+async function sairVisualizacao(){
+  S.preview=null; S.gerente=true; S.months={}; S._tudo=false;
+  document.body.classList.remove('enc'); $('#faixaVis')?.remove(); montarCabecalho();
+  try{ await carregarMes(S.mes); }catch(_){ }
+  location.hash='#usuarios'; route();
+}
+function mostrarFaixaVisualizacao(){
+  $('#faixaVis')?.remove();
+  const d=document.createElement('div'); d.id='faixaVis';
+  d.style.cssText='background:var(--yellow);color:#2a2000;font-weight:700;padding:8px 16px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;position:sticky;top:0;z-index:30';
+  d.innerHTML=`👁 Você está vendo o site como: ${esc(S.preview.nome)} (${esc(S.preview.setores.map(nomeSetor).join(', '))}) — nada é salvo neste modo <button class="btn" id="bSairVis" style="padding:4px 10px">Voltar a ser gerente</button>`;
+  document.body.insertBefore(d, document.querySelector('main'));
+  $('#bSairVis').onclick=sairVisualizacao;
+}
+
+/* ===================== saída automática por inatividade ===================== */
+const LIMITE_INATIVO=15*60*1000, AVISO_ANTES=60*1000;
+function marcarAtividade(){ S.ultimaAtividade=Date.now(); try{ localStorage.setItem('metas_ultima_atividade', String(S.ultimaAtividade)); }catch(_){ } if(S._avisoInat){ S._avisoInat.remove(); S._avisoInat=null; } }
+function ultimaAtividade(){ let v=S.ultimaAtividade||0; try{ v=Math.max(v, +localStorage.getItem('metas_ultima_atividade')||0); }catch(_){ } return v; }
+async function sair(motivo){
+  S._saindo=true;
+  clearInterval(S._timerInat); try{ localStorage.removeItem('metas_ultima_atividade'); }catch(_){ }
+  S.loaded=false; S.preview=null; S.months={}; S._tudo=false; $('#faixaVis')?.remove(); closeModal();
+  try{ await S.sb.auth.signOut(); }catch(_){ }
+  history.replaceState(null,'',location.pathname); telaLogin(motivo); S._saindo=false;
+}
+function iniciarInatividade(){
+  clearInterval(S._timerInat); S._timerInat=setInterval(verificarInatividade, 10000);
+  if(S._inatOk){ marcarAtividade(); return; }
+  S._inatOk=true;
+  ['mousemove','mousedown','keydown','touchstart','scroll','wheel'].forEach(ev=>window.addEventListener(ev,()=>{ if(S.loaded && Date.now()-(S.ultimaAtividade||0)>5000) marcarAtividade(); },{passive:true}));
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden && S.loaded) verificarInatividade(); });
+  marcarAtividade();
+}
+function verificarInatividade(){
+  if(!S.loaded) return;
+  const parado=Date.now()-ultimaAtividade();
+  if(parado>=LIMITE_INATIVO) return sair('Você ficou 15 minutos sem usar o site e foi desconectado por segurança. Entre novamente.');
+  if(parado>=LIMITE_INATIVO-AVISO_ANTES && !S._avisoInat){
+    const a=document.createElement('div'); a.className='toast'; a.style.cssText+='display:flex;gap:10px;align-items:center';
+    a.innerHTML='⏳ Sem atividade: você vai sair do site em 1 minuto. <button class="btn y" style="padding:4px 10px">Continuar conectado</button>';
+    a.querySelector('button').onclick=marcarAtividade; document.body.appendChild(a); S._avisoInat=a;
+  }
+}
