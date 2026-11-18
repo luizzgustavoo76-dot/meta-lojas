@@ -223,10 +223,15 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   const sug=d=>{ const m=mapa.find(x=>x.codigo===d.codigo); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
   let existentes=[]; try{ existentes=await q(S.sb.from('analise_vendas').select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
   const opcoesSetor=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
-  const umDia = r.periodo.ini===r.periodo.fim;
+  // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
+  const ontem = isoOf(new Date(Date.now()-864e5));
+  const fimSugerido = (r.periodo.fim>=todayIso() && r.periodo.ini<=ontem) ? ontem : r.periodo.fim;
+  const umDia = r.periodo.ini===fimSugerido;
   const m=modal(`<h2>📊 Relatório de vendas por produto${opts.lancar?' — lançar venda do dia':''}</h2>
     <div class="grid kpis" style="margin:8px 0">
-      <div class="kpi"><div class="l">Período</div><div class="v" style="font-size:20px">${fD(r.periodo.ini)} a ${fD(r.periodo.fim)}</div><div class="d">${r.filial?'filial '+esc(r.filial):''}${r.emitido?' · emitido '+fD(r.emitido):''}</div></div>
+      <div class="kpi"><div class="l">Período</div><div class="v" style="font-size:20px">${fD(r.periodo.ini)} a ${fD(r.periodo.fim)}</div><div class="d">${r.filial?'filial '+esc(r.filial):''}${r.emitido?' · emitido '+fD(r.emitido):''}</div>
+        <label class="f" style="margin-top:6px">Considerar a venda até<input type="date" id="rvFim" value="${fimSugerido}" min="${r.periodo.ini}" max="${r.periodo.fim}"></label>
+        ${fimSugerido!==r.periodo.fim?`<div class="d" style="color:var(--warn)">O relatório vai até ${fD(r.periodo.fim)}, mas a venda desse dia ainda não fechou — por isso vai como até ${fD(fimSugerido)}.</div>`:''}</div>
       <div class="kpi"><div class="l">Venda total</div><div class="v" style="font-size:20px">${brl(r.venda)}</div><div class="d">${r.itens} produtos · ${r.departamentos.length} departamentos${r.cupons?` · ${r.cupons} cupons`:''}</div></div>
     </div>
     ${conf===true?'<div class="note small" style="background:var(--good-bg);border-color:#a9d8b8">✔ Conferido: a soma dos produtos bate com o TOTAL GERAL do relatório.</div>':conf===false?`<div class="note err small">A soma dos produtos (${brl(r.venda)}) não bate com o TOTAL GERAL (${brl(r.totalGeral.venda)}). Confira o arquivo.</div>`:''}
@@ -246,6 +251,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#rvErr',m); e.textContent=t; e.classList.remove('hide'); };
     const guardar = !opts.lancar || $('#rvAna',m).checked;
+    const fimEsc=$('#rvFim',m).value; if(!fimEsc || fimEsc<r.periodo.ini) return err('Escolha até que dia vai a venda do relatório.'); r.periodo.fim=fimEsc;
     const escolhas=[...m.querySelectorAll('select[data-i]')].map(s=>({d:r.departamentos[+s.dataset.i], setor:s.value}));
     if(!escolhas.some(x=>x.setor)) return err('Escolha o setor de pelo menos um departamento.');
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
