@@ -88,13 +88,13 @@ function calc(doc, cutoff){
 function destroyCharts(){ S.charts.forEach(c=>{try{c.destroy()}catch(e){}}); S.charts=[]; }
 function render(){
   if(S.view==='balancos' && S.loaded){ fillMesSelect(); destroyCharts(); return renderBalancos($('#app')); }
+  if(S.view==='conta' && S.loaded){ fillMesSelect(); destroyCharts(); return renderConta($('#app')); }
   fillMesSelect();
   destroyCharts();
   const app=$('#app');
   if(!S.loaded){ return; }
   const doc=curDoc();
   if(!doc){
-    if(S.view==='usuarios' && S.gerente) return renderUsuarios(app);
     app.innerHTML = S.gerente ? `<div class="card empty"><h2>Nenhum mês cadastrado ainda</h2><p>Crie o primeiro mês ou importe as planilhas mensais em <a href="#metas">Metas do mês</a>.</p></div>`
       : `<div class="card empty"><h2>Nenhuma meta liberada para você ainda</h2><p>Peça ao gerente para cadastrar as metas do mês.</p></div>`;
     if(S.view==='metas' && S.gerente) renderMetas(app,null);
@@ -105,8 +105,6 @@ function render(){
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
-  else if(S.view==='tv') renderTV(app,doc);
-  else if(S.view==='usuarios' && S.gerente) renderUsuarios(app);
   else if(S.view==='metas' && S.gerente) renderMetas(app,doc);
   else renderPainel(app,doc);
 }
@@ -276,6 +274,8 @@ function renderSetor(app, doc){
     <label class="f">Setor<select id="selSetor">${setores.map(x=>`<option value="${x.id}" ${x.id===s.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
     ${cutoffSelect(doc)}
   </div>
+  <div class="tabs2 abas-setor" id="abSetor"><button data-a="dia" class="${S.setorAba!=='bal'?'on':''}">📈 Dia a dia</button><button data-a="bal" class="${S.setorAba==='bal'?'on':''}">📦 Balanço</button></div>
+  ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':`
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
     <div class="kpi"><div class="l">Realizado</div><div class="v">${brl0(s.real)}</div><div class="d">Meta até a data ${brl0(s.metaAte)}</div></div>
@@ -294,11 +294,43 @@ function renderSetor(app, doc){
     <div class="tw"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Diferença</th><th class="n">Acum. meta</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead>
     <tbody>${(()=>{let am=0,ar=0; return s.daily.map(d=>{am+=d.meta; ar+=d.real; const p=d.real&&d.meta?d.real/d.meta:null; const fut=!d.real; return `<tr style="${fut?'color:#aaa':''}"><td>${fDateL(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(p):''}</td><td class="n">${d.real?brl0(d.real-d.meta):'—'}</td><td class="n">${brl0(am)}</td><td class="n">${d.real||d.ate?brl0(ar):'—'}</td><td class="n">${d.real||d.ate?pct(ar/am):'—'}</td><td class="n">${d.perda?brl(d.perda):'—'}</td><td class="n">${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</td></tr>`;}).join('');})()}</tbody>
     <tfoot><tr><td>Total</td><td class="n">${brl0(sum(s.daily.map(d=>d.meta)))}</td><td class="n">${brl0(s.real)}</td><td></td><td></td><td></td><td></td><td></td><td class="n">${brl0(s.perda)}</td><td class="n">${pct(s.pPerda,2)}</td></tr></tfoot></table></div>
-  </div>`;
+  </div>`}`;
   $('#selSetor').onchange=e=>{S.setorSel=e.target.value; render();};
   bindCutoff();
+  $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); });
+  if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   drawLojaChart({daily:s.daily},'chSet');
+}
+async function renderBalancosSetor(box, s, doc){
+  const sid=s.id;
+  let lista=[];
+  try{ lista=await q(S.sb.from('balancos').select('*, balanco_comentarios(count)').eq('setor_id',sid).order('data',{ascending:false}).order('id',{ascending:false}).limit(60)); }
+  catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
+  if(S.view!=='setor' || S.setorAba!=='bal' || S.setorSel!==sid || !box.isConnected) return;
+  const anteriorDe=b=>lista.find(x=>x.data<b.data || (x.data===b.data && x.id<b.id));
+  S._anteriorDe=anteriorDe;
+  const varia=b=>{ const a=anteriorDe(b); if(!a) return null; const v=+b.valor_perda||0, va=+a.valor_perda||0; return {a, dif:v-va, pct: va?(v-va)/va:null}; };
+  const fmtVar=x=> !x ? '<span class="muted small">primeiro balanço</span>' : `<span style="color:${x.dif>0?'var(--bad)':x.dif<0?'var(--good)':'inherit'};font-weight:700">${x.dif>0?'▲ +':x.dif<0?'▼ ':''}${brl0(x.dif)}${x.pct!=null?` (${x.dif>0?'+':''}${pct(x.pct,0)})`:''}</span>`;
+  const doMes=lista.filter(b=>b.data.slice(0,7)===doc.mes);
+  const totMes=doMes.reduce((a,b)=>a+(+b.valor_perda||0),0);
+  const ult=lista[0]; const xu=ult?varia(ult):null;
+  const ult6=lista.slice(0,6); const media=ult6.length?ult6.reduce((a,b)=>a+(+b.valor_perda||0),0)/ult6.length:0;
+  box.innerHTML=`
+  <div class="row" style="margin-bottom:10px"><div class="small muted">Balanços de estoque do ${esc(s.nome)} — todos os meses. Toque num balanço para ver o relatório, a análise e os comentários.</div><div class="sp"></div>${S.gerente?'<button class="btn p" id="bsNovo">＋ Novo balanço</button>':''}</div>
+  <div class="grid kpis">
+    <div class="kpi hero"><div class="l">Último balanço</div><div class="v">${ult?brl0(+ult.valor_perda):'—'}</div><div class="d">${ult?(ult.periodo_inicio?`${fDate(ult.periodo_inicio)} a ${fDate(ult.data)}`:fDateL(ult.data)):'nenhum balanço ainda'}</div>${ult?`<div class="d">vs. anterior: ${fmtVar(xu)}</div>`:''}</div>
+    <div class="kpi"><div class="l">Perda em balanço em ${mesLabel(doc.mes)}</div><div class="v">${totMes?brl0(totMes):'—'}</div><div class="d">${doMes.length} balanço(s)${totMes&&s.real?` · ${pct(totMes/s.real,2)} da venda`:''}</div></div>
+    <div class="kpi"><div class="l">Média ${ult6.length>1?`dos últimos ${ult6.length} balanços`:"dos balanços"}</div><div class="v">${ult6.length?brl0(media):'—'}</div><div class="d">${ult&&ult6.length>1?((+ult.valor_perda>media)?'<span style="color:var(--bad)">último acima da média</span>':'<span style="color:var(--good)">último abaixo da média</span>'):''}</div></div>
+    <div class="kpi"><div class="l">Balanços registrados</div><div class="v">${lista.length}</div><div class="d">${lista.length?`desde ${fDate(lista[lista.length-1].data)}`:''}</div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    ${lista.length?`<div class="tw"><table><thead><tr><th>Período</th><th class="n">Perda</th><th>Balanço anterior</th><th>Variação</th><th>Arquivo</th><th>Observação</th><th class="n">Coment.</th><th></th></tr></thead><tbody>
+    ${lista.map(b=>{ const x=varia(b); return `<tr class="click" data-b="${b.id}"><td>${b.periodo_inicio?`${fDate(b.periodo_inicio)} a ${fDate(b.data)}`:fDateL(b.data)}${b.analise?' <span class="badge b-good" title="Relatório analisado">análise</span>':''}</td><td class="n"><b>${brl(+b.valor_perda)}</b></td><td class="small">${x?`${fDate(x.a.data)} · ${brl0(+x.a.valor_perda)}`:'—'}</td><td class="small">${fmtVar(x)}</td><td class="small">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small" style="max-width:260px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n">${b.balanco_comentarios?.[0]?.count||0}</td><td><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`; }).join('')}
+    </tbody></table></div>`:`<div class="empty">Nenhum balanço do ${esc(s.nome)} ainda.${S.gerente?' Clique em “Novo balanço” para lançar.':''}</div>`}
+  </div>`;
+  const bn=$('#bsNovo'); if(bn) bn.onclick=()=>{ S.balSetor=sid; formBalanco(null); };
+  box.querySelectorAll('[data-b]').forEach(r=>r.onclick=()=>abrirBalanco(lista.find(b=>String(b.id)===r.dataset.b)));
 }
 
 /* ---------- LANÇAR ---------- */
@@ -732,20 +764,76 @@ async function chamarUsuarios(body){
   if(error){ let msg=error.message; try{ const j=await error.context.json(); if(j?.erro) msg=j.erro; }catch(_){} throw new Error(msg); }
   if(data?.erro) throw new Error(data.erro); return data;
 }
-async function renderUsuarios(app){
-  app.innerHTML='<div class="empty"><span class="spin"></span> Carregando usuários…</div>';
-  let us=[]; try{ us=(await chamarUsuarios({acao:'listar'})).usuarios; }catch(e){ app.innerHTML=`<div class="note err">${esc(e.message)}</div>`; return; }
-  if(S.view!=='usuarios') return;
+async function renderConta(app){
+  const papel = S.gerenteReal ? '<span class="badge b-good">Administrador (gerente)</span>' : '<span class="badge b-none">Encarregado</span>';
+  const setTxt = S.gerenteReal ? 'Todos os setores' : esc((S.perfil.setores||[]).map(nomeSetor).join(', ')||'—');
+  app.innerHTML=`
+  <h1>Minha conta</h1><p class="sub">${esc(S.perfil.nome||'')} · ${esc(S.user.email)}</p>
+  <div class="grid conta2">
+    <div class="card">
+      <h2>Meus dados</h2>
+      <div class="small" style="line-height:1.9">Acesso: ${papel}<br>Setores: <b>${setTxt}</b></div>
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:8px"><button class="btn" id="cInst">📲 Ícone no celular</button><div class="sp"></div><button class="btn" id="cSair" style="color:var(--bad)">Sair</button></div>
+    </div>
+    <div class="card">
+      <h2>Trocar senha</h2>
+      <label class="f">Nova senha<input id="cS1" type="password" placeholder="mínimo 8 caracteres" autocomplete="new-password"></label>
+      <label class="f" style="margin-top:8px">Repita a nova senha<input id="cS2" type="password" autocomplete="new-password"></label>
+      <div id="cErr" class="note err small hide" style="margin-top:10px"></div>
+      <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn p" id="cTroca">Trocar senha</button></div>
+    </div>
+  </div>
+  ${S.gerenteReal?'<div id="admBox" style="margin-top:22px"><div class="empty"><span class="spin"></span> Carregando painel do administrador…</div></div>':''}`;
+  $('#cSair').onclick=()=>sair();
+  $('#cInst').onclick=()=>instalarApp();
+  $('#cTroca').onclick=async()=>{ const a=$('#cS1').value, b=$('#cS2').value; const e=$('#cErr');
+    const erro=t=>{ e.textContent=t; e.classList.remove('hide'); };
+    if(a.length<8) return erro('A senha precisa ter pelo menos 8 caracteres.');
+    if(a!==b) return erro('As senhas não conferem.');
+    const { error } = await S.sb.auth.updateUser({ password:a }); if(error) return erro(error.message);
+    e.classList.add('hide'); $('#cS1').value=$('#cS2').value=''; toast('Senha alterada ✔'); };
+  if(!S.gerenteReal) return;          // encarregado não vê nada de administração
+  await renderAdmin($('#admBox'));
+}
+async function renderAdmin(box){
+  let us=[], nBal=0, ultLanc=null, ultBal=null;
+  try{ us=(await chamarUsuarios({acao:'listar'})).usuarios; }catch(e){ box.innerHTML=`<div class="note err">${esc(e.message)}</div>`; return; }
+  try{ const r=await S.sb.from('balancos').select('id',{count:'exact',head:true}); nBal=r.count||0; }catch(_){}
+  try{ const r=await q(S.sb.from('lancamentos').select('data').order('data',{ascending:false}).limit(1)); ultLanc=r[0]?.data||null; }catch(_){}
+  try{ const r=await q(S.sb.from('balancos').select('data,setor_id').order('data',{ascending:false}).limit(1)); ultBal=r[0]||null; }catch(_){}
+  if(S.view!=='conta' || !box.isConnected) return;
+  const enc=us.filter(u=>u.papel==='encarregado'), nunca=us.filter(u=>!u.ultimo_acesso);
+  const semana=Date.now()-7*864e5; const ativos=us.filter(u=>u.ultimo_acesso && new Date(u.ultimo_acesso).getTime()>=semana);
+  const cobertos=new Set(enc.flatMap(u=>u.setores||[])); const semEnc=S.setoresAll.filter(x=>!cobertos.has(x.id));
+  const meses=S.mesList||[];
   const nomeSet = ids => ids.map(nomeSetor).join(', ');
-  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Usuários</h1><p class="sub" style="margin:0">Cada encarregado vê apenas os setores marcados (as vendas são lançadas só pelo gerente). Só o gerente vê a loja inteira e mexe nas metas.</p></div><div class="sp"></div><button class="btn" id="uVer">👁 Ver como encarregado</button><button class="btn p" id="uNovo">＋ Novo usuário</button></div>
-  <div class="card"><div class="tw"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Acesso</th><th>Setores</th><th>Último acesso</th><th></th></tr></thead><tbody>
-  ${us.map(u=>`<tr><td><b>${esc(u.nome||'—')}</b>${u.id===S.user.id?' <span class="badge b-none">você</span>':''}</td><td class="small">${esc(u.email)}</td><td>${u.papel==='gerente'?'<span class="badge b-good">Gerente</span>':'<span class="badge b-none">Encarregado</span>'}</td><td class="small">${u.papel==='gerente'?'Todos':esc(nomeSet(u.setores||[]))}</td><td class="small muted">${u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'nunca entrou'}</td><td style="white-space:nowrap">${u.papel==='encarregado'?`<button class="btn" data-ver="${u.id}" style="padding:4px 10px" title="Ver o site como este encarregado vê">👁</button> `:''}<button class="btn" data-ed="${u.id}" style="padding:4px 10px">Editar</button></td></tr>`).join('')}
-  </tbody></table></div></div>
-  <div class="note small" style="margin-top:12px">Para mandar o acesso: passe ao encarregado o endereço deste site, o e-mail e a senha inicial. Ele pode trocar a senha em “Minha conta”.</div>`;
+  const quando = t => t ? new Date(t).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '<span class="muted">nunca entrou</span>';
+  box.innerHTML=`
+  <div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1 style="margin:0">⚙️ Painel do administrador</h1><p class="sub" style="margin:0">Só você (gerente) vê esta parte. Encarregados não têm acesso.</p></div></div>
+  <div class="grid kpis">
+    <div class="kpi hero"><div class="l">Usuários</div><div class="v">${us.length}</div><div class="d">${enc.length} encarregado(s) · ${us.length-enc.length} gerente(s)</div></div>
+    <div class="kpi"><div class="l">Entraram nos últimos 7 dias</div><div class="v">${ativos.length}</div><div class="d">${nunca.length?`${nunca.length} nunca entrou`:'todos já entraram'}</div></div>
+    <div class="kpi"><div class="l">Último lançamento de venda</div><div class="v" style="font-size:22px">${ultLanc?fDate(ultLanc):'—'}</div><div class="d">${ultLanc?fDateL(ultLanc):'nenhum ainda'}</div></div>
+    <div class="kpi"><div class="l">Balanços no banco</div><div class="v">${nBal}</div><div class="d">${ultBal?`último: ${esc(nomeSetor(ultBal.setor_id))} · ${fDate(ultBal.data)}`:'nenhum ainda'}</div></div>
+    <div class="kpi"><div class="l">Meses no banco</div><div class="v">${meses.length}</div><div class="d">${meses.length?`${mesLabel(meses[0])} a ${mesLabel(meses[meses.length-1])}`:''}</div></div>
+  </div>
+  ${semEnc.length?`<div class="note small" style="margin-top:12px">Setores sem encarregado cadastrado: <b>${esc(semEnc.map(x=>x.nome).join(', '))}</b></div>`:''}
+  <div class="card" style="margin-top:12px">
+    <div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px"><h2 style="margin:0">Usuários e acessos</h2><div class="sp"></div><button class="btn" id="uVer">👁 Ver como encarregado</button><button class="btn p" id="uNovo">＋ Novo usuário</button></div>
+    <div class="tw"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Acesso</th><th>Setores</th><th>Último acesso</th><th></th></tr></thead><tbody>
+    ${us.map(u=>`<tr><td><b>${esc(u.nome||'—')}</b>${u.id===S.user.id?' <span class="badge b-none">você</span>':''}</td><td class="small">${esc(u.email)}</td><td>${u.papel==='gerente'?'<span class="badge b-good">Gerente</span>':'<span class="badge b-none">Encarregado</span>'}</td><td class="small">${u.papel==='gerente'?'Todos':esc(nomeSet(u.setores||[]))}</td><td class="small">${quando(u.ultimo_acesso)}</td><td style="white-space:nowrap">${u.papel==='encarregado'?`<button class="btn" data-ver="${u.id}" style="padding:4px 10px" title="Ver o site como este encarregado vê">👁</button> `:''}<button class="btn" data-ed="${u.id}" style="padding:4px 10px">Editar</button></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="small muted" style="margin-top:10px">Cada encarregado vê só os setores marcados; as vendas são lançadas só por você. Ao criar um usuário, o site monta a mensagem com o acesso para mandar no WhatsApp. Para trocar a senha de alguém, clique em Editar.</div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h2>Atalhos</h2>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><a class="btn" href="#metas">🎯 Metas do mês e importar planilhas</a><a class="btn" href="#lancar">🧾 Lançar vendas</a><a class="btn" href="#balancos">📦 Balanços</a><button class="btn" id="aAtual">🔄 Atualizar dados</button></div>
+  </div>`;
   $('#uNovo').onclick=()=>formUsuario(null);
   $('#uVer').onclick=()=>escolherVisualizacao();
-  app.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>{ const u=us.find(x=>x.id===b.dataset.ver); entrarVisualizacao(u.nome||u.email, u.setores||[]); });
-  app.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>formUsuario(us.find(u=>u.id===b.dataset.ed)));
+  $('#aAtual').onclick=()=>atualizarDados(true);
+  box.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>{ const u=us.find(x=>x.id===b.dataset.ver); entrarVisualizacao(u.nome||u.email, u.setores||[]); });
+  box.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>formUsuario(us.find(u=>u.id===b.dataset.ed)));
 }
 function formUsuario(u){
   const novo=!u; const sel=new Set(u?.setores||[]);
@@ -770,10 +858,10 @@ function formUsuario(u){
     $('#mY',m).disabled=true;
     try{ await chamarUsuarios(body); closeModal();
       if(novo) mostrarAcesso(body.nome, body.email, senha); else toast('Usuário salvo ✔');
-      if(S.view==='usuarios') renderUsuarios($('#app')); }
+      if(S.view==='conta') renderConta($('#app')); }
     catch(e){ err(e.message); $('#mY',m).disabled=false; }
   };
-  const d=$('#uDel',m); if(d) d.onclick=()=>{ closeModal(); confirmBox(`Excluir o acesso de ${u.nome||u.email}? Os lançamentos que ele fez continuam salvos.`, async()=>{ try{ await chamarUsuarios({acao:'excluir',id:u.id}); toast('Usuário excluído'); renderUsuarios($('#app')); }catch(e){ toast(e.message,5000); } }); };
+  const d=$('#uDel',m); if(d) d.onclick=()=>{ closeModal(); confirmBox(`Excluir o acesso de ${u.nome||u.email}? Os lançamentos que ele fez continuam salvos.`, async()=>{ try{ await chamarUsuarios({acao:'excluir',id:u.id}); toast('Usuário excluído'); if(S.view==='conta') renderConta($('#app')); }catch(e){ toast(e.message,5000); } }); };
 }
 function gerarSenha(){ const c='abcdefghjkmnpqrstuvwxyz23456789'; let s=''; const a=new Uint32Array(8); crypto.getRandomValues(a); a.forEach(x=>s+=c[x%c.length]); return 'Bd'+s; }
 function mostrarAcesso(nome,email,senha){
@@ -937,36 +1025,21 @@ async function abrirBalanco(b){
 }
 
 /* ===================== conta, login e navegação ===================== */
-function minhaConta(){
-  const m=modal(`<h2>Minha conta</h2><p class="small muted">${esc(S.perfil.nome||'')} · ${esc(S.user.email)} · ${S.gerenteReal?'Gerente':'Encarregado: '+esc((S.perfil.setores||[]).map(nomeSetor).join(', '))}</p>
-   <label class="f">Nova senha<input id="cS1" type="password" placeholder="mínimo 8 caracteres"></label>
-   <label class="f" style="margin-top:8px">Repita a nova senha<input id="cS2" type="password"></label>
-   <div id="cErr" class="note err small hide" style="margin-top:10px"></div>
-   <div class="row" style="margin-top:14px"><button class="btn" id="cSair">Sair</button><button class="btn" id="cInst">📲 Ícone no celular</button><div class="sp"></div><button class="btn" id="mN">Fechar</button><button class="btn p" id="mY">Trocar senha</button></div>`);
-  $('#mN',m).onclick=closeModal;
-  $('#cSair',m).onclick=async()=>{ closeModal(); await sair(); };
-  $('#cInst',m).onclick=()=>{ closeModal(); instalarApp(); };
-  $('#mY',m).onclick=async()=>{ const a=$('#cS1',m).value, b=$('#cS2',m).value; const e=$('#cErr',m);
-    if(a.length<8){ e.textContent='A senha precisa ter pelo menos 8 caracteres.'; e.classList.remove('hide'); return; }
-    if(a!==b){ e.textContent='As senhas não conferem.'; e.classList.remove('hide'); return; }
-    const { error } = await S.sb.auth.updateUser({ password:a }); if(error){ e.textContent=error.message; e.classList.remove('hide'); return; }
-    closeModal(); toast('Senha alterada ✔'); };
-}
-const VIEWS_G=[['painel','Painel'],['tv','📺 TV'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico'],['usuarios','Usuários']];
-const VIEWS_E=[['painel','Painel'],['tv','📺 TV'],['setor','Setores'],['balancos','Balanços'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico']];
+const VIEWS_E=[['painel','Painel'],['setor','Setores'],['balancos','Balanços'],['historico','Histórico']];
 function montarCabecalho(){
   const v=S.gerente?VIEWS_G:VIEWS_E;
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
   $('#hctl').classList.remove('hide');
-  $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
-  $('#bConta').onclick=minhaConta;
+  $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta e administração">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
+  $('#bConta').onclick=()=>{ location.hash='#conta'; };
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 function route(){
-  const h=(location.hash||'#painel').slice(1); const v=(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]);
+  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
   S.view=v.includes(h)?h:'painel';
-  document.body.classList.toggle('tvmode', S.view==='tv'); if(S.view!=='tv'){ clearInterval(S._tvTimer); clearInterval(S._tvRelogio); S._tvTimer=S._tvRelogio=null; }
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
+  $('#bConta')?.classList.toggle('on', S.view==='conta');
   render();
 }
 function fillMesSelect(){
@@ -1069,7 +1142,7 @@ async function sairVisualizacao(){
   S.preview=null; S.gerente=true; S.months={}; S._tudo=false;
   document.body.classList.remove('enc'); $('#faixaVis')?.remove(); montarCabecalho();
   try{ await carregarMes(S.mes); }catch(_){ }
-  location.hash='#usuarios'; route();
+  location.hash='#conta'; route();
 }
 function mostrarFaixaVisualizacao(){
   $('#faixaVis')?.remove();
@@ -1197,29 +1270,6 @@ function alertasPainel(doc, loja, setores){
   return `<div class="card" style="margin-top:12px;border-color:#f1d98a"><h2 style="margin:0 0 8px">⚠ Alertas</h2>${itens.map(i=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="small" style="font-weight:700;color:${i.t==='bad'?'var(--bad)':'var(--warn)'}">${i.t==='bad'?'▼':'▲'} ${i.h}</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px">${i.d}</div></div>`).join('')}</div>`;
 }
 
-/* ===================== tela para TV / reunião ===================== */
-function renderTV(app, doc){
-  const {loja,setores}=calc(doc,S.cutoff);
-  const ord=[...setores].sort((a,b)=>(b.pAte??-1)-(a.pAte??-1));
-  const cor=p=>({good:'#1f8a4c',warn:'#c98a00',bad:'#c62828',none:'#555'}[status(p)]);
-  const hora=()=>new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  app.innerHTML=`<div class="tv">
-    <div class="tvtop"><div><div class="tvt">${S.gerente?'Bom Dia São Luiz · Araruna':'Meus setores'} — ${mesLabel(doc.mes)}</div><div class="tvs">Acumulado até ${fDateL(S.cutoff)} · ${loja.diasRest} dia(s) restante(s)</div></div>
-      <div class="sp"></div><div class="tvclock" id="tvHora">${hora()}</div><button class="btn" id="tvFull">⛶ Tela cheia</button><a class="btn" href="#painel">Sair</a></div>
-    <div class="tvhero">
-      <div class="tvbig" style="background:${cor(loja.pAte)}"><div class="l">% da meta até hoje</div><div class="v">${pct(loja.pAte)}</div><div class="d">${brl0(loja.real)} de ${brl0(loja.metaAte)}</div></div>
-      <div class="tvk"><div class="l">Meta do mês</div><div class="v">${pct(loja.pMes)}</div><div class="d">${brl0(loja.real)} de ${brl0(loja.metaMes)}</div><div class="bar" style="margin-top:10px;height:14px"><i style="width:${Math.min(100,(loja.pMes||0)*100)}%;background:var(--yellow)"></i></div></div>
-      <div class="tvk"><div class="l">Meta de hoje</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">Precisa vender/dia: ${brl0(loja.necDia)}</div></div>
-    </div>
-    <div class="tvgrid">${ord.map((s,i)=>`<div class="tvset" style="border-color:${cor(s.pAte)}"><div class="n"><span class="pos">${i+1}º</span> ${esc(s.nome)}</div><div class="p" style="color:${cor(s.pAte)}">${pct(s.pAte,0)}</div><div class="bar" style="height:10px;background:#2b2a27"><i style="width:${Math.min(100,(s.pAte||0)/1.3*100)}%;background:${cor(s.pAte)}"></i></div><div class="r">${brl0(s.real)} / ${brl0(s.metaAte)}</div></div>`).join('')}</div>
-    <div class="tvfoot">Atualiza sozinho a cada 5 minutos · última atualização ${hora()}</div>
-  </div>`;
-  $('#tvFull').onclick=()=>{ const el=document.documentElement; (document.fullscreenElement?document.exitFullscreen():el.requestFullscreen?.())?.catch?.(()=>{}); };
-  clearInterval(S._tvRelogio); S._tvRelogio=setInterval(()=>{ const h=$('#tvHora'); if(h) h.textContent=hora(); },15000);
-  if(!S._tvTimer) S._tvTimer=setInterval(async()=>{ if(S.view!=='tv') return; try{ await carregarMes(S.mes); S.cutoff=null; }catch(_){ } marcarAtividade(); if(S.view==='tv') render(); }, 5*60*1000);
-  marcarAtividade(); // a TV fica ligada sem sair por inatividade enquanto estiver nesta tela
-}
-
 /* ===================== instalar no celular ===================== */
 let _promptInstalar=null;
 window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _promptInstalar=e; });
@@ -1313,7 +1363,7 @@ setTimeout(verificarVersao, 8000);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden) return;
   verificarVersao();
-  if(S.loaded && S.view!=='tv' && Date.now()-(S._ultimaCarga||0)>5*60*1000) atualizarDados(false); // voltou para o site depois de um tempo: busca os números novos
+  if(S.loaded && Date.now()-(S._ultimaCarga||0)>5*60*1000) atualizarDados(false); // voltou para o site depois de um tempo: busca os números novos
 });
 
 
