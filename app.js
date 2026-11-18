@@ -56,6 +56,8 @@ function calc(doc, cutoff){
     }
   }
   // venda dos setores (apenas dias com detalhamento) para comparação justa por setor
+  loja.perdaBal=0;
+  for(const b of (doc.balancos||[])){ if(cutoff && b.data>cutoff) continue; const v=+b.valor_perda||0; const s=setores.find(x=>x.id===b.setor_id); if(s){ s.perda+=v; s.perdaBal=(s.perdaBal||0)+v; } loja.perda+=v; loja.perdaBal+=v; }
   const restantes = dias.filter(k=>!cutoff||k>cutoff);
   const metaRest = sum(restantes.map(k=>+(doc.dias?.[k]?.meta)||0));
   loja.falta = Math.max(0, loja.metaMes-loja.real);
@@ -84,6 +86,7 @@ function calc(doc, cutoff){
 /* ===================== render ===================== */
 function destroyCharts(){ S.charts.forEach(c=>{try{c.destroy()}catch(e){}}); S.charts=[]; }
 function render(){
+  if(S.view==='balancos' && S.loaded){ fillMesSelect(); destroyCharts(); return renderBalancos($('#app')); }
   fillMesSelect();
   destroyCharts();
   const app=$('#app');
@@ -136,7 +139,7 @@ function renderPainel(app, doc){
     <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(loja.necDia)}</div><div class="d">${necTxt}</div></div>
     <div class="kpi"><div class="l">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">${loja.proxDia?fDateL(loja.proxDia):''}</div></div>
     ${(()=>{ const c=compAnoAnterior(doc,S.cutoff); return c?`<div class="kpi"><div class="l">vs. ${mesLabel(c.mes)}</div><div class="v" style="color:${c.cresc>=0?'var(--good)':'var(--bad)'}">${c.cresc>=0?'▲ +':'▼ '}${pct(c.cresc)}</div><div class="d">Mesmo período: ${brl0(c.real)} até dia ${c.dia}</div></div>`:''; })()}
-    <div class="kpi"><div class="l">Perdas lançadas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda</div></div>
+    <div class="kpi"><div class="l">Perdas lançadas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div></div>
   </div>
 
   <div class="grid two" style="margin-top:12px">
@@ -276,7 +279,7 @@ function renderSetor(app, doc){
     <div class="kpi"><div class="l">Meta do mês</div><div class="v">${brl0(s.meta)}</div><div class="d">${pct(s.pMes)} · falta ${brl0(s.falta)}</div>${barH(s.pMes)}</div>
     <div class="kpi"><div class="l">Projeção</div><div class="v">${brl0(s.proj)}</div><div class="d">${pct(s.proj/s.meta)} da meta</div></div>
     <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(s.necDia)}</div><div class="d">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}: ${brl0(s.metaProx)}</div></div>
-    <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda</div></div>
+    <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui <a href="#balancos">${brl0(s.perdaBal)} de balanço</a>`:''}</div></div>
     <div class="kpi"><div class="l">Participação real</div><div class="v">${pct(s.partReal)}</div><div class="d">da venda dos setores (planejado ${pct(s.share)})</div></div>
   </div>
   <div class="card" style="margin-top:12px">
@@ -577,6 +580,7 @@ function montarDoc(mes, metaLoja, orc, metas, diasRows, lanc, diarias, metasDiaS
 async function carregarMes(mes){
   const ini=`${mes}-01`, fim=fimDoMes(mes);
   const lanc=await q(S.sb.from('lancamentos').select('data,setor_id,venda,perda').gte('data',ini).lte('data',fim));
+  const bals=await q(S.sb.from('balancos').select('data,setor_id,valor_perda').gte('data',ini).lte('data',fim));
   const metas=await q(S.sb.from('metas_setor').select('setor_id,meta').eq('mes',mes));
   let doc;
   if(S.gerente){
@@ -588,7 +592,7 @@ async function carregarMes(mes){
     const mds=await q(S.sb.rpc('metas_diarias_setor',{p_mes:mes}));
     doc=montarDoc(mes, null, 0, metas, null, lanc, null, mds);
   }
-  S.months[mes]=doc; return doc;
+  doc.balancos=bals; S.months[mes]=doc; return doc;
 }
 async function garantirMes(mes){ if(!S.months[mes] && S.mesList.includes(mes)) await carregarMes(mes); return S.months[mes]; }
 async function carregarTudo(){ // para o histórico
@@ -599,8 +603,9 @@ async function carregarTudo(){ // para o histórico
     const dias=await todasLinhas(()=>S.sb.from('dias').select('data,mes,meta,total_caixa').order('data'));
     const lanc=await todasLinhas(()=>S.sb.from('lancamentos').select('data,setor_id,venda,perda').order('data').order('setor_id'));
     const diar=await todasLinhas(()=>S.sb.from('diarias').select('id,mes,data,valor').order('id'));
+    const bals=await todasLinhas(()=>S.sb.from('balancos').select('data,setor_id,valor_perda').order('id'));
     for(const m of meses){ const mes=m.mes, ini=`${mes}-01`, fim=fimDoMes(mes);
-      S.months[mes]=montarDoc(mes,m.meta_loja,m.diarias_orcamento,metas.filter(x=>x.mes===mes),dias.filter(x=>x.mes===mes),lanc.filter(x=>x.data>=ini&&x.data<=fim),diar.filter(x=>x.mes===mes),null); }
+      S.months[mes]=montarDoc(mes,m.meta_loja,m.diarias_orcamento,metas.filter(x=>x.mes===mes),dias.filter(x=>x.mes===mes),lanc.filter(x=>x.data>=ini&&x.data<=fim),diar.filter(x=>x.mes===mes),null); S.months[mes].balancos=bals.filter(x=>x.data>=ini&&x.data<=fim); }
   } else { for(const m of S.mesList) if(!S.months[m]) await carregarMes(m); }
   S._tudo=true;
 }
@@ -771,6 +776,130 @@ function mostrarAcesso(nome,email,senha){
   $('#aCp',m).onclick=async()=>{ try{ await navigator.clipboard.writeText(txt); toast('Mensagem copiada'); }catch(e){ $('#aTxt',m).select(); } };
 }
 
+/* ===================== BALANÇOS ===================== */
+const SETORES_BALANCO=['acougue','hortifruti','padaria','pereciveis'];
+function setoresVisiveis(){ return S.gerente ? S.setoresAll : S.setoresAll.filter(x=>(S.perfil.setores||[]).includes(x.id)); }
+function nomeArquivoSeguro(n){ return String(n||'arquivo').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9._-]+/g,'_').slice(-80); }
+async function renderBalancos(app){
+  const mes=S.mes||todayIso().slice(0,7); const ini=`${mes}-01`, fim=fimDoMes(mes);
+  app.innerHTML='<div class="empty"><span class="spin"></span> Carregando balanços…</div>';
+  let lista=[];
+  try{ lista=await q(S.sb.from('balancos').select('*, balanco_comentarios(count)').gte('data',ini).lte('data',fim).order('data',{ascending:false}).order('id',{ascending:false})); }
+  catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
+  if(S.view!=='balancos') return;
+  const doc=S.months[mes]; const calcRes = doc ? calc(doc, fim) : null;
+  const filtro=S.balSetor||'';
+  const vis=setoresVisiveis();
+  const lst=lista.filter(b=>!filtro||b.setor_id===filtro);
+  const porSetor={}; lista.forEach(b=>porSetor[b.setor_id]=(porSetor[b.setor_id]||0)+(+b.valor_perda||0));
+  const destaque = (S.gerente? SETORES_BALANCO : vis.map(x=>x.id)).filter(id=>vis.some(x=>x.id===id));
+  const vendaSetor = id => calcRes?.setores.find(x=>x.id===id)?.real || 0;
+  app.innerHTML=`
+  <div class="row" style="align-items:flex-end;margin-bottom:14px">
+    <div><h1>Balanços — ${mesLabel(mes)}</h1><p class="sub" style="margin:0">Perdas apuradas nos balanços de estoque, com o relatório anexado para análise. Elas entram na perda do setor no painel.</p></div>
+    <div class="sp"></div>
+    <label class="f">Setor<select id="bFiltro"><option value="">Todos</option>${vis.map(x=>`<option value="${x.id}" ${filtro===x.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
+    ${S.gerente?'<button class="btn p" id="bNovo">＋ Novo balanço</button>':''}
+  </div>
+  <div class="grid kpis">
+    ${destaque.map(id=>{ const v=porSetor[id]||0, vd=vendaSetor(id); return `<div class="kpi" style="cursor:pointer" data-fs="${id}"><div class="l">${esc(nomeSetor(id))}</div><div class="v">${v?brl0(v):'—'}</div><div class="d">${v&&vd?pct(v/vd,2)+' sobre a venda do mês':(v?'':'sem balanço no mês')}</div></div>`; }).join('')}
+    <div class="kpi hero"><div class="l">Total em balanços</div><div class="v">${brl0(Object.values(porSetor).reduce((a,b)=>a+b,0))}</div><div class="d">${lista.length} balanço(s) no mês</div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    ${lst.length?`<div class="tw"><table><thead><tr><th>Data</th><th>Setor</th><th class="n">Perda</th><th>Arquivo</th><th>Observação</th><th class="n">Coment.</th><th></th></tr></thead><tbody>
+    ${lst.map(b=>`<tr class="click" data-b="${b.id}"><td>${fDateL(b.data)}</td><td><b>${esc(nomeSetor(b.setor_id))}</b></td><td class="n"><b>${brl(+b.valor_perda)}</b></td><td class="small">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small" style="max-width:280px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n">${b.balanco_comentarios?.[0]?.count||0}</td><td><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`).join('')}
+    </tbody></table></div>`:`<div class="empty">Nenhum balanço ${filtro?'deste setor ':''}em ${mesLabel(mes)}.${S.gerente?' Clique em “Novo balanço” para lançar.':''}</div>`}
+  </div>`;
+  $('#bFiltro').onchange=e=>{ S.balSetor=e.target.value; renderBalancos(app); };
+  app.querySelectorAll('[data-fs]').forEach(k=>k.onclick=()=>{ S.balSetor = S.balSetor===k.dataset.fs?'':k.dataset.fs; renderBalancos(app); });
+  const bn=$('#bNovo'); if(bn) bn.onclick=()=>formBalanco(null);
+  app.querySelectorAll('[data-b]').forEach(r=>r.onclick=()=>abrirBalanco(lista.find(b=>String(b.id)===r.dataset.b)));
+}
+async function aposMudarBalanco(data){ const mes=data.slice(0,7); if(S.months[mes]) { try{ await carregarMes(mes); }catch(_){} } S._tudo=false; render(); }
+function formBalanco(b){
+  const novo=!b; const vis=setoresVisiveis(); const ordem=[...vis].sort((x,y)=>(SETORES_BALANCO.includes(y.id)-SETORES_BALANCO.includes(x.id)));
+  const m=modal(`<h2>${novo?'Novo balanço':'Editar balanço'}</h2>
+   <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+    <label class="f">Setor<select id="fbSetor">${ordem.map(x=>`<option value="${x.id}" ${(b?.setor_id||S.balSetor||'acougue')===x.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
+    <label class="f">Data do balanço<input type="date" id="fbData" value="${b?.data||todayIso()}"></label>
+    <label class="f">Perda apurada (R$)<input class="in" id="fbValor" inputmode="decimal" value="${b?nf(+b.valor_perda):''}" placeholder="0,00"></label>
+    <label class="f">Relatório do balanço ${novo?'':'(deixe vazio para manter)'}<input type="file" id="fbArq" accept=".xlsx,.xls,.csv,.pdf,image/*"></label>
+   </div>
+   <label class="f" style="margin-top:10px">Observação<textarea id="fbObs" rows="3" style="border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit">${esc(b?.observacao||'')}</textarea></label>
+   <p class="small muted" id="fbDica">Se o relatório for Excel/CSV e tiver uma linha de total, o site tenta preencher a perda sozinho — confira antes de salvar.</p>
+   <div id="fbErr" class="note err small hide"></div>
+   <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">${novo?'Salvar balanço':'Salvar'}</button></div>`);
+  $('#mN',m).onclick=closeModal;
+  $('#fbArq',m).onchange=async()=>{ const f=$('#fbArq',m).files[0]; if(!f||!/\.(xlsx|xls|csv)$/i.test(f.name)||!window.XLSX) return;
+    try{ const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+      let tot=null; for(const r of rows){ const lab=r.find(c=>typeof c==='string' && /total|perda|diferen/i.test(c)); if(lab){ const nums=r.filter(c=>typeof c==='number'); if(nums.length) tot=nums[nums.length-1]; } }
+      if(tot!=null && !$('#fbValor',m).value){ $('#fbValor',m).value=nf(Math.abs(tot)); $('#fbValor',m).classList.add('chg'); $('#fbDica',m).textContent=`Valor ${brl(Math.abs(tot))} lido da linha de total do arquivo — confira.`; }
+    }catch(_){ } };
+  $('#mY',m).onclick=async()=>{
+    const err=t=>{ const e=$('#fbErr',m); e.textContent=t; e.classList.remove('hide'); };
+    const setor=$('#fbSetor',m).value, data=$('#fbData',m).value, valor=parseNum($('#fbValor',m).value), obs=$('#fbObs',m).value.trim(), f=$('#fbArq',m).files[0];
+    if(!data) return err('Informe a data do balanço.');
+    if(isNaN(valor)) return err('Informe o valor da perda (pode ser 0).');
+    if(f && f.size>25*1024*1024) return err('O arquivo passa de 25 MB.');
+    $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
+    try{
+      const row={ setor_id:setor, data, valor_perda:round2(Math.abs(valor)), observacao:obs||null };
+      if(f){ const path=`${setor}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
+        const { error } = await S.sb.storage.from('balancos').upload(path, f, { upsert:false, contentType:f.type||undefined }); if(error) throw error;
+        row.arquivo_path=path; row.arquivo_nome=f.name;
+        if(b?.arquivo_path) await S.sb.storage.from('balancos').remove([b.arquivo_path]); }
+      else if(b && b.setor_id!==setor && b.arquivo_path){ // muda o arquivo de pasta junto com o setor
+        const np=`${setor}/${b.arquivo_path.split('/').slice(1).join('/')}`; const { error } = await S.sb.storage.from('balancos').move(b.arquivo_path, np); if(!error) row.arquivo_path=np; }
+      if(novo) await q(S.sb.from('balancos').insert(row)); else await q(S.sb.from('balancos').update(row).eq('id',b.id));
+      closeModal(); toast(novo?'Balanço salvo ✔':'Balanço atualizado ✔'); { const mm=data.slice(0,7); if(S.mesList.includes(mm)) S.mes=mm; } await aposMudarBalanco(data);
+    }catch(e){ err('Não foi possível salvar: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar'; }
+  };
+}
+async function abrirBalanco(b){
+  const m=modal(`<div class="row"><h2 style="margin:0">📋 Balanço — ${esc(nomeSetor(b.setor_id))}</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
+   <div class="grid kpis" style="margin-top:12px"><div class="kpi"><div class="l">Data</div><div class="v" style="font-size:22px">${fDateL(b.data)}</div></div><div class="kpi"><div class="l">Perda apurada</div><div class="v" style="font-size:22px">${brl(+b.valor_perda)}</div></div></div>
+   ${b.observacao?`<div class="note small" style="margin-top:10px;white-space:pre-wrap">${esc(b.observacao)}</div>`:''}
+   <h3 style="margin:16px 0 8px">Relatório</h3><div id="bxArq">${b.arquivo_path?'<span class="spin"></span>':'<p class="muted small">Nenhum arquivo anexado.</p>'}</div>
+   <h3 style="margin:16px 0 8px">Análise e comentários</h3><div id="bxCom"><span class="spin"></span></div>
+   <div class="row" style="margin-top:8px;align-items:flex-end"><label class="f" style="flex:1">Escreva sua análise (ex.: causa da perda, o que fazer)<textarea id="bxTxt" rows="2" style="border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit"></textarea></label><button class="btn p" id="bxEnv">Enviar</button></div>
+   ${S.gerente?'<div class="row" style="margin-top:14px"><button class="btn" id="bxDel" style="color:var(--bad)">Excluir balanço</button><div class="sp"></div><button class="btn" id="bxEd">Editar</button></div>':''}`);
+  $('#mN',m).onclick=closeModal;
+  if(S.gerente){ $('#bxEd',m).onclick=()=>{ closeModal(); formBalanco(b); };
+    $('#bxDel',m).onclick=()=>{ closeModal(); confirmBox(`Excluir o balanço de ${nomeSetor(b.setor_id)} de ${fDate(b.data)} (${brl(+b.valor_perda)})? O arquivo e os comentários também serão apagados.`, async()=>{ try{ if(b.arquivo_path) await S.sb.storage.from('balancos').remove([b.arquivo_path]); await q(S.sb.from('balancos').delete().eq('id',b.id)); toast('Balanço excluído'); await aposMudarBalanco(b.data); }catch(e){ toast(e.message,5000); } }); }; }
+  // comentários
+  const carregarCom=async()=>{ try{ const cs=await q(S.sb.from('balanco_comentarios').select('*').eq('balanco_id',b.id).order('id'));
+      $('#bxCom',m).innerHTML = cs.length? cs.map(c=>`<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px"><div class="small"><b>${esc(c.autor_nome||'—')}</b> <span class="muted">· ${new Date(c.criado_em).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}</span>${(c.autor===S.user.id||S.gerente)?` <a href="#" data-dc="${c.id}" class="small" style="float:right;color:var(--bad)">apagar</a>`:''}</div><div style="white-space:pre-wrap;margin-top:3px">${esc(c.texto)}</div></div>`).join('') : '<p class="muted small">Ninguém comentou ainda.</p>';
+      m.querySelectorAll('[data-dc]').forEach(a=>a.onclick=async e=>{ e.preventDefault(); try{ await q(S.sb.from('balanco_comentarios').delete().eq('id',+a.dataset.dc)); carregarCom(); }catch(x){ toast(x.message); } });
+    }catch(e){ $('#bxCom',m).innerHTML=`<p class="note err small">${esc(e.message)}</p>`; } };
+  carregarCom();
+  $('#bxEnv',m).onclick=async()=>{ const t=$('#bxTxt',m).value.trim(); if(!t) return; $('#bxEnv',m).disabled=true;
+    try{ await q(S.sb.from('balanco_comentarios').insert({balanco_id:b.id, texto:t})); $('#bxTxt',m).value=''; carregarCom(); }catch(e){ toast(e.message,5000); } $('#bxEnv',m).disabled=false; };
+  // arquivo
+  if(b.arquivo_path){
+    const box=$('#bxArq',m);
+    try{
+      const { data:sig, error } = await S.sb.storage.from('balancos').createSignedUrl(b.arquivo_path, 3600, { download:b.arquivo_nome||true }); if(error) throw error;
+      const nome=b.arquivo_nome||'arquivo'; const ext=(nome.split('.').pop()||'').toLowerCase();
+      const btn=`<a class="btn" href="${sig.signedUrl}" target="_blank" rel="noopener">⬇ Baixar ${esc(nome)}</a>`;
+      if(['xlsx','xls','csv'].includes(ext) && window.XLSX){
+        const { data:blob, error:e2 } = await S.sb.storage.from('balancos').download(b.arquivo_path); if(e2) throw e2;
+        const wb=XLSX.read(await blob.arrayBuffer(),{type:'array'});
+        const abas=wb.SheetNames; let atual=abas[0];
+        const desenha=()=>{ const html=XLSX.utils.sheet_to_html(wb.Sheets[atual],{editable:false}).replace(/^[\s\S]*?<table/,'<table').replace(/<\/table>[\s\S]*$/,'</table>');
+          box.innerHTML=`<div class="row" style="margin-bottom:8px">${abas.length>1?`<div class="tabs2">${abas.map(a=>`<button data-aba="${esc(a)}" class="${a===atual?'on':''}">${esc(a)}</button>`).join('')}</div>`:''}<div class="sp"></div>${btn}</div><div class="tw xls" style="max-height:50vh">${html}</div>`;
+          box.querySelectorAll('[data-aba]').forEach(x=>x.onclick=()=>{ atual=x.dataset.aba; desenha(); }); };
+        desenha();
+      } else if(['png','jpg','jpeg','webp','gif'].includes(ext)){
+        const { data:s2 } = await S.sb.storage.from('balancos').createSignedUrl(b.arquivo_path, 3600);
+        box.innerHTML=`<div class="row" style="margin-bottom:8px"><div class="sp"></div>${btn}</div><img src="${s2.signedUrl}" alt="Relatório do balanço" style="max-width:100%;border:1px solid var(--line);border-radius:10px">`;
+      } else if(ext==='pdf'){
+        const { data:s2 } = await S.sb.storage.from('balancos').createSignedUrl(b.arquivo_path, 3600);
+        box.innerHTML=`<div class="row" style="margin-bottom:8px"><a class="btn y" href="${s2.signedUrl}" target="_blank" rel="noopener">Abrir PDF</a><div class="sp"></div>${btn}</div><iframe src="${s2.signedUrl}" style="width:100%;height:60vh;border:1px solid var(--line);border-radius:10px" title="Relatório do balanço"></iframe>`;
+      } else box.innerHTML=btn;
+    }catch(e){ box.innerHTML=`<p class="note err small">Não foi possível abrir o arquivo: ${esc(e.message||e)}</p>`; }
+  }
+}
+
 /* ===================== conta, login e navegação ===================== */
 function minhaConta(){
   const m=modal(`<h2>Minha conta</h2><p class="small muted">${esc(S.perfil.nome||'')} · ${esc(S.user.email)} · ${S.gerente?'Gerente':'Encarregado: '+esc((S.perfil.setores||[]).map(nomeSetor).join(', '))}</p>
@@ -786,8 +915,8 @@ function minhaConta(){
     const { error } = await S.sb.auth.updateUser({ password:a }); if(error){ e.textContent=error.message; e.classList.remove('hide'); return; }
     closeModal(); toast('Senha alterada ✔'); };
 }
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['metas','Metas do mês'],['historico','Histórico'],['usuarios','Usuários']];
-const VIEWS_E=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico'],['usuarios','Usuários']];
+const VIEWS_E=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['historico','Histórico']];
 function montarCabecalho(){
   const v=S.gerente?VIEWS_G:VIEWS_E;
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
