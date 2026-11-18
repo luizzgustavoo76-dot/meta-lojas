@@ -58,7 +58,7 @@ function calc(doc, cutoff){
   }
   // venda dos setores (apenas dias com detalhamento) para comparação justa por setor
   loja.perdaBal=0;
-  for(const b of (doc.balancos||[])){ if(cutoff && b.data>cutoff) continue; const v=+b.valor_perda||0; const s=setores.find(x=>x.id===b.setor_id); if(s){ s.perda+=v; s.perdaBal=(s.perdaBal||0)+v; } loja.perda+=v; loja.perdaBal+=v; }
+  for(const b of (doc.balancos||[])){ if(cutoff && b.data>cutoff) continue; const v=+b.valor_perda||0; const s=setores.find(x=>x.id===b.setor_id); if(s){ s.perda+=v; s.perdaBal=(s.perdaBal||0)+v; const dd=s.daily.find(x=>x.k===b.data); if(dd){ dd.perda+=v; dd.bal=(dd.bal||0)+v; } } loja.perda+=v; loja.perdaBal+=v; const dl=loja.daily.find(x=>x.k===b.data); if(dl){ dl.perda+=v; dl.bal=(dl.bal||0)+v; } }
   const restantes = dias.filter(k=>!cutoff||k>cutoff);
   const metaRest = sum(restantes.map(k=>+(doc.dias?.[k]?.meta)||0));
   loja.falta = Math.max(0, loja.metaMes-loja.real);
@@ -292,7 +292,7 @@ function renderSetor(app, doc){
   </div>
   <div class="card" style="margin-top:12px">
     <div class="tw"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Diferença</th><th class="n">Acum. meta</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead>
-    <tbody>${(()=>{let am=0,ar=0; return s.daily.map(d=>{am+=d.meta; ar+=d.real; const p=d.real&&d.meta?d.real/d.meta:null; const fut=!d.real; return `<tr style="${fut?'color:#aaa':''}"><td>${fDateL(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(p):''}</td><td class="n">${d.real?brl0(d.real-d.meta):'—'}</td><td class="n">${brl0(am)}</td><td class="n">${d.real||d.ate?brl0(ar):'—'}</td><td class="n">${d.real||d.ate?pct(ar/am):'—'}</td><td class="n">${d.perda?brl(d.perda):'—'}</td><td class="n">${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</td></tr>`;}).join('');})()}</tbody>
+    <tbody>${(()=>{let am=0,ar=0; return s.daily.map(d=>{am+=d.meta; ar+=d.real; const p=d.real&&d.meta?d.real/d.meta:null; const fut=!d.real; return `<tr style="${fut?'color:#aaa':''}"><td>${fDateL(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(p):''}</td><td class="n">${d.real?brl0(d.real-d.meta):'—'}</td><td class="n">${brl0(am)}</td><td class="n">${d.real||d.ate?brl0(ar):'—'}</td><td class="n">${d.real||d.ate?pct(ar/am):'—'}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?` <span class="badge b-warn" title="Inclui ${brl(d.bal)} do balanço">📦 balanço</span>`:''}</td><td class="n">${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</td></tr>`;}).join('');})()}</tbody>
     <tfoot><tr><td>Total</td><td class="n">${brl0(sum(s.daily.map(d=>d.meta)))}</td><td class="n">${brl0(s.real)}</td><td></td><td></td><td></td><td></td><td></td><td class="n">${brl0(s.perda)}</td><td class="n">${pct(s.pPerda,2)}</td></tr></tfoot></table></div>
   </div>`}`;
   $('#selSetor').onchange=e=>{S.setorSel=e.target.value; render();};
@@ -929,7 +929,7 @@ function formBalanco(b){
   const m=modal(`<h2>${novo?'Novo balanço':'Editar balanço'}</h2>
    <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
     <label class="f">Setor<select id="fbSetor">${ordem.map(x=>`<option value="${x.id}" ${(b?.setor_id||S.balSetor||'acougue')===x.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
-    <div class="f"><span>Período do balanço</span><div class="row" style="gap:6px;flex-wrap:nowrap"><input type="date" id="fbIni" value="${b?.periodo_inicio||''}" title="Início" style="flex:1"><span class="small">até</span><input type="date" id="fbData" value="${b?.data||todayIso()}" title="Fim (data do balanço)" style="flex:1"></div></div>
+    <div class="f"><span>Período do balanço — a perda entra no último dia</span><div class="row" style="gap:6px;flex-wrap:nowrap"><input type="date" id="fbIni" value="${b?.periodo_inicio||''}" title="Início" style="flex:1"><span class="small">até</span><input type="date" id="fbData" value="${b?.data||todayIso()}" title="Fim (data do balanço)" style="flex:1"></div></div>
     <label class="f">Perda apurada (R$) — sai do arquivo<input class="in" id="fbValor" inputmode="decimal" value="${b?nf(+b.valor_perda):''}" placeholder="lido do relatório"></label>
     <label class="f">Relatório do balanço ${novo?'':'(deixe vazio para manter)'}<input type="file" id="fbArq" accept=".xlsx,.xls,.csv,.pdf,image/*"></label>
    </div>
@@ -947,6 +947,7 @@ function formBalanco(b){
       else dica.innerHTML='<span style="color:var(--bad)">Não achei o valor da perda no arquivo.</span> Digite o valor acima.';
       if(r.data && ($('#fbData',m).value===dataPadrao || r.analise)){ $('#fbData',m).value=r.data; }
       if(r.ini) $('#fbIni',m).value=r.ini;
+      if(r.data){ const mm=r.data.slice(0,7); const semMes=!S.mesList.includes(mm); dica.innerHTML+=`<br>📅 ${r.ini?`Período lido do arquivo: <b>${fDate(r.ini)}/${r.ini.slice(0,4)} a ${fDate(r.data)}/${r.data.slice(0,4)}</b>. `:''}A perda será lançada no dia <b>${fDate(r.data)}/${r.data.slice(0,4)}</b>${r.data.slice(0,7)!==S.mes?` (mês de ${mesLabel(mm)})`:''}.${semMes?' <span style="color:var(--bad)">Esse mês ainda não tem metas no site: o balanço fica salvo e aparece na aba Balanço do setor.</span>':''}`; }
       if(r.analise && !setorEscolhido){ const sug=setorSiteSugerido(r.analise); if(sug && $('#fbSetor',m).querySelector(`option[value="${sug}"]`)) $('#fbSetor',m).value=sug; }
       $('#fbAn',m).innerHTML = r.analise ? resumoAnaliseHtml(r.analise,true) : '';
       return r; }).catch(e=>{ dica.innerHTML='<span style="color:var(--bad)">Não consegui ler o arquivo.</span> Digite o valor acima.'; return {valor:null}; });
@@ -973,7 +974,7 @@ function formBalanco(b){
       else if(b && b.setor_id!==setor && b.arquivo_path){ // muda o arquivo de pasta junto com o setor
         const np=`${setor}/${b.arquivo_path.split('/').slice(1).join('/')}`; const { error } = await S.sb.storage.from('balancos').move(b.arquivo_path, np); if(!error) row.arquivo_path=np; }
       if(novo) await q(S.sb.from('balancos').insert(row)); else await q(S.sb.from('balancos').update(row).eq('id',b.id));
-      closeModal(); toast(novo?'Balanço salvo ✔':'Balanço atualizado ✔'); { const mm=data.slice(0,7); if(S.mesList.includes(mm)) S.mes=mm; } await aposMudarBalanco(data);
+      closeModal(); toast(`${novo?'Balanço salvo':'Balanço atualizado'} ✔ — perda lançada em ${fDate(data)}/${data.slice(0,4)}`,4500); { const mm=data.slice(0,7); if(S.mesList.includes(mm)) S.mes=mm; } await aposMudarBalanco(data);
     }catch(e){ err('Não foi possível salvar: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar'; }
   };
 }
