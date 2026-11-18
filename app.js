@@ -145,6 +145,7 @@ function renderPainel(app, doc){
   </div>
   ${alertasPainel(doc, loja, setores)}
   ${cardComparativos(comp, S.gerente?'loja':'')}
+  ${S.gerente?cardRanking(doc, setores):''}
 
   <div class="grid two" style="margin-top:12px">
     <div class="card">
@@ -278,6 +279,7 @@ function cardComparativos(c, titulo){
       <tr><td><b>% de perda sobre a venda</b></td><td class="n"><b>${a.pPerda!=null?pct(a.pPerda,2):'—'}</b></td>${colP(pm)}${colP(pa)}</tr>
     </tbody></table></div>
     <div class="small muted" style="margin-top:8px">Verde = melhor que antes (venda maior ou perda menor). Vermelho = pior.</div>
+    ${notaDatas(`${c.atual.cut.slice(0,7)}-01`, c.atual.cut, [{rot:'mês passado', ini:pm?`${pm.cut.slice(0,7)}-01`:null, fim:pm?.cut},{rot:'ano passado', ini:pa?`${pa.cut.slice(0,7)}-01`:null, fim:pa?.cut}])}
   </div>`;
 }
 
@@ -330,6 +332,7 @@ function renderSetor(app, doc){
     ${S.setorAba==='ana'?'':cutoffSelect(doc)}
   </div>
   <div class="tabs2 abas-setor" id="abSetor"><button data-a="dia" class="${S.setorAba!=='bal'?'on':''}">📈 Dia a dia</button><button data-a="bal" class="${S.setorAba==='bal'?'on':''}">📦 Balanço</button><button data-a="ana" class="${S.setorAba==='ana'?'on':''}">🔎 Análise de vendas</button></div>
+  ${S.setorAba!=='bal'&&S.setorAba!=='ana'&&!S.gerente?cardHojeEncarregado(doc,loja,s):''}
   ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':S.setorAba==='ana'?'<div id="anaBox"><div class="empty"><span class="spin"></span> Carregando análise…</div></div>':`
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
@@ -337,10 +340,11 @@ function renderSetor(app, doc){
     <div class="kpi"><div class="l">Meta do mês</div><div class="v">${brl0(s.meta)}</div><div class="d">${pct(s.pMes)} · falta ${brl0(s.falta)}</div>${barH(s.pMes)}</div>
     <div class="kpi"><div class="l">Projeção</div><div class="v">${brl0(s.proj)}</div><div class="d">${pct(s.proj/s.meta)} da meta</div></div>
     <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(s.necDia)}</div><div class="d">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}: ${brl0(s.metaProx)}</div></div>
-    <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui <a href="#balancos">${brl0(s.perdaBal)} de balanço</a>`:''}</div>${compS?.pm?`<div class="d">vs. mês passado: ${varTxt(s.perda, compS.pm.perda, true)}</div>`:''}</div>
-    <div class="kpi"><div class="l">Participação real</div><div class="v">${pct(s.partReal)}</div><div class="d">da venda dos setores (planejado ${pct(s.share)})</div></div>
+    <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui <a href="#" data-goaba="bal">${brl0(s.perdaBal)} de balanço</a>`:''}</div>${compS?.pm?`<div class="d">vs. mês passado: ${varTxt(s.perda, compS.pm.perda, true)}</div>`:''}</div>
+    <div class="kpi ${S.gerente?'':'hide'}"><div class="l">Participação real</div><div class="v">${pct(s.partReal)}</div><div class="d">da venda dos setores (planejado ${pct(s.share)})</div></div>
     ${kpisComparativos(compS)}
   </div>
+  ${alertasPainel(doc, loja, [s], true)}
   ${cardComparativos(compS, s.nome)}
   <div class="card" style="margin-top:12px">
     <div class="row"><h2 style="margin:0">Dia a dia</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
@@ -349,13 +353,15 @@ function renderSetor(app, doc){
   </div>
   <div class="card" style="margin-top:12px">
     <div class="tw"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Diferença</th><th class="n">Acum. meta</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead>
-    <tbody>${(()=>{let am=0,ar=0; return s.daily.map(d=>{am+=d.meta; ar+=d.real; const p=d.real&&d.meta?d.real/d.meta:null; const fut=!d.real; return `<tr style="${fut?'color:#aaa':''}"><td>${fDateL(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(p):''}</td><td class="n">${d.real?brl0(d.real-d.meta):'—'}</td><td class="n">${brl0(am)}</td><td class="n">${d.real||d.ate?brl0(ar):'—'}</td><td class="n">${d.real||d.ate?pct(ar/am):'—'}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?` <span class="badge b-warn" title="Inclui ${brl(d.bal)} do balanço">📦 balanço</span>`:''}</td><td class="n">${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</td></tr>`;}).join('');})()}</tbody>
+    <tbody>${(()=>{let am=0,ar=0; return s.daily.map(d=>{am+=d.meta; ar+=d.real; const p=d.real&&d.meta?d.real/d.meta:null; const fut=!d.real; return `<tr style="${fut?'color:#aaa':''}"><td>${fDateL(d.k)}${marcaData(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(p):''}</td><td class="n">${d.real?brl0(d.real-d.meta):'—'}</td><td class="n">${brl0(am)}</td><td class="n">${d.real||d.ate?brl0(ar):'—'}</td><td class="n">${d.real||d.ate?pct(ar/am):'—'}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?` <span class="badge b-warn" title="Inclui ${brl(d.bal)} do balanço">📦 balanço</span>`:''}</td><td class="n">${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</td></tr>`;}).join('');})()}</tbody>
     <tfoot><tr><td>Total</td><td class="n">${brl0(sum(s.daily.map(d=>d.meta)))}</td><td class="n">${brl0(s.real)}</td><td></td><td></td><td></td><td></td><td></td><td class="n">${brl0(s.perda)}</td><td class="n">${pct(s.pPerda,2)}</td></tr></tfoot></table></div>
   </div>`}`;
   $('#selSetor').onchange=e=>{S.setorSel=e.target.value; render();};
   const bv=$('#bVoltarPainel'); if(bv) bv.onclick=()=>{ if(history.length>1) history.back(); else location.hash='#painel'; };
   bindCutoff();
   $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); });
+  app.querySelectorAll('[data-goaba]').forEach(a=>a.onclick=e=>{ e.preventDefault(); S.setorAba=a.dataset.goaba; render(); window.scrollTo(0,0); });
+  if(!S.gerente && S.setorAba!=='bal' && S.setorAba!=='ana') preencherQuedasEncarregado(s);
   if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
   if(S.setorAba==='ana'){ renderAnaliseSetor($('#anaBox'), s); return; }
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
@@ -398,7 +404,7 @@ function renderLancar(app, doc){
   if(!S.lancData || !S.lancData.startsWith(doc.mes)){ const lst=lastDataDay(doc); S.lancData = lst ? dias[Math.min(dias.indexOf(lst)+1,dias.length-1)] : dias[0]; }
   const k=S.lancData; const d=doc.dias?.[k]||{};
   const nSet=doc.setores.length;
-  const chip = x => { const dd=doc.dias?.[x]; const n=dd?.vendas?Object.keys(dd.vendas).filter(i=>dd.vendas[i]).length:0; const cls = n>=nSet?'full':(n||dd?.total)?'part':''; const fut = x>todayIso()?'fut':''; return `<div class="dchip ${cls} ${fut} ${x===k?'sel':''}" data-d="${x}">${DSEM[pDate(x).getDay()]}<b>${x.slice(8)}</b></div>`; };
+  const chip = x => { const dd=doc.dias?.[x]; const n=dd?.vendas?Object.keys(dd.vendas).filter(i=>dd.vendas[i]).length:0; const cls = n>=nSet?'full':(n||dd?.total)?'part':''; const fut = x>todayIso()?'fut':''; return `<div class="dchip ${cls} ${fut} ${x===k?'sel':''} ${S.datas?.has(x)?'esp':''}" data-d="${x}" title="${esc(S.datas?.get(x)?.nome||'')}">${DSEM[pDate(x).getDay()]}<b>${x.slice(8)}</b></div>`; };
   const aiOk = false;
   app.innerHTML = `
   <h1>Lançar vendas</h1><p class="sub">Importe o relatório de vendas (Excel, CSV ou PDF), cole o texto ou digite os valores. Tudo é conferido antes de salvar.${S.gerente?'':' Você lança apenas: <b>'+esc(doc.setores.map(x=>x.nome).join(', '))+'</b>.'}</p>
@@ -409,7 +415,7 @@ function renderLancar(app, doc){
 
   <div class="grid imp" style="margin-top:12px">
     <div class="drop" id="dropImg"><div class="ico">📷</div><h3>Foto ou print do relatório</h3><p>O site lê a imagem (OCR) e preenche os setores · funciona melhor com print ou foto reta e nítida</p><div style="margin-top:10px"><button class="btn y" id="bImg">Escolher imagem</button></div><input type="file" id="fImg" accept="image/*" multiple class="hide"></div>
-    <div class="drop" id="dropFile"><div class="ico">📊</div><h3>Relatório em arquivo</h3><p>Excel (.xlsx/.xls), CSV ou PDF do sistema · também aceita a planilha mensal antiga</p><div style="margin-top:10px"><button class="btn y" id="bFile">Escolher arquivo</button></div><input type="file" id="fFile" accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" class="hide"></div>
+    <div class="drop" id="dropFile"><div class="ico">📊</div><h3>Relatório em arquivo</h3><p>Excel, CSV ou PDF · aceita a “Relação de vendas com rentabilidade” (de um dia ou acumulada) e a planilha mensal antiga</p><div style="margin-top:10px"><button class="btn y" id="bFile">Escolher arquivo</button></div><input type="file" id="fFile" accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" class="hide"></div>
     <div class="drop"><div class="ico">📋</div><h3>Colar texto</h3><p>Copie as linhas do relatório e cole aqui</p><div style="margin-top:10px"><button class="btn y" id="bPaste">Colar relatório</button></div></div>
   </div>
 
@@ -498,6 +504,8 @@ async function importPdf(file){
     const map=new Map(); for(const it of tc.items){ const y=Math.round(it.transform[5]/3); if(!map.has(y)) map.set(y,[]); map.get(y).push({x:it.transform[4],s:it.str}); }
     [...map.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,its])=>lines.push(its.sort((a,b)=>a.x-b.x).map(i=>i.s).join('  ')));
   }
+  const rv=Parser.analisarRelatorioVendas(lines);
+  if(rv){ closeModal(); return lancarPorRelatorio(rv, file); }
   const text=lines.join('\n');
   if(text.replace(/\s/g,'').length<30){ // PDF escaneado → imagens
     const canvases=[]; for(let p=1;p<=Math.min(pdf.numPages,4);p++){ const pg=await pdf.getPage(p); const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; canvases.push(c); }
@@ -583,6 +591,8 @@ function renderMetas(app, doc){
     </div>
     ${novoMesCard(doc)}
   </div>
+  <div class="card" style="margin-top:12px"><h2>🎯 Metas por departamento</h2><p class="small muted" style="margin-top:-4px">Divida a meta de cada setor entre os departamentos do sistema. A meta aparece na Análise de vendas do setor, com o % atingido.</p><div id="mdBox"><div class="empty"><span class="spin"></span></div></div></div>
+  ${cardDatasEspeciais(doc)}
   ${cardImportarPlanilhas()}`;
   // setores
   const recalcSet=()=>{ const ml=parseNum($('#mLoja',host).value)||0; let s=0; host.querySelectorAll('[data-sm]').forEach(i=>s+=parseNum(i.value)||0); $('#mSS',host).textContent=brl0(s); $('#mSP',host).textContent=pct(s/(ml||1),2); $('#mSP',host).style.color=Math.abs(s-ml)>1?'var(--bad)':''; };
@@ -600,7 +610,7 @@ function renderMetas(app, doc){
   host.querySelectorAll('[data-dx]').forEach(b=>b.onclick=()=>{ const nd=clone(doc); nd.diarias=nd.diarias||{orcamento:0,lancamentos:[]}; nd.diarias.lancamentos.splice(+b.dataset.dx,1); saveDoc(nd,'Lançamento removido'); });
   $('#dAdd',host).onclick=()=>{ const v=parseNum($('#dVal',host).value); const dt=$('#dData',host).value; if(!v||!dt) return toast('Informe data e valor'); const nd=clone(doc); nd.diarias=nd.diarias||{orcamento:0,lancamentos:[]}; nd.diarias.orcamento=parseNum($('#dOrc',host).value)||0; nd.diarias.lancamentos.push({data:dt,valor:round2(v)}); nd.diarias.lancamentos.sort((a,b)=>a.data.localeCompare(b.data)); saveDoc(nd,'Diária lançada ✔'); };
   $('#dSave',host).onclick=()=>{ const nd=clone(doc); nd.diarias=nd.diarias||{orcamento:0,lancamentos:[]}; nd.diarias.orcamento=parseNum($('#dOrc',host).value)||0; saveDoc(nd,'Orçamento salvo ✔'); };
-  bindNovoMes(host,doc); bindImportarPlanilhas(host);
+  bindNovoMes(host,doc); bindImportarPlanilhas(host); bindDatasEspeciais(host); cardMetasDepartamento(host, doc);
 }
 function novoMesCard(doc){
   const prox = doc? (()=>{ const [y,m]=doc.mes.split('-').map(Number); const d=new Date(y,m,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })() : todayIso().slice(0,7);
@@ -1086,9 +1096,9 @@ async function abrirBalanco(b){
 
 /* ===================== conta, login e navegação ===================== */
 const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico']];
-const VIEWS_E=[['painel','Painel'],['setor','Setores'],['balancos','Balanços'],['historico','Histórico']];
+const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
-  const v=S.gerente?VIEWS_G:VIEWS_E;
+  const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
   $('#hctl').classList.remove('hide');
   $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta e administração">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
@@ -1097,7 +1107,7 @@ function montarCabecalho(){
 }
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
-  const antes=S.view; S.view=v.includes(h)?h:'painel';
+  const antes=S.view; S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
   if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   $('#bConta')?.classList.toggle('on', S.view==='conta');
@@ -1160,6 +1170,7 @@ async function iniciarSessao(){
     if(!p.length){ await S.sb.auth.signOut(); return telaLogin('Seu usuário ainda não foi liberado pelo gerente.'); }
     S.perfil=p[0]; S.gerente=S.gerenteReal=S.perfil.papel==='gerente'; S.preview=null;
     S.setoresAll=await q(S.sb.from('setores').select('*').order('ordem'));
+    await carregarDatas();
     await carregarListaMeses();
     const cur=todayIso().slice(0,7); S.mes = S.mesList.includes(cur)?cur:(S.mesList[S.mesList.length-1]||null);
     if(S.mes) await carregarMes(S.mes);
@@ -1199,7 +1210,7 @@ async function entrarVisualizacao(nome, setores){
   document.body.classList.add('enc'); montarCabecalho(); mostrarFaixaVisualizacao();
   const cur=S.mes; $('#app').innerHTML='<div class="empty"><span class="spin"></span> Montando a visão do encarregado…</div>';
   try{ await carregarMes(cur); const [y,mm]=cur.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); await carregarAnteriores(cur); }catch(e){ toast(e.message); }
-  location.hash='#painel'; route();
+  location.hash='#setor'; route();
 }
 async function sairVisualizacao(){
   S.preview=null; S.gerente=true; S.months={}; S._tudo=false;
@@ -1306,10 +1317,10 @@ function mediaPerdaAnterior(mes, id){ // % de perda média do setor nos 3 meses 
   for(let i=1;i<=3;i++){ const d=S.months[mesAnterior(mes,i)]; if(!d) continue; const c=resumoMes(d); const s=c.setores.find(x=>x.id===id); if(s&&s.real){ perda+=s.perda; venda+=s.real; n++; } }
   return n&&venda? {pct:perda/venda, meses:n} : null;
 }
-function alertasPainel(doc, loja, setores){
+function alertasPainel(doc, loja, setores, soSetor){
   const itens=[]; const hoje=todayIso(); const dias=diasDoMes(doc.mes);
   // dias sem lançamento (só o gerente lança)
-  if(S.gerente){
+  if(S.gerente && !soSetor){
     const faltando=[], incompletos=[];
     for(const k of dias){ if(k>=hoje) break; const d=doc.dias?.[k]||{}; const n=d.vendas?Object.keys(d.vendas).filter(i=>d.vendas[i]).length:0;
       if(!n && !(+d.total>0)) faltando.push(k); else if(n<doc.setores.length) incompletos.push(k); }
@@ -1328,7 +1339,7 @@ function alertasPainel(doc, loja, setores){
   // setores abaixo da meta acumulada
   const abaixo=setores.filter(s=>s.pAte!=null && s.pAte<0.9).map(s=>`<b>${esc(s.nome)}</b> ${pct(s.pAte)}`);
   if(abaixo.length) itens.push({t:'warn', h:'Abaixo de 90% da meta acumulada', d:abaixo.join(' · ')});
-  if(!itens.length) return `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: ${S.gerente?'todos os dias lançados e ':''}nenhum setor com queda seguida ou perda fora do normal.</div>`;
+  if(!itens.length) return soSetor ? `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: sem queda seguida, perda dentro do normal e acima de 90% da meta acumulada.</div>` : `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: ${S.gerente?'todos os dias lançados e ':''}nenhum setor com queda seguida ou perda fora do normal.</div>`;
   setTimeout(()=>document.querySelectorAll('[data-dia]').forEach(a=>a.onclick=()=>{ S.lancData=a.dataset.dia; }),0);
   return `<div class="card" style="margin-top:12px;border-color:#f1d98a"><h2 style="margin:0 0 8px">⚠ Alertas</h2>${itens.map(i=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="small" style="font-weight:700;color:${i.t==='bad'?'var(--bad)':'var(--warn)'}">${i.t==='bad'?'▼':'▲'} ${i.h}</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px">${i.d}</div></div>`).join('')}</div>`;
 }
