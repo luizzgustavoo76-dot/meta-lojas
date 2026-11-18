@@ -130,38 +130,39 @@ function renderPainel(app, doc){
   <div class="row" style="align-items:flex-end;margin-bottom:14px">
     <div><h1>${S.gerente?mesLabel(doc.mes):`${esc(meusNomes)} — ${mesLabel(doc.mes)}`}</h1>${S.gerente?'':`<p class="sub" style="margin:0 0 2px">Painel ${doc.setores.length>1?'dos seus setores':'do seu setor'}</p>`}<p class="sub" style="margin:0">Acumulado até <b>${fDateL(S.cutoff)}</b> · ${loja.diasRest} dia(s) restante(s)</p></div>
     <div class="sp"></div>${cutoffSelect(doc)}
-    <button class="btn" id="btnXlsx">⬇ Baixar Excel</button>
+    <button class="btn d-only" id="btnXlsx">⬇ Baixar Excel</button>
     ${S.gerente?'<a class="btn p" href="#lancar">＋ Lançar vendas</a>':''}
   </div>
   ${metaWarn?`<div class="note" style="margin-bottom:12px">A soma das metas diárias (${brl0(loja.metaDiasSum)}) é diferente da meta do mês (${brl0(loja.metaMes)}). Ajuste em <a href="#metas">Metas do mês</a>.</div>`:''}
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">% da meta até a data</div><div class="v">${pct(loja.pAte)}</div><div class="d">${STXT[status(loja.pAte)]} · ${loja.real>=loja.metaAte?'+':''}${brl0(loja.real-loja.metaAte)} vs. meta</div></div>
     <div class="kpi"><div class="l">Realizado</div><div class="v">${brl0(loja.real)}</div><div class="d">Meta até a data: ${brl0(loja.metaAte)}</div></div>
-    <div class="kpi"><div class="l">Meta do mês</div><div class="v">${brl0(loja.metaMes)}</div><div class="d">${pct(loja.pMes)} atingido · falta ${brl0(loja.falta)}</div>${barH(loja.pMes)}</div>
-    <div class="kpi"><div class="l">Projeção do mês</div><div class="v">${brl0(loja.proj)}</div><div class="d">${pct(loja.proj/loja.metaMes)} da meta, mantendo o ritmo</div></div>
+    <div class="kpi m-hide"><div class="l">Meta do mês</div><div class="v">${brl0(loja.metaMes)}</div><div class="d">${pct(loja.pMes)} atingido · falta ${brl0(loja.falta)}</div>${barH(loja.pMes)}</div>
+    <div class="kpi m-hide"><div class="l">Projeção do mês</div><div class="v">${brl0(loja.proj)}</div><div class="d">${pct(loja.proj/loja.metaMes)} da meta, mantendo o ritmo</div></div>
     <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(loja.necDia)}</div><div class="d">${necTxt}</div></div>
-    <div class="kpi"><div class="l">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">${loja.proxDia?fDateL(loja.proxDia):''}</div></div>
+    <div class="kpi m-hide"><div class="l">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">${loja.proxDia?fDateL(loja.proxDia):''}</div></div>
     ${kpisComparativos(comp)}
-    <div class="kpi"><div class="l">Perdas lançadas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div>${comp?.pm?`<div class="d">vs. mês passado: ${varTxt(loja.perda, comp.pm.perda, true)}</div>`:''}</div>
+    <div class="kpi"><div class="l">Perdas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div>${comp?.pm?`<div class="d">vs. mês passado: ${varTxt(loja.perda, comp.pm.perda, true)}</div>`:''}</div>
   </div>
+  <button class="btn m-only kpi-mais" data-kpimais>＋ Ver mais números</button>
   ${alertasPainel(doc, loja, setores)}
   ${cardComparativos(comp, S.gerente?'loja':'')}
   ${S.gerente?cardRanking(doc, setores):''}
 
   <div class="grid two" style="margin-top:12px">
-    <div class="card">
-      <div class="row"><h2 style="margin:0">Venda diária × meta</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
+    <div class="card m-dobra" data-dobra="painel-graf">
+      <div class="row m-dobra-h"><h2 style="margin:0">Venda diária × meta</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
       <div class="legend"><span><i class="lg-bar"></i>Realizado</span><span><i class="lg-line"></i>Meta</span></div>
       <div class="chartbox"><canvas id="chLoja"></canvas></div>
     </div>
-    <div class="card">
+    <div class="card m-hide">
       <h2>Ranking de atingimento</h2>
       <div class="chartbox" style="height:${Math.max(300,setores.length*24)}px"><canvas id="chRank"></canvas></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:12px">
-    <div class="row" style="margin-bottom:10px"><h2 style="margin:0">Setores — detalhado</h2><div class="sp"></div><span class="small muted">Clique em um setor para abrir o detalhe aqui mesmo</span></div>
+  <div class="card m-dobra" data-dobra="painel-setores" data-aberto="1" style="margin-top:12px">
+    <div class="row m-dobra-h" style="margin-bottom:10px"><h2 style="margin:0">Setores — detalhado</h2><div class="sp"></div><span class="small muted d-only">Clique em um setor para abrir o detalhe aqui mesmo</span></div>
     ${diffSet?`<div class="note small" style="margin-bottom:10px">O realizado da loja (${brl0(loja.real)}) usa o total do caixa quando ele foi lançado; a soma dos setores é ${brl0(loja.totSetores)}.</div>`:''}
     <div class="tw dtable"><table>
       <thead><tr>
@@ -184,6 +185,7 @@ function renderPainel(app, doc){
   app.querySelectorAll('th.sort').forEach(th=>th.onclick=()=>{ const k=th.dataset.k; if(S.sortKey===k) S.sortDir=-(S.sortDir||-1); else {S.sortKey=k;S.sortDir=k==='nome'?1:-1;} render(); });
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   $('#btnXlsx').onclick=()=>exportXlsx(doc);
+  aplicarCelular(app);
   drawLojaChart(loja);
   drawRank(setores);
 }
@@ -263,7 +265,7 @@ function difPP(a, b){ if(a==null||b==null) return '<span class="muted">—</span
 function kpisComparativos(c){
   if(!c) return '';
   const k=(rot, ref)=> ref ? `<div class="kpi"><div class="l">Venda vs. ${rot}</div><div class="v">${varTxt(c.atual.real, ref.real)}</div><div class="d">${mesLabel(ref.cut.slice(0,7))} até dia ${+ref.cut.slice(8)}: ${brl0(ref.real)}</div></div>` : '';
-  return k('mês passado', c.pm) + k('ano passado', c.pa);
+  return k('mês passado', c.pm).replace('class="kpi"','class="kpi m-hide"') + k('ano passado', c.pa);
 }
 function cardComparativos(c, titulo){
   if(!c || (!c.pm && !c.pa)) return '';
@@ -271,9 +273,10 @@ function cardComparativos(c, titulo){
   const col=(ref, campo, ruim)=> ref ? `<td class="n">${brl0(ref[campo])}</td><td class="n">${varTxt(a[campo], ref[campo], ruim)}</td>` : '<td class="n muted">sem dados</td><td></td>';
   const colP=(ref)=> ref ? `<td class="n">${ref.pPerda!=null?pct(ref.pPerda,2):'—'}</td><td class="n">${difPP(a.pPerda, ref.pPerda)}</td>` : '<td class="n muted">sem dados</td><td></td>';
   const hd=(ref, rot)=> ref ? `${rot}<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(ref.cut.slice(0,7))}</span>` : rot;
-  return `<div class="card" style="margin-top:12px">
-    <div class="row" style="margin-bottom:8px"><h2 style="margin:0">📊 Comparativo ${titulo?'— '+esc(titulo):''}</h2><div class="sp"></div><span class="small muted">Acumulado: dia 1 até dia ${c.dia} · Venda do dia: mesmo dia da semana</span></div>
-    <div class="tw"><table><thead><tr><th></th><th class="n">Atual<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(c.atual.cut.slice(0,7))}</span></th><th class="n">${hd(pm,'Mês passado')}</th><th class="n">Variação</th><th class="n">${hd(pa,'Ano passado')}</th><th class="n">Variação</th></tr></thead><tbody>
+  return `<div class="card m-dobra" data-dobra="comp" style="margin-top:12px">
+    <div class="row m-dobra-h" style="margin-bottom:8px"><h2 style="margin:0">📊 Comparativo ${titulo?'— '+esc(titulo):''}</h2><div class="sp"></div><span class="small muted d-only">Acumulado: dia 1 até dia ${c.dia} · Venda do dia: mesmo dia da semana</span></div>
+    ${comparativoCelular(c)}
+    <div class="tw d-only"><table><thead><tr><th></th><th class="n">Atual<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(c.atual.cut.slice(0,7))}</span></th><th class="n">${hd(pm,'Mês passado')}</th><th class="n">Variação</th><th class="n">${hd(pa,'Ano passado')}</th><th class="n">Variação</th></tr></thead><tbody>
       <tr class="cx-row" data-cx="cacum"><td><span class="cx-chev">▸</span> <b>Venda acumulada</b><div class="small muted">dia 1 até dia ${c.dia} · clique para ver dia a dia</div></td><td class="n"><b>${brl0(a.real)}</b></td>${col(pm,'real')}${col(pa,'real')}</tr>
       ${compDetalheDias(c,'real')}
       <tr class="${c.sid?'':'cx-row'}" ${c.sid?'':'data-cx="cdia"'}><td>${c.sid?'':'<span class="cx-chev">▸</span> '}<b>Venda do dia</b><div class="small muted">mesmo dia da semana: ${fDateL(a.cut)}${pm?.diaK?` · ${fDateL(pm.diaK)}`:''}${pa?.diaK?` · ${fDateL(pa.diaK)}/${pa.diaK.slice(2,4)}`:''}${c.sid?'':' · clique para ver por setor'}</div></td><td class="n"><b>${a.dia?brl0(a.dia):'—'}</b></td>${col(pm,'dia')}${col(pa,'dia')}</tr>
@@ -301,19 +304,20 @@ function renderHistorico(app){
   const cell=(r,id)=>{ const s=r.c.setores.find(x=>x.id===id); if(!s||!s.real) return '<td class="n muted">—</td>'; const p=r.fechado?s.pMes:s.pAte; if(modo==='pct'){ const st=status(p); return `<td class="n" style="background:${{good:'var(--good-bg)',warn:'var(--warn-bg)',bad:'var(--bad-bg)',none:''}[st]}" title="${esc(s.nome)} · ${brl0(s.real)} de ${brl0(r.fechado?s.meta:s.metaAte)}">${pct(p,0)}</td>`; } return `<td class="n">${nf(s.real/1000,0)}</td>`; };
   app.innerHTML=`
   <div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Histórico</h1><p class="sub" style="margin:0">${ks.length} meses · ${mesLabel(ks[0])} a ${mesLabel(ks[ks.length-1])}</p></div></div>
-  <div class="card"><div class="row"><h2 style="margin:0">Realizado × meta por mês</h2></div>
+  <div class="card m-dobra" data-dobra="hist-graf"><div class="row m-dobra-h"><h2 style="margin:0">Realizado × meta por mês</h2></div>
     <div class="legend"><span><i class="lg-bar"></i>Realizado</span><span><i class="lg-line"></i>Meta</span></div>
     <div class="chartbox" style="height:320px"><canvas id="chHist"></canvas></div></div>
   <div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Anos e meses</h2><div class="sp"></div><span class="small muted">Clique no ano para ver os meses e no mês para ver os setores</span></div>
     ${historicoCascata(rows)}
     <p class="small muted">Meses fechados: % sobre a meta do mês. Mês em andamento: % sobre a meta até a data. vs. ano anterior: mesmo período.</p>
   </div>
-  <div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:10px"><h2 style="margin:0">Setores mês a mês</h2><div class="sp"></div><div class="tabs2" id="hModo"><button data-m="pct" class="${modo==='pct'?'on':''}">% da meta</button><button data-m="val" class="${modo==='val'?'on':''}">Realizado (R$ mil)</button></div></div>
+  <div class="card m-dobra" data-dobra="hist-matriz" style="margin-top:12px"><div class="row m-dobra-h" style="margin-bottom:10px"><h2 style="margin:0">Setores mês a mês</h2><div class="sp"></div><div class="tabs2" id="hModo"><button data-m="pct" class="${modo==='pct'?'on':''}">% da meta</button><button data-m="val" class="${modo==='val'?'on':''}">Realizado (R$ mil)</button></div></div>
     <div class="tw" style="max-height:620px"><table><thead><tr><th>Mês</th>${ids.map(i=>`<th class="n" style="white-space:normal;min-width:74px">${esc(nomes[i]||i)}</th>`).join('')}</tr></thead>
     <tbody>${rows.slice().reverse().map(r=>`<tr><td style="white-space:nowrap"><b>${mesLabel(r.k)}</b></td>${ids.map(i=>cell(r,i)).join('')}</tr>`).join('')}</tbody></table></div>
   </div>`;
   app.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); trocarMes(b.dataset.open).then(()=>{ location.hash='#painel'; }); });
   $('#hModo').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.histModo=b.dataset.m; render();});
+  aplicarCelular(app);
   const cv=$('#chHist'); if(cv&&window.Chart){ const ch=new Chart(cv,{data:{labels:rows.map(r=>{const [y,m]=r.k.split('-'); return MESES[+m-1].slice(0,3)+'/'+y.slice(2);}),datasets:[
     {type:'bar',label:'Realizado',data:rows.map(r=>r.real),backgroundColor:rows.map(r=>r.real>=r.metaMes?'#2f5d8a':'#9db6cf'),borderRadius:4,maxBarThickness:26,order:2},
     {type:'line',label:'Meta',data:rows.map(r=>r.metaMes),borderColor:'#a39e94',borderDash:[5,4],borderWidth:2,pointRadius:2,pointBackgroundColor:'#a39e94',order:1}]},
@@ -337,37 +341,40 @@ function renderSetor(app, doc){
   ${S.setorAba!=='bal'&&S.setorAba!=='ana'&&!S.gerente?cardHojeEncarregado(doc,loja,s):''}
   ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':S.setorAba==='ana'?'<div id="anaBox"><div class="empty"><span class="spin"></span> Carregando análise…</div></div>':`
   <div class="grid kpis">
-    <div class="kpi hero"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
+    <div class="kpi hero ${S.gerente?'':'m-hide'}"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
     <div class="kpi"><div class="l">Realizado</div><div class="v">${brl0(s.real)}</div><div class="d">Meta até a data ${brl0(s.metaAte)}</div></div>
-    <div class="kpi"><div class="l">Meta do mês</div><div class="v">${brl0(s.meta)}</div><div class="d">${pct(s.pMes)} · falta ${brl0(s.falta)}</div>${barH(s.pMes)}</div>
-    <div class="kpi"><div class="l">Projeção</div><div class="v">${brl0(s.proj)}</div><div class="d">${pct(s.proj/s.meta)} da meta</div></div>
-    <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(s.necDia)}</div><div class="d">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}: ${brl0(s.metaProx)}</div></div>
+    <div class="kpi m-hide"><div class="l">Meta do mês</div><div class="v">${brl0(s.meta)}</div><div class="d">${pct(s.pMes)} · falta ${brl0(s.falta)}</div>${barH(s.pMes)}</div>
+    <div class="kpi m-hide"><div class="l">Projeção</div><div class="v">${brl0(s.proj)}</div><div class="d">${pct(s.proj/s.meta)} da meta</div></div>
+    <div class="kpi ${S.gerente?'':'m-hide'}"><div class="l">Precisa vender/dia</div><div class="v">${brl0(s.necDia)}</div><div class="d">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}: ${brl0(s.metaProx)}</div></div>
     <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui <a href="#" data-goaba="bal">${brl0(s.perdaBal)} de balanço</a>`:''}</div>${compS?.pm?`<div class="d">vs. mês passado: ${varTxt(s.perda, compS.pm.perda, true)}</div>`:''}</div>
-    <div class="kpi ${S.gerente?'':'hide'}"><div class="l">Participação real</div><div class="v">${pct(s.partReal)}</div><div class="d">da venda dos setores (planejado ${pct(s.share)})</div></div>
+    <div class="kpi m-hide ${S.gerente?'':'hide'}"><div class="l">Participação real</div><div class="v">${pct(s.partReal)}</div><div class="d">da venda dos setores (planejado ${pct(s.share)})</div></div>
     ${kpisComparativos(compS)}
   </div>
+  <button class="btn m-only kpi-mais" data-kpimais>＋ Ver mais números</button>
   ${alertasPainel(doc, loja, [s], true)}
   ${cardComparativos(compS, s.nome)}
-  <div class="card" style="margin-top:12px">
-    <div class="row"><h2 style="margin:0">Dia a dia</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
+  <div class="card m-dobra" data-dobra="setor-graf" style="margin-top:12px">
+    <div class="row m-dobra-h"><h2 style="margin:0">Gráfico do mês</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
     <div class="legend"><span><i class="lg-bar"></i>Realizado</span><span><i class="lg-line"></i>Meta</span></div>
     <div class="chartbox"><canvas id="chSet"></canvas></div>
   </div>
   <div class="card" style="margin-top:12px">
-    <div class="tw"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Diferença</th><th class="n">Acum. meta</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead>
+    <h2 class="m-only">Dia a dia</h2>${listaDiasCelular(s.daily, S.cutoff)}
+    <div class="tw d-only"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Diferença</th><th class="n">Acum. meta</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead>
     <tbody>${(()=>{let am=0,ar=0; return s.daily.map(d=>{am+=d.meta; ar+=d.real; const p=d.real&&d.meta?d.real/d.meta:null; const fut=!d.real; return `<tr style="${fut?'color:#aaa':''}"><td>${fDateL(d.k)}${marcaData(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(p):''}</td><td class="n">${d.real?brl0(d.real-d.meta):'—'}</td><td class="n">${brl0(am)}</td><td class="n">${d.real||d.ate?brl0(ar):'—'}</td><td class="n">${d.real||d.ate?pct(ar/am):'—'}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?` <span class="badge b-warn" title="Inclui ${brl(d.bal)} do balanço">📦 balanço</span>`:''}</td><td class="n">${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</td></tr>`;}).join('');})()}</tbody>
     <tfoot><tr><td>Total</td><td class="n">${brl0(sum(s.daily.map(d=>d.meta)))}</td><td class="n">${brl0(s.real)}</td><td></td><td></td><td></td><td></td><td></td><td class="n">${brl0(s.perda)}</td><td class="n">${pct(s.pPerda,2)}</td></tr></tfoot></table></div>
   </div>`}`;
   $('#selSetor').onchange=e=>{S.setorSel=e.target.value; render();};
   const bv=$('#bVoltarPainel'); if(bv) bv.onclick=()=>{ if(history.length>1) history.back(); else location.hash='#painel'; };
   bindCutoff();
-  $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); });
+  $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); marcarBnav(); });
   app.querySelectorAll('[data-goaba]').forEach(a=>a.onclick=e=>{ e.preventDefault(); S.setorAba=a.dataset.goaba; render(); window.scrollTo(0,0); });
   if(!S.gerente && S.setorAba!=='bal' && S.setorAba!=='ana') preencherQuedasEncarregado(s);
   if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
   if(S.setorAba==='ana'){ renderAnaliseSetor($('#anaBox'), s); return; }
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   drawLojaChart({daily:s.daily},'chSet');
+  aplicarCelular(app);
 }
 async function renderBalancosSetor(box, s, doc){
   const sid=s.id;
@@ -392,8 +399,8 @@ async function renderBalancosSetor(box, s, doc){
     <div class="kpi"><div class="l">Balanços registrados</div><div class="v">${lista.length}</div><div class="d">${lista.length?`desde ${fDate(lista[lista.length-1].data)}`:''}</div></div>
   </div>
   <div class="card" style="margin-top:12px">
-    ${lista.length?`<div class="tw"><table><thead><tr><th>Período</th><th class="n">Perda</th><th>Balanço anterior</th><th>Variação</th><th>Arquivo</th><th>Observação</th><th class="n">Coment.</th><th></th></tr></thead><tbody>
-    ${lista.map(b=>{ const x=varia(b); return `<tr class="click" data-b="${b.id}"><td>${b.periodo_inicio?`${fDate(b.periodo_inicio)} a ${fDate(b.data)}`:fDateL(b.data)}${b.analise?' <span class="badge b-good" title="Relatório analisado">análise</span>':''}</td><td class="n"><b>${brl(+b.valor_perda)}</b></td><td class="small">${x?`${fDate(x.a.data)} · ${brl0(+x.a.valor_perda)}`:'—'}</td><td class="small">${fmtVar(x)}</td><td class="small">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small" style="max-width:260px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n">${b.balanco_comentarios?.[0]?.count||0}</td><td><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`; }).join('')}
+    ${lista.length?`<div class="tw"><table class="t-bal"><thead><tr><th>Período</th><th class="n">Perda</th><th class="hm">Balanço anterior</th><th>Variação</th><th class="hm">Arquivo</th><th class="hm">Observação</th><th class="n hm">Coment.</th><th class="hm"></th></tr></thead><tbody>
+    ${lista.map(b=>{ const x=varia(b); return `<tr class="click" data-b="${b.id}"><td>${b.periodo_inicio?`${fDate(b.periodo_inicio)} a ${fDate(b.data)}`:fDateL(b.data)}${b.analise?' <span class="badge b-good" title="Relatório analisado">análise</span>':''}</td><td class="n"><b>${brl(+b.valor_perda)}</b></td><td class="small hm">${x?`${fDate(x.a.data)} · ${brl0(+x.a.valor_perda)}`:'—'}</td><td class="small">${fmtVar(x)}</td><td class="small hm">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small hm" style="max-width:260px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n hm">${b.balanco_comentarios?.[0]?.count||0}</td><td class="hm"><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`; }).join('')}
     </tbody></table></div>`:`<div class="empty">Nenhum balanço do ${esc(s.nome)} ainda.${S.gerente?' Clique em “Novo balanço” para lançar.':''}</div>`}
   </div>`;
   const bn=$('#bsNovo'); if(bn) bn.onclick=()=>{ S.balSetor=sid; formBalanco(null); };
@@ -429,8 +436,8 @@ function renderLancar(app, doc){
     <div class="row" style="margin-top:12px">
       <label class="f ${S.gerente?'':'hide'}" style="max-width:240px">Total do caixa (opcional — se preenchido, é o realizado da loja)<input class="in" inputmode="decimal" id="inTotal" value="${d.total!=null?nf(d.total):''}" placeholder="opcional"></label>
       <div class="sp"></div>
-      <button class="btn" id="bLimpar">Limpar dia</button>
-      <button class="btn p" id="bSalvar">💾 Salvar ${fDate(k)}</button>
+      <div class="m-sticky"><button class="btn" id="bLimpar">Limpar dia</button>
+      <button class="btn p" id="bSalvar">💾 Salvar ${fDate(k)}</button></div>
     </div>
   </div>`;
   app.querySelectorAll('.dchip').forEach(c=>c.onclick=()=>{ S.lancData=c.dataset.d; render(); });
@@ -975,8 +982,8 @@ async function renderBalancos(app){
     <div class="kpi hero"><div class="l">Total em balanços</div><div class="v">${brl0(Object.values(porSetor).reduce((a,b)=>a+b,0))}</div><div class="d">${lista.length} balanço(s) no mês</div></div>
   </div>
   <div class="card" style="margin-top:12px">
-    ${lst.length?`<div class="tw"><table><thead><tr><th>Período</th><th>Setor</th><th class="n">Perda</th><th>Balanço anterior</th><th>Variação</th><th>Arquivo</th><th>Observação</th><th class="n">Coment.</th><th></th></tr></thead><tbody>
-    ${lst.map(b=>`<tr class="click" data-b="${b.id}"><td>${b.periodo_inicio?`${fDate(b.periodo_inicio)} a ${fDate(b.data)}`:fDateL(b.data)}${b.analise?' <span class="badge b-good" title="Relatório analisado">análise</span>':''}</td><td><b>${esc(nomeSetor(b.setor_id))}</b></td><td class="n"><b>${brl(+b.valor_perda)}</b></td>${(()=>{ const x=variacao(b); return `<td class="small">${x?`${fDate(x.a.data)} · ${brl0(+x.a.valor_perda)}`:'—'}</td><td class="small">${fmtVar(x)}</td>`; })()}<td class="small">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small" style="max-width:280px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n">${b.balanco_comentarios?.[0]?.count||0}</td><td><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`).join('')}
+    ${lst.length?`<div class="tw"><table class="t-bal"><thead><tr><th>Período</th><th>Setor</th><th class="n">Perda</th><th class="hm">Balanço anterior</th><th>Variação</th><th class="hm">Arquivo</th><th class="hm">Observação</th><th class="n hm">Coment.</th><th class="hm"></th></tr></thead><tbody>
+    ${lst.map(b=>`<tr class="click" data-b="${b.id}"><td>${b.periodo_inicio?`${fDate(b.periodo_inicio)} a ${fDate(b.data)}`:fDateL(b.data)}${b.analise?' <span class="badge b-good" title="Relatório analisado">análise</span>':''}</td><td><b>${esc(nomeSetor(b.setor_id))}</b></td><td class="n"><b>${brl(+b.valor_perda)}</b></td>${(()=>{ const x=variacao(b); return `<td class="small hm">${x?`${fDate(x.a.data)} · ${brl0(+x.a.valor_perda)}`:'—'}</td><td class="small">${fmtVar(x)}</td>`; })()}<td class="small hm">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small hm" style="max-width:280px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n hm">${b.balanco_comentarios?.[0]?.count||0}</td><td class="hm"><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`).join('')}
     </tbody></table></div>`:`<div class="empty">Nenhum balanço ${filtro?'deste setor ':''}em ${mesLabel(mes)}.${S.gerente?' Clique em “Novo balanço” para lançar.':''}</div>`}
   </div>`;
   $('#bFiltro').onchange=e=>{ S.balSetor=e.target.value; renderBalancos(app); };
@@ -1096,6 +1103,7 @@ function montarCabecalho(){
   $('#hctl').classList.remove('hide');
   $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta e administração">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
   $('#bConta').onclick=()=>{ location.hash='#conta'; };
+  montarBnav();
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 function route(){
@@ -1104,7 +1112,7 @@ function route(){
   if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   $('#bConta')?.classList.toggle('on', S.view==='conta');
-  render();
+  render(); marcarBnav();
   // ao trocar de tela, começa do topo; ao voltar para o painel, volta para onde estava
   if(antes!==S.view){ if(S.view==='painel' && S.voltarPainel && S.painelScroll!=null){ const y=S.painelScroll; requestAnimationFrame(()=>window.scrollTo(0,y)); S.voltarPainel=false; } else window.scrollTo(0,0); }
 }
@@ -1334,7 +1342,7 @@ function alertasPainel(doc, loja, setores, soSetor){
   if(abaixo.length) itens.push({t:'warn', h:'Abaixo de 90% da meta acumulada', d:abaixo.join(' · ')});
   if(!itens.length) return soSetor ? `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: sem queda seguida, perda dentro do normal e acima de 90% da meta acumulada.</div>` : `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: ${S.gerente?'todos os dias lançados e ':''}nenhum setor com queda seguida ou perda fora do normal.</div>`;
   setTimeout(()=>document.querySelectorAll('[data-dia]').forEach(a=>a.onclick=()=>{ S.lancData=a.dataset.dia; }),0);
-  return `<div class="card" style="margin-top:12px;border-color:#f1d98a"><h2 style="margin:0 0 8px">⚠ Alertas</h2>${itens.map(i=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="small" style="font-weight:700;color:${i.t==='bad'?'var(--bad)':'var(--warn)'}">${i.t==='bad'?'▼':'▲'} ${i.h}</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px">${i.d}</div></div>`).join('')}</div>`;
+  return `<div class="card m-dobra" data-dobra="alertas" style="margin-top:12px;border-color:#f1d98a"><h2 class="m-dobra-h" style="margin:0 0 8px">⚠ Alertas <span class="badge b-warn">${itens.length}</span></h2>${itens.map(i=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="small" style="font-weight:700;color:${i.t==='bad'?'var(--bad)':'var(--warn)'}">${i.t==='bad'?'▼':'▲'} ${i.h}</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px">${i.d}</div></div>`).join('')}</div>`;
 }
 
 /* ===================== instalar no celular ===================== */

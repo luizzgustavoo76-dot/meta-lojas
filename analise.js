@@ -148,7 +148,7 @@ async function renderAnaliseSetor(box, s){
   <div class="card" style="margin-top:12px">
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <h2 style="margin:0">Departamentos e produtos</h2><div class="sp"></div>
-      <input id="anBusca" placeholder="Buscar produto…" value="${esc(S.anaBusca||'')}" style="border:1px solid var(--line);border-radius:9px;padding:7px 10px;min-width:200px">
+      <input id="anBusca" class="an-busca" placeholder="Buscar produto…" value="${esc(S.anaBusca||'')}" style="border:1px solid var(--line);border-radius:9px;padding:7px 10px;min-width:200px">
       <select id="anOrd" style="border:1px solid var(--line);border-radius:9px;padding:7px 10px"><option value="v">Ordenar: maior venda</option><option value="var">Ordenar: maior queda</option><option value="alta">Ordenar: maior alta</option><option value="m">Ordenar: menor margem</option></select>
     </div>
     <div class="tabs2" id="anFil">${[['todos','Todos'],['alertas','⚠ Alertas'],['queda','📉 Quedas'],['alta','📈 Altas'],['A','⭐ Curva A'],['parado','⛔ Pararam'],['novo','🆕 Novos']].map(([k,t])=>`<button data-f="${k}" class="${(S.anaFil||'todos')===k?'on':''}">${t}</button>`).join('')}
@@ -178,7 +178,12 @@ async function renderAnaliseSetor(box, s){
           <span class="an-dc hm"><span class="l">Part.</span>${pct(d.part)}</span>
           <span class="an-dc hm"><span class="l">Margem</span>${d.m!=null?pct(d.m/100):'—'}</span>
         </button>
-        ${aberto?`<div class="tw an-pt"><table><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var.</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
+        ${aberto?`<div class="m-only an-ml">${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<details class="dl an-mp ${S.anaFoco===p.c?'an-foco':''}" id="anpm-${esc(p.c)}"><summary><span class="dl-d"><span class="an-mn">${esc(p.d)}</span><span class="an-mt">${tags(p)}</span></span><b class="dl-v">${p.v?brl0(p.v):'—'}</b><span class="dl-p">${base?varHtml(p.v,p.vb):''}</span></summary>
+            <div class="dl-c"><div><span>Código</span><b>${esc(p.c)}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small>`:''}</b></div>
+            ${base?`<div><span>Venda ${nomeBase}</span><b>${p.vb?brl(p.vb):'—'}</b></div><div><span>Diferença</span><b>${p.vb!=null?`${p.v-p.vb>=0?'+':''}${brl0(p.v-p.vb)}`:'—'}</b></div>`:''}
+            <div><span>Participação</span><b>${p.v?pct(p.part):'—'}</b></div><div><span>Margem</span><b>${p.m!=null?pct(p.m/100):'—'}</b></div>
+            ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?brl(pb):'—'}</b></div>`:''}</div></details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
+        <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var.</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
           ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(p.c)}</span> ${esc(p.d)} ${tags(p)}</td>
             <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>
             <td class="n"><b>${p.v?brl(p.v):'—'}</b></td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
@@ -188,7 +193,7 @@ async function renderAnaliseSetor(box, s){
       </div>`; }).join('');
     $('#anCasc').innerHTML = html || '<div class="empty">Nenhum produto com esse filtro.</div>';
     $('#anCasc').querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{ const c=+b.dataset.d; if(S.anaAbertos.has(c)) S.anaAbertos.delete(c); else S.anaAbertos.add(c); desenhar(); });
-    if(S.anaFoco){ const el=document.getElementById('anp-'+S.anaFoco); if(el) el.scrollIntoView({block:'center',behavior:'smooth'}); setTimeout(()=>{ S.anaFoco=null; el?.classList.remove('an-foco'); }, 2500); }
+    if(S.anaFoco){ const el=document.getElementById((ehCelular()?'anpm-':'anp-')+S.anaFoco); if(el && el.tagName==='DETAILS') el.open=true; if(el) el.scrollIntoView({block:'center',behavior:'smooth'}); setTimeout(()=>{ S.anaFoco=null; el?.classList.remove('an-foco'); }, 2500); }
   };
   desenhar();
   $('#anPer').onchange=e=>{ S.anaSel[sid]=+e.target.value; renderAnaliseSetor(box,s); };

@@ -41,8 +41,8 @@ function cardRanking(doc, setores){
   const meta = setores.filter(s=>s.pAte!=null).map(s=>({s, v:s.pAte}));
   const perda = setores.filter(s=>s.real>0 && s.perda>0).map(s=>({s, v:s.pPerda})); const semPerda=setores.filter(s=>!(s.perda>0)).length;
   const med=i=>['🥇','🥈','🥉'][i]||`<span class="rk-n">${i+1}º</span>`;
-  const col=(tit, sub, lista, fmt, cor)=> `<div class="rk-col"><div class="rk-t">${tit}</div><div class="small muted" style="margin-bottom:6px">${sub}</div>${lista.length?lista.map((x,i)=>`<div class="rk-l ${i>=lista.length-2&&lista.length>5?'rk-fim':''}" data-s="${x.s.id}"><span class="rk-m">${med(i)}</span><span class="rk-nm">${esc(x.s.nome)}</span><b style="color:${cor(x.v)}">${fmt(x.v)}</b></div>`).join(''):'<div class="small muted">sem dados</div>'}</div>`;
-  return `<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">🏆 Ranking dos setores</h2><div class="sp"></div><span class="small muted">até ${fDateL(S.cutoff)} · toque no setor para abrir</span></div>
+  const col=(tit, sub, lista, fmt, cor)=> `<div class="rk-col"><div class="rk-t">${tit}</div><div class="small muted" style="margin-bottom:6px">${sub}</div>${lista.length?lista.map((x,i)=>`<div class="rk-l ${i>=3&&i<lista.length-3?'rk-meio':''}" data-s="${x.s.id}"><span class="rk-m">${med(i)}</span><span class="rk-nm">${esc(x.s.nome)}</span><b style="color:${cor(x.v)}">${fmt(x.v)}</b></div>`).join(''):'<div class="small muted">sem dados</div>'}${lista.length>6?`<button class="btn m-only rk-todos-b" style="margin-top:6px;width:100%">Ver todos (${lista.length})</button>`:''}</div>`;
+  return `<div class="card m-dobra" data-dobra="ranking" style="margin-top:12px"><div class="row m-dobra-h" style="margin-bottom:8px"><h2 style="margin:0">🏆 Ranking dos setores</h2><div class="sp"></div><span class="small muted d-only">até ${fDateL(S.cutoff)} · toque no setor para abrir</span></div>
     <div class="rk-g">
       ${col('% da meta até a data','quem está mais perto da meta', meta.sort((a,b)=>b.v-a.v), v=>pct(v), v=>v>=1?'var(--good)':v>=0.9?'var(--warn)':'var(--bad)')}
       ${col('Crescimento vs. ano passado', ly?`mesmo período de ${mesLabel(ma)}`:'sem o mês do ano passado', cresc.sort((a,b)=>b.v-a.v), v=>`${v>0?'+':''}${pct(v)}`, v=>v>=0?'var(--good)':'var(--bad)')}
@@ -182,7 +182,7 @@ function detalheSetorHtml(doc, sid){
     </div>
     ${alertasPainel(doc, loja, [s], true)}
     ${cardComparativos(c, s.nome)}
-    <div class="card" style="margin-top:12px"><h2>Dia a dia</h2><div class="tw" style="max-height:420px"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th></tr></thead><tbody>
+    <div class="card" style="margin-top:12px"><h2>Dia a dia</h2>${listaDiasCelular(s.daily, S.cutoff, true)}<div class="tw d-only" style="max-height:420px"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th></tr></thead><tbody>
       ${(()=>{ let am=0,ar=0; return dias.map(d=>{ am+=d.meta; ar+=d.real; return `<tr><td>${fDateL(d.k)}${marcaData(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(d.real/d.meta):''}</td><td class="n">${brl0(ar)}</td><td class="n">${pct(ar/(am||1))}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?' 📦':''}</td></tr>`; }).join(''); })()}
     </tbody></table></div></div>
   </div>`;
@@ -195,7 +195,7 @@ function abrirSetorNoPainel(el, doc, soAbrir){
   let det;
   if(ehTr){ det=document.createElement('tr'); det.className='setor-det'; det.dataset.sid=sid; det.innerHTML=`<td colspan="${el.children.length}">${detalheSetorHtml(doc,sid)}</td>`; }
   else { det=document.createElement('div'); det.className='setor-det'; det.dataset.sid=sid; det.innerHTML=detalheSetorHtml(doc,sid); }
-  el.after(det); el.classList.add('sd-aberto'); ajustarLargura(det);
+  el.after(det); el.classList.add('sd-aberto'); ajustarLargura(det); aplicarCelular(det);
   det.querySelector('[data-fechar-setor]').onclick=()=>{ det.remove(); el.classList.remove('sd-aberto'); el.scrollIntoView({block:'center'}); };
   det.querySelector('[data-abrir-setor]').onclick=()=>{ S.setorSel=sid; S.setorAba='dia'; S.painelScroll=window.scrollY; S.voltarPainel=true; location.hash='#setor'; };
 }
@@ -208,19 +208,19 @@ function historicoCascata(rows){
     if(r.fechado){ const c=resumoMes(ant); const x= sid ? c.setores.find(z=>z.id===sid) : c.loja; return x?.real||null; }
     const cut=lastSetorDay(r.d)||lastDataDay(r.d); if(!cut) return null; const b=numerosAte(ant, mesmoDiaEm(`${+y-1}-${m}`, +cut.slice(8)), sid); return b?.real||null; };
   const varC=(a,b)=> b ? `<span style="color:${a>=b?'var(--good)':'var(--bad)'};font-weight:700">${a>=b?'+':''}${pct(a/b-1)}</span>` : '—';
-  let html=`<div class="tw"><table class="hist-cx"><thead><tr><th>Período</th><th class="n">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n">Diferença</th><th class="n">vs. ano anterior</th><th class="n">Perdas</th><th></th></tr></thead><tbody>`;
+  let html=`<div class="tw"><table class="hist-cx"><thead><tr><th>Período</th><th class="n hm">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n hm">Diferença</th><th class="n">vs. ano ant.</th><th class="n hm">Perdas</th><th class="hm"></th></tr></thead><tbody>`;
   for(const y of anos){
     const rs=rows.filter(r=>r.k.startsWith(y)).sort((a,b)=>b.k.localeCompare(a.k));
     const metaRef=rs.reduce((a,r)=>a+(r.fechado?r.metaMes:r.c.loja.metaAte),0), real=rs.reduce((a,r)=>a+r.real,0), perda=rs.reduce((a,r)=>a+(r.perda||0),0);
     let ant=0, temAnt=false; for(const r of rs){ const b=baseAnt(r,null); if(b){ ant+=b; temAnt=true; } }
     const aberto = y===anoAtual;
-    html+=`<tr class="cx-row cx-ano ${aberto?'cx-open':''}" data-cx="y${y}"><td><span class="cx-chev">▸</span> <b style="font-size:16px">${y}</b> <span class="small muted">${rs.length} mês(es)</span></td><td class="n">${brl0(metaRef)}</td><td class="n"><b>${brl0(real)}</b></td><td>${badge(metaRef?real/metaRef:null)}</td><td class="n">${brl0(real-metaRef)}</td><td class="n">${temAnt?varC(real,ant):'—'}</td><td class="n">${perda?brl0(perda):'—'}</td><td></td></tr>`;
+    html+=`<tr class="cx-row cx-ano ${aberto?'cx-open':''}" data-cx="y${y}"><td><span class="cx-chev">▸</span> <b style="font-size:16px">${y}</b> <span class="small muted">${rs.length} mês(es)</span></td><td class="n hm">${brl0(metaRef)}</td><td class="n"><b>${brl0(real)}</b></td><td>${badge(metaRef?real/metaRef:null)}</td><td class="n hm">${brl0(real-metaRef)}</td><td class="n">${temAnt?varC(real,ant):'—'}</td><td class="n hm">${perda?brl0(perda):'—'}</td><td class="hm"></td></tr>`;
     for(const r of rs){
       const b=baseAnt(r,null); const mk=`m${r.k}`;
-      html+=`<tr class="cx-row cx-mes ${aberto?'':'hide'}" data-cx="${mk}" data-cx-of="y${y}" data-root="y${y}"><td style="padding-left:28px"><span class="cx-chev">▸</span> <b>${mesLabel(r.k)}</b>${r.fechado?'':' <span class="badge b-none">em andamento</span>'}</td><td class="n">${brl0(r.metaMes)}</td><td class="n"><b>${brl0(r.real)}</b></td><td>${badge(r.fechado?r.pMes:r.pAte)}</td><td class="n">${r.fechado?brl0(r.real-r.metaMes):'—'}</td><td class="n">${varC(r.real,b)}</td><td class="n">${r.perda?brl0(r.perda):'—'}</td><td><button class="btn" data-open="${r.k}" style="padding:3px 9px" title="Abrir este mês no painel">Painel</button></td></tr>`;
+      html+=`<tr class="cx-row cx-mes ${aberto?'':'hide'}" data-cx="${mk}" data-cx-of="y${y}" data-root="y${y}"><td style="padding-left:28px" class="hist-m"><span class="cx-chev">▸</span> <b class="d-inl">${mesLabel(r.k)}</b><b class="m-inl">${MESES[+r.k.slice(5)-1].slice(0,3).toLowerCase()}/${r.k.slice(2,4)}</b>${r.fechado?'':' <span class="badge b-none">em andamento</span>'}</td><td class="n hm">${brl0(r.metaMes)}</td><td class="n"><b>${brl0(r.real)}</b></td><td>${badge(r.fechado?r.pMes:r.pAte)}</td><td class="n hm">${r.fechado?brl0(r.real-r.metaMes):'—'}</td><td class="n">${varC(r.real,b)}</td><td class="n hm">${r.perda?brl0(r.perda):'—'}</td><td class="hm"><button class="btn" data-open="${r.k}" style="padding:3px 9px" title="Abrir este mês no painel">Painel</button></td></tr>`;
       const sets=[...r.c.setores].sort((a,b)=>b.real-a.real);
-      html+=`<tr class="cx-det hide" data-cx-of="${mk}" data-root="y${y}"><td colspan="8" style="padding:6px 10px 12px 40px"><table class="hist-set"><thead><tr><th>Setor</th><th class="n">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n">vs. ano anterior</th><th class="n">Perda</th><th class="n">% perda</th></tr></thead><tbody>
-        ${sets.map(s=>{ const p=r.fechado?s.pMes:s.pAte; const ba=baseAnt(r,s.id); return `<tr><td><b>${esc(s.nome)}</b></td><td class="n">${brl0(r.fechado?s.meta:s.metaAte)}</td><td class="n">${brl0(s.real)}</td><td>${badge(p)}</td><td class="n">${varC(s.real,ba)}</td><td class="n">${s.perda?brl0(s.perda):'—'}</td><td class="n">${s.perda&&s.real?pct(s.perda/s.real,2):'—'}</td></tr>`; }).join('')}
+      html+=`<tr class="cx-det hide" data-cx-of="${mk}" data-root="y${y}"><td colspan="8" class="hist-sub"><table class="hist-set"><thead><tr><th>Setor</th><th class="n hm">Meta</th><th class="n">Realizado</th><th>% da meta</th><th class="n">vs. ano ant.</th><th class="n hm">Perda</th><th class="n hm">% perda</th></tr></thead><tbody>
+        ${sets.map(s=>{ const p=r.fechado?s.pMes:s.pAte; const ba=baseAnt(r,s.id); return `<tr><td><b>${esc(s.nome)}</b></td><td class="n hm">${brl0(r.fechado?s.meta:s.metaAte)}</td><td class="n">${brl0(s.real)}</td><td>${badge(p)}</td><td class="n">${varC(s.real,ba)}</td><td class="n hm">${s.perda?brl0(s.perda):'—'}</td><td class="n hm">${s.perda&&s.real?pct(s.perda/s.real,2):'—'}</td></tr>`; }).join('')}
       </tbody></table></td></tr>`;
     }
   }
@@ -284,4 +284,86 @@ function renderDiarias(app, doc){
       <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar</button></div>`);
     $('#mN',m).onclick=closeModal;
     $('#mY',m).onclick=async()=>{ const v=parseNum($('#deV',m).value); if(isNaN(v)||v<=0) return toast('Valor inválido'); try{ await q(S.sb.from('diarias').update({data:$('#deD',m).value, valor:round2(v), observacao:$('#deO',m).value.trim()||null}).eq('id',l.id)); closeModal(); recarregar('Diária salva ✔'); }catch(e){ toast(e.message,5000); } }; });
+}
+
+
+/* ===================== CELULAR ===================== */
+const ehCelular = () => window.matchMedia('(max-width:760px)').matches;
+const BNAV_G=[['painel','📊','Painel'],['setor','🏪','Setores'],['lancar','➕','Lançar'],['balancos','📦','Balanços'],['mais','☰','Mais']];
+function montarBnav(){
+  const nav=$('#bnav'); if(!nav) return;
+  const itens = S.gerente ? BNAV_G : [['setor:dia','🏪',meusSetoresIds().length>1?'Setores':'Meu setor'],['setor:ana','🔎','Análise'],['setor:bal','📦','Balanço'],['historico','📅','Histórico']];
+  nav.innerHTML=itens.map(([k,i,t])=>`<a href="#" data-bn="${k}"><span class="bn-i">${i}</span><span class="bn-t">${t}</span></a>`).join('');
+  nav.classList.remove('hide');
+  nav.querySelectorAll('[data-bn]').forEach(a=>a.onclick=e=>{ e.preventDefault(); const k=a.dataset.bn;
+    if(k==='mais') return menuMais();
+    const [v,aba]=k.split(':'); if(aba){ S.setorAba=aba; if(S.view==='setor'){ render(); marcarBnav(); } else location.hash='#setor'; window.scrollTo(0,0); }
+    else if(location.hash==='#'+v){ window.scrollTo({top:0,behavior:'smooth'}); } else location.hash='#'+v; });
+  marcarBnav();
+}
+function marcarBnav(){
+  const nav=$('#bnav'); if(!nav) return;
+  nav.querySelectorAll('[data-bn]').forEach(a=>{ const [v,aba]=a.dataset.bn.split(':');
+    let on = aba ? (S.view==='setor' && (S.setorAba||'dia')===aba) : (v===S.view);
+    if(v==='mais') on=['diarias','historico','metas','conta'].includes(S.view);
+    a.classList.toggle('on',on); });
+}
+function menuMais(){
+  const it=[['diarias','💵','Diárias'],['historico','📅','Histórico'],['metas','🎯','Metas do mês'],['conta','👤','Minha conta e administração']];
+  const m=modal(`<div class="sheet"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Mais opções</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
+    ${it.map(([k,i,t])=>`<a class="sheet-i ${S.view===k?'on':''}" href="#${k}"><span>${i}</span>${t}</a>`).join('')}
+    <button class="sheet-i" id="mmAtual"><span>🔄</span>Atualizar os números</button>
+    <button class="sheet-i" id="mmSair" style="color:var(--bad)"><span>🚪</span>Sair</button></div>`);
+  m.closest('.modal-bg')?.classList.add('as-sheet');
+  $('#mN',m).onclick=closeModal; m.querySelectorAll('a.sheet-i').forEach(a=>a.onclick=()=>closeModal());
+  $('#mmAtual',m).onclick=()=>{ closeModal(); atualizarDados(true); };
+  $('#mmSair',m).onclick=()=>{ closeModal(); sair(); };
+}
+/* blocos que abrem/fecham no celular, "ver mais números" e ranking completo */
+function aplicarCelular(root){
+  S.dobras=S.dobras||{};
+  root.querySelectorAll('.m-dobra').forEach(c=>{ const k=c.dataset.dobra; const ab = k in S.dobras ? S.dobras[k] : c.dataset.aberto==='1'; c.classList.toggle('m-aberto', ab); });
+  root.querySelectorAll('[data-kpimais]').forEach(b=>{ const g=b.previousElementSibling; b.onclick=()=>{ const on=!g.classList.contains('mostrar'); g.classList.toggle('mostrar',on); b.textContent=on?'－ Menos números':'＋ Ver mais números'; }; });
+  root.querySelectorAll('.rk-todos-b').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const col=b.closest('.rk-col'); const on=!col.classList.contains('rk-todos'); col.classList.toggle('rk-todos',on); b.textContent=on?'Mostrar menos':`Ver todos (${col.querySelectorAll('.rk-l').length})`; });
+}
+document.addEventListener('click', e=>{
+  const h=e.target.closest('.m-dobra-h'); if(!h || !ehCelular() || e.target.closest('button,a,input,select')) return;
+  const c=h.closest('.m-dobra'); const on=!c.classList.contains('m-aberto'); c.classList.toggle('m-aberto',on); S.dobras=S.dobras||{}; if(c.dataset.dobra) S.dobras[c.dataset.dobra]=on;
+  if(on) c.querySelectorAll('canvas').forEach(cv=>{ const ch=window.Chart&&Chart.getChart(cv); if(ch) ch.resize(); });
+});
+/* dia a dia em lista (celular): dia, realizado e % — toque abre o resto */
+function listaDiasCelular(daily, cutoff, semFuturos){
+  let am=0, ar=0; const pass=[], fut=[];
+  for(const d of daily){ am+=d.meta; ar+=d.real; const it={...d, am, ar}; if(d.real || (cutoff && d.k<=cutoff)) pass.push(it); else fut.push(it); }
+  const linha=d=>`<details class="dl"><summary><span class="dl-d">${fDateL(d.k)}${marcaData(d.k)}</span><b class="dl-v">${d.real?brl0(d.real):'—'}</b><span class="dl-p">${d.real&&d.meta?badge(d.real/d.meta):''}</span></summary>
+    <div class="dl-c"><div><span>Meta do dia</span><b>${brl0(d.meta)}</b></div><div><span>Diferença</span><b style="color:${d.real-d.meta>=0?'var(--good)':'var(--bad)'}">${d.real?`${d.real-d.meta>=0?'+':''}${brl0(d.real-d.meta)}`:'—'}</b></div>
+    <div><span>Acumulado</span><b>${brl0(d.ar)} de ${brl0(d.am)}</b></div><div><span>% acumulado</span><b>${pct(d.ar/(d.am||1))}</b></div>
+    <div><span>Perda</span><b>${d.perda?brl(d.perda):'—'}${d.bal?' 📦':''}</b></div><div><span>% perda</span><b>${d.perda&&d.real?pct(d.perda/d.real,2):'—'}</b></div></div></details>`;
+  return `<div class="m-only dlist">${pass.slice().reverse().map(linha).join('')}
+    ${!semFuturos && fut.length?`<details class="dl dl-fut"><summary><span class="dl-d">Próximos ${fut.length} dia(s)</span><b class="dl-v small muted">ver metas</b><span></span></summary><div class="dl-c dl-c1">${fut.map(d=>`<div><span>${fDateL(d.k)}${marcaData(d.k)}</span><b>${brl0(d.meta)}</b></div>`).join('')}</div></details>`:''}</div>`;
+}
+/* comparativo em cartões (celular) */
+function linhasDias(c, campo){
+  const mes=c.atual.cut.slice(0,7); const dA=dailyDe(c.doc, c.atual.cut, c.sid);
+  const dM=c.pm? dailyDe(S.months[c.mp], c.pm.cut, c.sid) : null, dY=c.pa? dailyDe(S.months[c.ma], c.pa.cut, c.sid) : null;
+  const val=(arr,k)=>arr?.find(z=>z.k===k)?.[campo] ?? null; const out=[];
+  for(let d=1; d<=c.dia; d++){ const kA=`${mes}-${String(d).padStart(2,'0')}`, kM=mesmoDiaEm(c.mp,d), kY=mesmoDiaEm(c.ma,d); out.push({kA, vA:val(dA,kA), kM, vM:dM?val(dM,kM):null, kY, vY:dY?val(dY,kY):null}); }
+  return out;
+}
+function comparativoCelular(c){
+  const a=c.atual, pm=c.pm, pa=c.pa;
+  const vs=(rot, ref, campo, ruim)=> ref ? `<div class="cm-vs"><span>${rot}</span><b>${brl0(ref[campo])}</b>${varTxt(a[campo], ref[campo], ruim)}</div>` : `<div class="cm-vs muted"><span>${rot}</span><b>sem dados</b></div>`;
+  const lista=(campo)=> linhasDias(c,campo).reverse().map(x=>`<div class="cm-r"><span>${fDateL(x.kA)}${marcaData(x.kA)}</span><b>${x.vA?brl0(x.vA):'—'}</b><span class="small">${x.vM!=null?`m.p. ${x.vA&&x.vM?varTxt(x.vA,x.vM,campo==='perda'):'—'}`:''}</span><span class="small">${x.vY!=null?`a.p. ${x.vA&&x.vY?varTxt(x.vA,x.vY,campo==='perda'):'—'}`:''}</span></div>`).join('');
+  const setoresDia=()=>{ const rA=calc(c.doc, a.cut).setores; const rM=pm?.diaK? calc(S.months[c.mp], pm.diaK).setores : null; const rY=pa?.diaK? calc(S.months[c.ma], pa.diaK).setores : null;
+    const dia=(l,id,k)=> l?.find(x=>x.id===id)?.daily.find(z=>z.k===k)?.real || 0;
+    return rA.map(s=>({s,a:dia(rA,s.id,a.cut),m:rM?dia(rM,s.id,pm.diaK):null,y:rY?dia(rY,s.id,pa.diaK):null})).sort((x,y)=>y.a-x.a).map(x=>`<div class="cm-r"><span><b>${esc(x.s.nome)}</b></span><b>${x.a?brl0(x.a):'—'}</b><span class="small">${x.m!=null&&x.a&&x.m?`m.p. ${varTxt(x.a,x.m)}`:''}</span><span class="small">${x.y!=null&&x.a&&x.y?`a.p. ${varTxt(x.a,x.y)}`:''}</span></div>`).join(''); };
+  const bloco=(tit, sub, campo, ruim, abre)=>`<details class="cm" ${abre?'':'data-sem'}><summary><div class="cm-t"><b>${tit}</b><small>${sub}</small></div><div class="cm-v">${campo==='pPerda'?(a.pPerda!=null?pct(a.pPerda,2):'—'):brl0(a[campo])}</div>
+      ${campo==='pPerda'?`${pm?`<div class="cm-vs"><span>Mês passado</span><b>${pm.pPerda!=null?pct(pm.pPerda,2):'—'}</b>${difPP(a.pPerda,pm.pPerda)}</div>`:''}${pa?`<div class="cm-vs"><span>Ano passado</span><b>${pa.pPerda!=null?pct(pa.pPerda,2):'—'}</b>${difPP(a.pPerda,pa.pPerda)}</div>`:''}`:`${vs('Mês passado',pm,campo,ruim)}${vs('Ano passado',pa,campo,ruim)}`}
+      ${abre?'<div class="cm-mais">toque para ver ▾</div>':''}</summary>${abre?`<div class="cm-l">${abre()}</div>`:''}</details>`;
+  return `<div class="m-only cm-g">
+    ${bloco('Venda acumulada', `dia 1 até dia ${c.dia}`, 'real', false, ()=>lista('real'))}
+    ${bloco('Venda do dia', `${fDateL(a.cut)} · mesmo dia da semana`, 'dia', false, c.sid?null:setoresDia)}
+    ${bloco('Perda acumulada', 'inclui balanços', 'perda', true, ()=>lista('perda'))}
+    ${bloco('% de perda', 'sobre a venda', 'pPerda', true, null)}
+  </div>`;
 }
