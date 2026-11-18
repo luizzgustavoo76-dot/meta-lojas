@@ -104,6 +104,7 @@ function render(){
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
+  else if(S.view==='tv') renderTV(app,doc);
   else if(S.view==='usuarios' && S.gerente) renderUsuarios(app);
   else if(S.view==='metas' && S.gerente) renderMetas(app,doc);
   else renderPainel(app,doc);
@@ -141,6 +142,7 @@ function renderPainel(app, doc){
     ${(()=>{ const c=compAnoAnterior(doc,S.cutoff); return c?`<div class="kpi"><div class="l">vs. ${mesLabel(c.mes)}</div><div class="v" style="color:${c.cresc>=0?'var(--good)':'var(--bad)'}">${c.cresc>=0?'▲ +':'▼ '}${pct(c.cresc)}</div><div class="d">Mesmo período: ${brl0(c.real)} até dia ${c.dia}</div></div>`:''; })()}
     <div class="kpi"><div class="l">Perdas lançadas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div></div>
   </div>
+  ${alertasPainel(doc, loja, setores)}
 
   <div class="grid two" style="margin-top:12px">
     <div class="card">
@@ -796,6 +798,14 @@ async function renderBalancos(app){
   catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(S.view!=='balancos') return;
   if(S.preview) lista=lista.filter(b=>S.preview.setores.includes(b.setor_id));
+  // balanço anterior de cada setor (para comparar)
+  let antes=[]; try{ antes=await q(S.sb.from('balancos').select('id,setor_id,data,valor_perda').lt('data',ini).order('data',{ascending:false}).limit(200)); }catch(_){ }
+  if(S.preview) antes=antes.filter(b=>S.preview.setores.includes(b.setor_id));
+  const todos=[...lista,...antes].sort((a,b)=>b.data.localeCompare(a.data)||b.id-a.id);
+  const anteriorDe=b=>todos.find(x=>x.setor_id===b.setor_id && (x.data<b.data || (x.data===b.data && x.id<b.id)));
+  S._anteriorDe=anteriorDe;
+  const variacao=(b)=>{ const a=anteriorDe(b); if(!a) return null; const v=+b.valor_perda||0, va=+a.valor_perda||0; return {a, dif:v-va, pct: va? (v-va)/va : null}; };
+  const fmtVar=x=> !x ? '<span class="muted small">primeiro balanço</span>' : `<span style="color:${x.dif>0?'var(--bad)':x.dif<0?'var(--good)':'inherit'};font-weight:700">${x.dif>0?'▲ +':x.dif<0?'▼ ':''}${brl0(x.dif)}${x.pct!=null?` (${x.dif>0?'+':''}${pct(x.pct,0)})`:''}</span>`;
   const doc=S.months[mes]; const calcRes = doc ? calc(doc, fim) : null;
   const filtro=S.balSetor||'';
   const vis=setoresVisiveis();
@@ -811,12 +821,12 @@ async function renderBalancos(app){
     ${S.gerente?'<button class="btn p" id="bNovo">＋ Novo balanço</button>':''}
   </div>
   <div class="grid kpis">
-    ${destaque.map(id=>{ const v=porSetor[id]||0, vd=vendaSetor(id); return `<div class="kpi" style="cursor:pointer" data-fs="${id}"><div class="l">${esc(nomeSetor(id))}</div><div class="v">${v?brl0(v):'—'}</div><div class="d">${v&&vd?pct(v/vd,2)+' sobre a venda do mês':(v?'':'sem balanço no mês')}</div></div>`; }).join('')}
+    ${destaque.map(id=>{ const v=porSetor[id]||0, vd=vendaSetor(id); const ult=lista.find(b=>b.setor_id===id); const x=ult?variacao(ult):null; return `<div class="kpi" style="cursor:pointer" data-fs="${id}"><div class="l">${esc(nomeSetor(id))}</div><div class="v">${v?brl0(v):'—'}</div><div class="d">${v&&vd?pct(v/vd,2)+' sobre a venda do mês':(v?'':'sem balanço no mês')}</div>${ult?`<div class="d">vs. anterior: ${fmtVar(x)}</div>`:''}</div>`; }).join('')}
     <div class="kpi hero"><div class="l">Total em balanços</div><div class="v">${brl0(Object.values(porSetor).reduce((a,b)=>a+b,0))}</div><div class="d">${lista.length} balanço(s) no mês</div></div>
   </div>
   <div class="card" style="margin-top:12px">
-    ${lst.length?`<div class="tw"><table><thead><tr><th>Data</th><th>Setor</th><th class="n">Perda</th><th>Arquivo</th><th>Observação</th><th class="n">Coment.</th><th></th></tr></thead><tbody>
-    ${lst.map(b=>`<tr class="click" data-b="${b.id}"><td>${fDateL(b.data)}</td><td><b>${esc(nomeSetor(b.setor_id))}</b></td><td class="n"><b>${brl(+b.valor_perda)}</b></td><td class="small">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small" style="max-width:280px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n">${b.balanco_comentarios?.[0]?.count||0}</td><td><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`).join('')}
+    ${lst.length?`<div class="tw"><table><thead><tr><th>Data</th><th>Setor</th><th class="n">Perda</th><th>Balanço anterior</th><th>Variação</th><th>Arquivo</th><th>Observação</th><th class="n">Coment.</th><th></th></tr></thead><tbody>
+    ${lst.map(b=>`<tr class="click" data-b="${b.id}"><td>${fDateL(b.data)}</td><td><b>${esc(nomeSetor(b.setor_id))}</b></td><td class="n"><b>${brl(+b.valor_perda)}</b></td>${(()=>{ const x=variacao(b); return `<td class="small">${x?`${fDate(x.a.data)} · ${brl0(+x.a.valor_perda)}`:'—'}</td><td class="small">${fmtVar(x)}</td>`; })()}<td class="small">${b.arquivo_nome?'📎 '+esc(b.arquivo_nome):'<span class="muted">—</span>'}</td><td class="small" style="max-width:280px">${esc((b.observacao||'').slice(0,90))}${(b.observacao||'').length>90?'…':''}</td><td class="n">${b.balanco_comentarios?.[0]?.count||0}</td><td><button class="btn" style="padding:4px 10px">Abrir</button></td></tr>`).join('')}
     </tbody></table></div>`:`<div class="empty">Nenhum balanço ${filtro?'deste setor ':''}em ${mesLabel(mes)}.${S.gerente?' Clique em “Novo balanço” para lançar.':''}</div>`}
   </div>`;
   $('#bFiltro').onchange=e=>{ S.balSetor=e.target.value; renderBalancos(app); };
@@ -867,6 +877,7 @@ function formBalanco(b){
 async function abrirBalanco(b){
   const m=modal(`<div class="row"><h2 style="margin:0">📋 Balanço — ${esc(nomeSetor(b.setor_id))}</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
    <div class="grid kpis" style="margin-top:12px"><div class="kpi"><div class="l">Data</div><div class="v" style="font-size:22px">${fDateL(b.data)}</div></div><div class="kpi"><div class="l">Perda apurada</div><div class="v" style="font-size:22px">${brl(+b.valor_perda)}</div></div></div>
+   ${(()=>{ const a=S._anteriorDe?.(b); if(!a) return '<p class="small muted" style="margin-top:8px">Primeiro balanço registrado deste setor.</p>'; const dif=(+b.valor_perda)-(+a.valor_perda); return `<div class="note small" style="margin-top:10px">Balanço anterior: <b>${fDateL(a.data)}</b> · ${brl(+a.valor_perda)} → variação <b style="color:${dif>0?'var(--bad)':'var(--good)'}">${dif>0?'▲ +':'▼ '}${brl(dif)}${+a.valor_perda?` (${dif>0?'+':''}${pct(dif/(+a.valor_perda),0)})`:''}</b> ${dif>0?'— a perda aumentou':'— a perda diminuiu'}</div>`; })()}
    ${b.observacao?`<div class="note small" style="margin-top:10px;white-space:pre-wrap">${esc(b.observacao)}</div>`:''}
    <h3 style="margin:16px 0 8px">Relatório</h3><div id="bxArq">${b.arquivo_path?'<span class="spin"></span>':'<p class="muted small">Nenhum arquivo anexado.</p>'}</div>
    <h3 style="margin:16px 0 8px">Análise e comentários</h3><div id="bxCom"><span class="spin"></span></div>
@@ -915,17 +926,18 @@ function minhaConta(){
    <label class="f">Nova senha<input id="cS1" type="password" placeholder="mínimo 8 caracteres"></label>
    <label class="f" style="margin-top:8px">Repita a nova senha<input id="cS2" type="password"></label>
    <div id="cErr" class="note err small hide" style="margin-top:10px"></div>
-   <div class="row" style="margin-top:14px"><button class="btn" id="cSair">Sair</button><div class="sp"></div><button class="btn" id="mN">Fechar</button><button class="btn p" id="mY">Trocar senha</button></div>`);
+   <div class="row" style="margin-top:14px"><button class="btn" id="cSair">Sair</button><button class="btn" id="cInst">📲 Ícone no celular</button><div class="sp"></div><button class="btn" id="mN">Fechar</button><button class="btn p" id="mY">Trocar senha</button></div>`);
   $('#mN',m).onclick=closeModal;
   $('#cSair',m).onclick=async()=>{ closeModal(); await sair(); };
+  $('#cInst',m).onclick=()=>{ closeModal(); instalarApp(); };
   $('#mY',m).onclick=async()=>{ const a=$('#cS1',m).value, b=$('#cS2',m).value; const e=$('#cErr',m);
     if(a.length<8){ e.textContent='A senha precisa ter pelo menos 8 caracteres.'; e.classList.remove('hide'); return; }
     if(a!==b){ e.textContent='As senhas não conferem.'; e.classList.remove('hide'); return; }
     const { error } = await S.sb.auth.updateUser({ password:a }); if(error){ e.textContent=error.message; e.classList.remove('hide'); return; }
     closeModal(); toast('Senha alterada ✔'); };
 }
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico'],['usuarios','Usuários']];
-const VIEWS_E=[['painel','Painel'],['setor','Setores'],['balancos','Balanços'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['tv','📺 TV'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico'],['usuarios','Usuários']];
+const VIEWS_E=[['painel','Painel'],['tv','📺 TV'],['setor','Setores'],['balancos','Balanços'],['historico','Histórico']];
 function montarCabecalho(){
   const v=S.gerente?VIEWS_G:VIEWS_E;
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
@@ -936,6 +948,7 @@ function montarCabecalho(){
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]);
   S.view=v.includes(h)?h:'painel';
+  document.body.classList.toggle('tvmode', S.view==='tv'); if(S.view!=='tv'){ clearInterval(S._tvTimer); clearInterval(S._tvRelogio); S._tvTimer=S._tvRelogio=null; }
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   render();
 }
@@ -947,6 +960,7 @@ async function trocarMes(m){
   S.mes=m; S.cutoff=null; S.lancData=null;
   if(!S.months[m]){ $('#app').innerHTML='<div class="empty"><span class="spin"></span> Carregando…</div>'; try{ await carregarMes(m); }catch(e){ toast(e.message,5000); } }
   const [y,mm]=m.split('-'); garantirMes(`${+y-1}-${mm}`).then(()=>{ if(S.view==='painel') render(); }).catch(()=>{});
+  carregarAnteriores(m);
   render();
 }
 
@@ -996,7 +1010,7 @@ async function iniciarSessao(){
     await carregarListaMeses();
     const cur=todayIso().slice(0,7); S.mes = S.mesList.includes(cur)?cur:(S.mesList[S.mesList.length-1]||null);
     if(S.mes) await carregarMes(S.mes);
-    if(S.mes){ const [y,mm]=S.mes.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); }
+    if(S.mes){ const [y,mm]=S.mes.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); carregarAnteriores(S.mes); }
     S.loaded=true; document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route(); iniciarInatividade();
   }catch(e){ console.error(e); $('#app').innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message||e)}</div>`; }
 }
@@ -1127,3 +1141,78 @@ async function importImages(files){
   try{ await ocrParaRevisao(files, files.length>1?`${files.length} imagens`:files[0].name); }
   catch(e){ console.error(e); closeModal(); toast('Não consegui ler a imagem: '+(e.message||e),6000); }
 }
+
+/* ===================== alertas do painel ===================== */
+function mesAnterior(m, n=1){ const [y,mm]=m.split('-').map(Number); const d=new Date(y,mm-1-n,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+async function carregarAnteriores(m){
+  try{ for(let i=1;i<=3;i++) await garantirMes(mesAnterior(m,i)); }catch(_){ }
+  if(S.view==='painel' && S.mes===m) render();
+}
+function mediaPerdaAnterior(mes, id){ // % de perda média do setor nos 3 meses anteriores (com dados)
+  let perda=0, venda=0, n=0;
+  for(let i=1;i<=3;i++){ const d=S.months[mesAnterior(mes,i)]; if(!d) continue; const c=resumoMes(d); const s=c.setores.find(x=>x.id===id); if(s&&s.real){ perda+=s.perda; venda+=s.real; n++; } }
+  return n&&venda? {pct:perda/venda, meses:n} : null;
+}
+function alertasPainel(doc, loja, setores){
+  const itens=[]; const hoje=todayIso(); const dias=diasDoMes(doc.mes);
+  // dias sem lançamento (só o gerente lança)
+  if(S.gerente){
+    const faltando=[], incompletos=[];
+    for(const k of dias){ if(k>=hoje) break; const d=doc.dias?.[k]||{}; const n=d.vendas?Object.keys(d.vendas).filter(i=>d.vendas[i]).length:0;
+      if(!n && !(+d.total>0)) faltando.push(k); else if(n<doc.setores.length) incompletos.push(k); }
+    if(faltando.length) itens.push({t:'bad', h:`${faltando.length} dia(s) sem lançamento`, d:faltando.map(k=>`<a href="#lancar" data-dia="${k}" class="badge b-bad">${fDateL(k)}</a>`).join(' ')});
+    if(incompletos.length) itens.push({t:'warn', h:`${incompletos.length} dia(s) com lançamento incompleto`, d:incompletos.map(k=>{ const dd=doc.dias[k]; const n=dd.vendas?Object.keys(dd.vendas).length:0; return `<a href="#lancar" data-dia="${k}" class="badge b-warn" title="${n?n+' de '+doc.setores.length+' setores':'só o total do caixa'}">${fDateL(k)} · ${n?n+'/'+doc.setores.length+' setores':'só caixa'}</a>`; }).join(' ')});
+  }
+  // setores: 3 dias seguidos abaixo de 90% da meta do dia
+  const seq=[];
+  for(const s of setores){ const ds=s.daily.filter(d=>d.ate && d.meta>0 && d.real>0); const ult=ds.slice(-3);
+    if(ult.length===3 && ult.every(d=>d.real/d.meta<0.9)) seq.push(`<b>${esc(s.nome)}</b> (${ult.map(d=>pct(d.real/d.meta,0)).join(', ')})`); }
+  if(seq.length) itens.push({t:'bad', h:'3 dias seguidos abaixo de 90% da meta do dia', d:seq.join(' · ')});
+  // setores: perda acima da média dos últimos 3 meses
+  const per=[];
+  for(const s of setores){ if(!s.perda||!s.real) continue; const m=mediaPerdaAnterior(doc.mes,s.id); if(m && m.pct>0 && s.pPerda>m.pct*1.25) per.push(`<b>${esc(s.nome)}</b> ${pct(s.pPerda,2)} (média ${pct(m.pct,2)})`); }
+  if(per.length) itens.push({t:'warn', h:'Perda acima da média dos últimos meses', d:per.join(' · ')});
+  // setores abaixo da meta acumulada
+  const abaixo=setores.filter(s=>s.pAte!=null && s.pAte<0.9).map(s=>`<b>${esc(s.nome)}</b> ${pct(s.pAte)}`);
+  if(abaixo.length) itens.push({t:'warn', h:'Abaixo de 90% da meta acumulada', d:abaixo.join(' · ')});
+  if(!itens.length) return `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: ${S.gerente?'todos os dias lançados e ':''}nenhum setor com queda seguida ou perda fora do normal.</div>`;
+  setTimeout(()=>document.querySelectorAll('[data-dia]').forEach(a=>a.onclick=()=>{ S.lancData=a.dataset.dia; }),0);
+  return `<div class="card" style="margin-top:12px;border-color:#f1d98a"><h2 style="margin:0 0 8px">⚠ Alertas</h2>${itens.map(i=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="small" style="font-weight:700;color:${i.t==='bad'?'var(--bad)':'var(--warn)'}">${i.t==='bad'?'▼':'▲'} ${i.h}</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px">${i.d}</div></div>`).join('')}</div>`;
+}
+
+/* ===================== tela para TV / reunião ===================== */
+function renderTV(app, doc){
+  const {loja,setores}=calc(doc,S.cutoff);
+  const ord=[...setores].sort((a,b)=>(b.pAte??-1)-(a.pAte??-1));
+  const cor=p=>({good:'#1f8a4c',warn:'#c98a00',bad:'#c62828',none:'#555'}[status(p)]);
+  const hora=()=>new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  app.innerHTML=`<div class="tv">
+    <div class="tvtop"><div><div class="tvt">${S.gerente?'Bom Dia São Luiz · Araruna':'Meus setores'} — ${mesLabel(doc.mes)}</div><div class="tvs">Acumulado até ${fDateL(S.cutoff)} · ${loja.diasRest} dia(s) restante(s)</div></div>
+      <div class="sp"></div><div class="tvclock" id="tvHora">${hora()}</div><button class="btn" id="tvFull">⛶ Tela cheia</button><a class="btn" href="#painel">Sair</a></div>
+    <div class="tvhero">
+      <div class="tvbig" style="background:${cor(loja.pAte)}"><div class="l">% da meta até hoje</div><div class="v">${pct(loja.pAte)}</div><div class="d">${brl0(loja.real)} de ${brl0(loja.metaAte)}</div></div>
+      <div class="tvk"><div class="l">Meta do mês</div><div class="v">${pct(loja.pMes)}</div><div class="d">${brl0(loja.real)} de ${brl0(loja.metaMes)}</div><div class="bar" style="margin-top:10px;height:14px"><i style="width:${Math.min(100,(loja.pMes||0)*100)}%;background:var(--yellow)"></i></div></div>
+      <div class="tvk"><div class="l">Meta de hoje</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">Precisa vender/dia: ${brl0(loja.necDia)}</div></div>
+    </div>
+    <div class="tvgrid">${ord.map((s,i)=>`<div class="tvset" style="border-color:${cor(s.pAte)}"><div class="n"><span class="pos">${i+1}º</span> ${esc(s.nome)}</div><div class="p" style="color:${cor(s.pAte)}">${pct(s.pAte,0)}</div><div class="bar" style="height:10px;background:#2b2a27"><i style="width:${Math.min(100,(s.pAte||0)/1.3*100)}%;background:${cor(s.pAte)}"></i></div><div class="r">${brl0(s.real)} / ${brl0(s.metaAte)}</div></div>`).join('')}</div>
+    <div class="tvfoot">Atualiza sozinho a cada 5 minutos · última atualização ${hora()}</div>
+  </div>`;
+  $('#tvFull').onclick=()=>{ const el=document.documentElement; (document.fullscreenElement?document.exitFullscreen():el.requestFullscreen?.())?.catch?.(()=>{}); };
+  clearInterval(S._tvRelogio); S._tvRelogio=setInterval(()=>{ const h=$('#tvHora'); if(h) h.textContent=hora(); },15000);
+  if(!S._tvTimer) S._tvTimer=setInterval(async()=>{ if(S.view!=='tv') return; try{ await carregarMes(S.mes); S.cutoff=null; }catch(_){ } marcarAtividade(); if(S.view==='tv') render(); }, 5*60*1000);
+  marcarAtividade(); // a TV fica ligada sem sair por inatividade enquanto estiver nesta tela
+}
+
+/* ===================== instalar no celular ===================== */
+let _promptInstalar=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _promptInstalar=e; });
+function instalarApp(){
+  if(_promptInstalar){ _promptInstalar.prompt(); _promptInstalar.userChoice.finally(()=>{ _promptInstalar=null; }); return; }
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  modal(`<h2>📲 Colocar o ícone na tela do celular</h2>
+   ${ios?`<ol><li>Abra este site no <b>Safari</b>.</li><li>Toque no botão <b>Compartilhar</b> (quadrado com seta para cima).</li><li>Toque em <b>Adicionar à Tela de Início</b> e depois em <b>Adicionar</b>.</li></ol>`
+        :`<ol><li>Abra este site no <b>Chrome</b> do celular.</li><li>Toque nos <b>três pontinhos</b> (⋮) no canto de cima.</li><li>Toque em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</li></ol>`}
+   <p class="small muted">O ícone "Metas BD" aparece junto com os outros aplicativos e abre o site direto, em tela cheia.</p>
+   <div class="row"><div class="sp"></div><button class="btn p" onclick="closeModal()">Entendi</button></div>`);
+}
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
