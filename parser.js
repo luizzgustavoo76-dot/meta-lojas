@@ -150,6 +150,52 @@
     return { mes, metaLoja: round2(metaLoja), setores, dias, diarias, avisos, diasComSetor: usadas };
   }
 
-  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo };
+
+  /* ---------- relatório "RESULTADO DO BALANCO DO SETOR" do sistema da loja ---------- */
+  const dataBR = t => { const m=String(t||'').match(/(\d{2})\/(\d{2})\/(\d{2,4})/); if(!m) return null; const y=m[3].length===2?'20'+m[3]:m[3]; return `${y}-${m[2]}-${m[1]}`; };
+  const qtd = t => { const v=parseFloat(String(t).replace(/[?*]/g,'')); return isNaN(v)?0:v; };            // quantidades: ponto decimal
+  const din = t => { let x=String(t).replace(/[?*%]/g,''); let neg=false; if(/-$/.test(x)){ neg=true; x=x.slice(0,-1); } if(/\+$/.test(x)) x=x.slice(0,-1); const v=parseNum(x); return isNaN(v)?0:(neg?-v:v); }; // reais: vírgula decimal
+  const RESUMO = [['perdas',/^TOTAL DE PERDAS\b/],['pctPerdas',/^% PERDAS \(S\/CUSTO\)/],['custo',/^TOTAL DO CUSTO\b/],['vendas',/^TOTAL DE VENDAS\b/],['pctLucro',/^% LUCRO SOBRE VENDA\b/],['lucro',/^LUCRO APURADO\b/]];
+  function analisarBalancoSistema(linhas){
+    const textos = linhas.map(l => typeof l==='string' ? l : String(l.text||''));
+    if(!textos.some(t=>/RESULTADO (DO BALANCO DO SETOR|GERAL DO BALANCO)/i.test(t))) return null;
+    const res = { tipo:'balanco_setorial', emitido:null, periodo:{ini:null,fim:null}, geral:null, setores:[], produtos:[] };
+    let atual=null, geral=false;
+    const novoSetor = cod => { let s=res.setores.find(x=>x.codigo===cod); if(!s){ s={codigo:cod, itens:0, prefixos:{}}; res.setores.push(s); } return s; };
+    for(const raw of textos){
+      const t=raw.replace(/\s+/g,' ').trim(); if(!t) continue;
+      if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
+      let m=t.match(/RESULTADO DO BALANCO DO SETOR (\d+) DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+      if(m){ atual=novoSetor(m[1]); geral=false; res.periodo.ini=res.periodo.ini||dataBR(m[2]); res.periodo.fim=res.periodo.fim||dataBR(m[3]); continue; }
+      m=t.match(/RESULTADO GERAL DO BALANCO.*?DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+      if(m){ geral=true; atual=null; res.geral=res.geral||{}; res.periodo.ini=dataBR(m[1]); res.periodo.fim=dataBR(m[2]); continue; }
+      // linhas de resumo (TOTAL DE PERDAS...: -85,320 etc.)
+      let achou=false;
+      for(const [k,re] of RESUMO){ if(re.test(t)){ const mm=t.match(/:\s*(-?[\d.]*\d(?:,\d+)?-?)\s*%?/); if(mm){ const alvo=geral?res.geral:atual; if(alvo && alvo[k]==null) alvo[k]=din(mm[1]); } achou=true; break; } }
+      if(achou) continue;
+      // linha de produto: CODIGO DESCRICAO TIPO + 13 colunas numéricas
+      if(/^\d+\s+\D/.test(t) && atual){
+        let tk=t.split(' '); const fixed=[]; for(const x of tk){ if((x==='-'||x==='+') && fixed.length) fixed[fixed.length-1]+=x; else fixed.push(x); } tk=fixed;
+        if(tk.length<16) continue;
+        const nums=tk.slice(-13); if(!/^-?\d/.test(nums[0])) continue;
+        const tipo=tk[tk.length-14], desc=tk.slice(1,tk.length-14).join(' ');
+        const p={ codigo:tk[0], produto:desc, tipo, setor:atual.codigo, qtdPerdas:qtd(nums[4]), pctPerdas:din(nums[5]), qtdVendida:qtd(nums[6]), custoMedio:din(nums[7]), vendaMedia:din(nums[8]) };
+        p.valor=round2(p.qtdPerdas*p.custoMedio);
+        res.produtos.push(p); atual.itens++; const pre=desc.split(' ')[0]; atual.prefixos[pre]=(atual.prefixos[pre]||0)+1;
+      }
+    }
+    for(const s of res.setores){ const top=Object.entries(s.prefixos).sort((a,b)=>b[1]-a[1])[0]; s.grupo=top?top[0]:''; delete s.prefixos; }
+    if(!res.geral){ // relatório de um setor só
+      if(res.setores.length===1){ const s=res.setores[0]; res.geral={perdas:s.perdas,pctPerdas:s.pctPerdas,custo:s.custo,vendas:s.vendas,pctLucro:s.pctLucro,lucro:s.lucro}; }
+      else if(res.setores.length){ const g={perdas:0,custo:0,vendas:0,lucro:0}; for(const s of res.setores){ for(const k in g) g[k]+=s[k]||0; } g.pctPerdas=g.custo?round2(g.perdas/g.custo*100):null; g.pctLucro=g.vendas?round2(g.lucro/g.vendas*100):null; res.geral=g; }
+    }
+    if(!res.geral || res.geral.perdas==null) return null;
+    const perdas=res.produtos.filter(p=>p.valor<0).sort((a,b)=>a.valor-b.valor), sobras=res.produtos.filter(p=>p.valor>0).sort((a,b)=>b.valor-a.valor);
+    res.totalProdutos=res.produtos.length; res.produtosComPerda=perdas.length; res.produtosComSobra=sobras.length;
+    res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8); delete res.produtos;
+    res.valorPerda = res.geral.perdas<0 ? round2(-res.geral.perdas) : 0;
+    return res;
+  }
+  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Parser = api;
 })(typeof window !== 'undefined' ? window : globalThis);
