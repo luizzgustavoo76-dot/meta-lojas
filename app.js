@@ -123,9 +123,11 @@ function renderPainel(app, doc){
   const diffSet = Math.abs(loja.totSetores-loja.real)>1;
   const metaWarn = Math.abs(loja.metaDiasSum-loja.metaMes)>1;
   const necTxt = loja.fatorNec!=null ? `${pct(loja.fatorNec,0)} da meta diária planejada` : '';
+  const comp = comparativos(doc, S.cutoff, null);
+  const meusNomes = doc.setores.map(x=>x.nome).join(', ');
   app.innerHTML = `
   <div class="row" style="align-items:flex-end;margin-bottom:14px">
-    <div><h1>${mesLabel(doc.mes)}</h1><p class="sub" style="margin:0">Acumulado até <b>${fDateL(S.cutoff)}</b> · ${loja.diasRest} dia(s) restante(s)</p></div>
+    <div><h1>${S.gerente?mesLabel(doc.mes):`${esc(meusNomes)} — ${mesLabel(doc.mes)}`}</h1>${S.gerente?'':`<p class="sub" style="margin:0 0 2px">Painel ${doc.setores.length>1?'dos seus setores':'do seu setor'}</p>`}<p class="sub" style="margin:0">Acumulado até <b>${fDateL(S.cutoff)}</b> · ${loja.diasRest} dia(s) restante(s)</p></div>
     <div class="sp"></div>${cutoffSelect(doc)}
     <button class="btn" id="btnXlsx">⬇ Baixar Excel</button>
     ${S.gerente?'<a class="btn p" href="#lancar">＋ Lançar vendas</a>':''}
@@ -138,10 +140,11 @@ function renderPainel(app, doc){
     <div class="kpi"><div class="l">Projeção do mês</div><div class="v">${brl0(loja.proj)}</div><div class="d">${pct(loja.proj/loja.metaMes)} da meta, mantendo o ritmo</div></div>
     <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(loja.necDia)}</div><div class="d">${necTxt}</div></div>
     <div class="kpi"><div class="l">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">${loja.proxDia?fDateL(loja.proxDia):''}</div></div>
-    ${(()=>{ const c=compAnoAnterior(doc,S.cutoff); return c?`<div class="kpi"><div class="l">vs. ${mesLabel(c.mes)}</div><div class="v" style="color:${c.cresc>=0?'var(--good)':'var(--bad)'}">${c.cresc>=0?'▲ +':'▼ '}${pct(c.cresc)}</div><div class="d">Mesmo período: ${brl0(c.real)} até dia ${c.dia}</div></div>`:''; })()}
-    <div class="kpi"><div class="l">Perdas lançadas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div></div>
+    ${kpisComparativos(comp)}
+    <div class="kpi"><div class="l">Perdas lançadas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div>${comp?.pm?`<div class="d">vs. mês passado: ${varTxt(loja.perda, comp.pm.perda, true)}</div>`:''}</div>
   </div>
   ${alertasPainel(doc, loja, setores)}
+  ${cardComparativos(comp, S.gerente?'loja':'')}
 
   <div class="grid two" style="margin-top:12px">
     <div class="card">
@@ -227,6 +230,49 @@ function compAnoAnterior(doc, cutoff){
   return {mes:mp, dia, real, cresc:atual/real-1};
 }
 
+
+/* ---------- comparativos: mês passado e ano passado, mesmo período e mesmo dia ---------- */
+function mesmoDiaEm(mes, dia){ const ds=diasDoMes(mes); return ds[Math.min(dia,ds.length)-1]; }
+function numerosAte(doc, cut, sid){
+  const r=calc(doc,cut); const x = sid ? r.setores.find(z=>z.id===sid) : r.loja; if(!x) return null;
+  const d=x.daily.find(z=>z.k===cut);
+  return { cut, real:x.real, perda:x.perda, pPerda:x.real?x.perda/x.real:null, dia:d?.real||0, perdaDia:d?.perda||0 };
+}
+function comparativos(doc, cutoff, sid){
+  if(!cutoff) return null;
+  const dia=+cutoff.slice(8); const [y,m]=doc.mes.split('-');
+  const mp=mesAnterior(doc.mes,1), ma=`${+y-1}-${m}`;
+  const atual=numerosAte(doc,cutoff,sid);
+  const pm=S.months[mp]? numerosAte(S.months[mp], mesmoDiaEm(mp,dia), sid) : null;
+  const pa=S.months[ma]? numerosAte(S.months[ma], mesmoDiaEm(ma,dia), sid) : null;
+  return { atual, pm:(pm&&pm.real)?pm:null, pa:(pa&&pa.real)?pa:null, mp, ma, dia };
+}
+function varTxt(a, b, ruimSeSobe){ if(!b) return '<span class="muted">—</span>'; const v=a/b-1; const bom = ruimSeSobe ? v<=0 : v>=0;
+  return `<span style="color:${Math.abs(v)<0.0005?'inherit':bom?'var(--good)':'var(--bad)'};font-weight:700">${v>0?'▲ +':v<0?'▼ ':''}${pct(v)}</span>`; }
+function difPP(a, b){ if(a==null||b==null) return '<span class="muted">—</span>'; const d=(a-b)*100; return `<span style="color:${Math.abs(d)<0.005?'inherit':d<=0?'var(--good)':'var(--bad)'};font-weight:700">${d>0?'+':''}${d.toFixed(2).replace('.',',')} p.p.</span>`; }
+function kpisComparativos(c){
+  if(!c) return '';
+  const k=(rot, ref)=> ref ? `<div class="kpi"><div class="l">Venda vs. ${rot}</div><div class="v">${varTxt(c.atual.real, ref.real)}</div><div class="d">${mesLabel(ref.cut.slice(0,7))} até dia ${+ref.cut.slice(8)}: ${brl0(ref.real)}</div></div>` : '';
+  return k('mês passado', c.pm) + k('ano passado', c.pa);
+}
+function cardComparativos(c, titulo){
+  if(!c || (!c.pm && !c.pa)) return '';
+  const a=c.atual, pm=c.pm, pa=c.pa;
+  const col=(ref, campo, ruim)=> ref ? `<td class="n">${brl0(ref[campo])}</td><td class="n">${varTxt(a[campo], ref[campo], ruim)}</td>` : '<td class="n muted">sem dados</td><td></td>';
+  const colP=(ref)=> ref ? `<td class="n">${ref.pPerda!=null?pct(ref.pPerda,2):'—'}</td><td class="n">${difPP(a.pPerda, ref.pPerda)}</td>` : '<td class="n muted">sem dados</td><td></td>';
+  const hd=(ref, rot)=> ref ? `${rot}<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(ref.cut.slice(0,7))}</span>` : rot;
+  return `<div class="card" style="margin-top:12px">
+    <div class="row" style="margin-bottom:8px"><h2 style="margin:0">📊 Comparativo ${titulo?'— '+esc(titulo):''}</h2><div class="sp"></div><span class="small muted">Mesmo período (dia 1 até dia ${c.dia}) e mesmo dia do mês</span></div>
+    <div class="tw"><table><thead><tr><th></th><th class="n">Atual<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(c.atual.cut.slice(0,7))}</span></th><th class="n">${hd(pm,'Mês passado')}</th><th class="n">Variação</th><th class="n">${hd(pa,'Ano passado')}</th><th class="n">Variação</th></tr></thead><tbody>
+      <tr><td><b>Venda acumulada</b><div class="small muted">dia 1 até dia ${c.dia}</div></td><td class="n"><b>${brl0(a.real)}</b></td>${col(pm,'real')}${col(pa,'real')}</tr>
+      <tr><td><b>Venda do dia</b><div class="small muted">${fDateL(a.cut)}${pm?` · ${fDateL(pm.cut)}`:''}${pa?` · ${fDateL(pa.cut)}/${pa.cut.slice(2,4)}`:''}</div></td><td class="n"><b>${a.dia?brl0(a.dia):'—'}</b></td>${col(pm,'dia')}${col(pa,'dia')}</tr>
+      <tr><td><b>Perda acumulada</b><div class="small muted">inclui balanços</div></td><td class="n"><b>${brl0(a.perda)}</b></td>${col(pm,'perda',true)}${col(pa,'perda',true)}</tr>
+      <tr><td><b>% de perda sobre a venda</b></td><td class="n"><b>${a.pPerda!=null?pct(a.pPerda,2):'—'}</b></td>${colP(pm)}${colP(pa)}</tr>
+    </tbody></table></div>
+    <div class="small muted" style="margin-top:8px">Verde = melhor que antes (venda maior ou perda menor). Vermelho = pior.</div>
+  </div>`;
+}
+
 /* ---------- HISTÓRICO ---------- */
 function resumoMes(doc){ const ds=diasDoMes(doc.mes); const cut = doc.mes<todayIso().slice(0,7) ? ds[ds.length-1] : (lastSetorDay(doc)||lastDataDay(doc)); return calc(doc,cut); }
 function renderHistorico(app){
@@ -267,9 +313,10 @@ function renderSetor(app, doc){
   const {loja,setores} = calc(doc,S.cutoff);
   if(!S.setorSel || !setores.find(s=>s.id===S.setorSel)) S.setorSel = setores[0]?.id;
   const s = setores.find(x=>x.id===S.setorSel);
+  const compS = comparativos(doc, S.cutoff, s.id);
   app.innerHTML = `
   <div class="row" style="align-items:flex-end;margin-bottom:14px">
-    <div><h1>${esc(s.nome)}</h1><p class="sub" style="margin:0">${mesLabel(doc.mes)} · representa ${pct(s.share)} da meta da loja</p></div>
+    <div><h1>${esc(s.nome)}</h1><p class="sub" style="margin:0">${mesLabel(doc.mes)}${S.gerente?` · representa ${pct(s.share)} da meta da loja`:''}</p></div>
     <div class="sp"></div>
     <label class="f">Setor<select id="selSetor">${setores.map(x=>`<option value="${x.id}" ${x.id===s.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
     ${cutoffSelect(doc)}
@@ -282,9 +329,11 @@ function renderSetor(app, doc){
     <div class="kpi"><div class="l">Meta do mês</div><div class="v">${brl0(s.meta)}</div><div class="d">${pct(s.pMes)} · falta ${brl0(s.falta)}</div>${barH(s.pMes)}</div>
     <div class="kpi"><div class="l">Projeção</div><div class="v">${brl0(s.proj)}</div><div class="d">${pct(s.proj/s.meta)} da meta</div></div>
     <div class="kpi"><div class="l">Precisa vender/dia</div><div class="v">${brl0(s.necDia)}</div><div class="d">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}: ${brl0(s.metaProx)}</div></div>
-    <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui <a href="#balancos">${brl0(s.perdaBal)} de balanço</a>`:''}</div></div>
+    <div class="kpi"><div class="l">Perda</div><div class="v">${brl0(s.perda)}</div><div class="d">${pct(s.pPerda,2)} sobre a venda${s.perdaBal?` · inclui <a href="#balancos">${brl0(s.perdaBal)} de balanço</a>`:''}</div>${compS?.pm?`<div class="d">vs. mês passado: ${varTxt(s.perda, compS.pm.perda, true)}</div>`:''}</div>
     <div class="kpi"><div class="l">Participação real</div><div class="v">${pct(s.partReal)}</div><div class="d">da venda dos setores (planejado ${pct(s.share)})</div></div>
+    ${kpisComparativos(compS)}
   </div>
+  ${cardComparativos(compS, s.nome)}
   <div class="card" style="margin-top:12px">
     <div class="row"><h2 style="margin:0">Dia a dia</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
     <div class="legend"><span><i class="lg-bar"></i>Realizado</span><span><i class="lg-line"></i>Meta</span></div>
@@ -1050,7 +1099,7 @@ function fillMesSelect(){
 async function trocarMes(m){
   S.mes=m; S.cutoff=null; S.lancData=null;
   if(!S.months[m]){ $('#app').innerHTML='<div class="empty"><span class="spin"></span> Carregando…</div>'; try{ await carregarMes(m); }catch(e){ toast(e.message,5000); } }
-  const [y,mm]=m.split('-'); garantirMes(`${+y-1}-${mm}`).then(()=>{ if(S.view==='painel') render(); }).catch(()=>{});
+  const [y,mm]=m.split('-'); garantirMes(`${+y-1}-${mm}`).then(()=>{ if(S.view==='painel'||S.view==='setor') render(); }).catch(()=>{});
   carregarAnteriores(m);
   render();
 }
@@ -1136,13 +1185,13 @@ async function entrarVisualizacao(nome, setores){
   S.preview={nome, setores}; S.gerente=false; S.months={}; S._tudo=false;
   document.body.classList.add('enc'); montarCabecalho(); mostrarFaixaVisualizacao();
   const cur=S.mes; $('#app').innerHTML='<div class="empty"><span class="spin"></span> Montando a visão do encarregado…</div>';
-  try{ await carregarMes(cur); const [y,mm]=cur.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); }catch(e){ toast(e.message); }
+  try{ await carregarMes(cur); const [y,mm]=cur.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); await carregarAnteriores(cur); }catch(e){ toast(e.message); }
   location.hash='#painel'; route();
 }
 async function sairVisualizacao(){
   S.preview=null; S.gerente=true; S.months={}; S._tudo=false;
   document.body.classList.remove('enc'); $('#faixaVis')?.remove(); montarCabecalho();
-  try{ await carregarMes(S.mes); }catch(_){ }
+  try{ await carregarMes(S.mes); const [y,mm]=S.mes.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); await carregarAnteriores(S.mes); }catch(_){ }
   location.hash='#conta'; route();
 }
 function mostrarFaixaVisualizacao(){
@@ -1237,7 +1286,7 @@ async function importImages(files){
 function mesAnterior(m, n=1){ const [y,mm]=m.split('-').map(Number); const d=new Date(y,mm-1-n,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 async function carregarAnteriores(m){
   try{ for(let i=1;i<=3;i++) await garantirMes(mesAnterior(m,i)); }catch(_){ }
-  if(S.view==='painel' && S.mes===m) render();
+  if((S.view==='painel'||S.view==='setor') && S.mes===m) render();
 }
 function mediaPerdaAnterior(mes, id){ // % de perda média do setor nos 3 meses anteriores (com dados)
   let perda=0, venda=0, n=0;
