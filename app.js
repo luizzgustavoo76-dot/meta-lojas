@@ -128,7 +128,7 @@ function renderPainel(app, doc){
     <div><h1>${mesLabel(doc.mes)}</h1><p class="sub" style="margin:0">Acumulado até <b>${fDateL(S.cutoff)}</b> · ${loja.diasRest} dia(s) restante(s)</p></div>
     <div class="sp"></div>${cutoffSelect(doc)}
     <button class="btn" id="btnXlsx">⬇ Baixar Excel</button>
-    <a class="btn p" href="#lancar">＋ Lançar vendas</a>
+    ${S.gerente?'<a class="btn p" href="#lancar">＋ Lançar vendas</a>':''}
   </div>
   ${metaWarn?`<div class="note" style="margin-bottom:12px">A soma das metas diárias (${brl0(loja.metaDiasSum)}) é diferente da meta do mês (${brl0(loja.metaMes)}). Ajuste em <a href="#metas">Metas do mês</a>.</div>`:''}
   <div class="grid kpis">
@@ -314,6 +314,7 @@ function renderLancar(app, doc){
   </div>
 
   <div class="grid imp" style="margin-top:12px">
+    <div class="drop" id="dropImg"><div class="ico">📷</div><h3>Foto ou print do relatório</h3><p>O site lê a imagem (OCR) e preenche os setores · funciona melhor com print ou foto reta e nítida</p><div style="margin-top:10px"><button class="btn y" id="bImg">Escolher imagem</button></div><input type="file" id="fImg" accept="image/*" multiple class="hide"></div>
     <div class="drop" id="dropFile"><div class="ico">📊</div><h3>Relatório em arquivo</h3><p>Excel (.xlsx/.xls), CSV ou PDF do sistema · também aceita a planilha mensal antiga</p><div style="margin-top:10px"><button class="btn y" id="bFile">Escolher arquivo</button></div><input type="file" id="fFile" accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" class="hide"></div>
     <div class="drop"><div class="ico">📋</div><h3>Colar texto</h3><p>Copie as linhas do relatório e cole aqui</p><div style="margin-top:10px"><button class="btn y" id="bPaste">Colar relatório</button></div></div>
   </div>
@@ -348,9 +349,10 @@ function renderLancar(app, doc){
   // importações
   const fImg=$('#fImg'), fFile=$('#fFile');
   $('#bFile').onclick=()=>fFile.click();
+  $('#bImg').onclick=()=>fImg.click(); fImg.onchange=()=>{ const fs=[...fImg.files]; fImg.value=''; if(fs.length) importImages(fs); };
   fFile.onchange=()=>{ if(fFile.files[0]) importFile(fFile.files[0]); fFile.value=''; };
   $('#bPaste').onclick=pasteDialog;
-  for(const [id,fn] of [['dropFile',f=>importFile(f[0])]]){
+  for(const [id,fn] of [['dropImg',f=>importImages(f.filter(x=>x.type.startsWith('image/')))],['dropFile',f=>f[0].type.startsWith('image/')?importImages(f):importFile(f[0])]]){
     const z=$('#'+id); z.ondragover=e=>{e.preventDefault();z.classList.add('over');}; z.ondragleave=()=>z.classList.remove('over');
     z.ondrop=e=>{e.preventDefault();z.classList.remove('over'); const fs=[...e.dataTransfer.files]; if(!fs.length) return; fn(fs); };
   }
@@ -404,7 +406,8 @@ async function importPdf(file){
   }
   const text=lines.join('\n');
   if(text.replace(/\s/g,'').length<30){ // PDF escaneado → imagens
-    throw new Error('Este PDF é uma imagem escaneada, sem texto. Use o relatório em Excel/CSV ou digite os valores.');
+    const canvases=[]; for(let p=1;p<=Math.min(pdf.numPages,4);p++){ const pg=await pdf.getPage(p); const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; canvases.push(c); }
+    return await ocrParaRevisao(canvases, file.name);
     const imgs=[]; for(let p=1;p<=Math.min(pdf.numPages,4);p++){ const pg=await pdf.getPage(p); const vp=pg.getViewport({scale:2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; imgs.push(await new Promise(r=>c.toBlob(r,'image/jpeg',.85))); }
     const r=await aiCall(aiPrompt(curDoc(),'O relatório está nas imagens anexadas (PDF escaneado).'),imgs); r.fonte=file.name; return reviewImport(r);
   }
@@ -421,6 +424,7 @@ function reviewImport(r){
   const m=modal(`<h2>📥 Conferir importação</h2>
   <p class="small muted" style="margin-top:-6px">Fonte: ${esc(r.fonte||'')} · ${nV} setor(es) com venda${nP?` · ${nP} com perda`:''}</p>
   ${r.obs?`<div class="note small" style="margin-bottom:10px">${esc(r.obs)}</div>`:''}
+  ${r.textoLido?`<details style="margin-bottom:10px"><summary class="small" style="cursor:pointer">Ver o texto que foi lido da imagem</summary><pre style="white-space:pre-wrap;font-size:12px;background:#faf9f6;border:1px solid var(--line);border-radius:8px;padding:8px;max-height:200px;overflow:auto">${esc(r.textoLido)}</pre></details>`:''}
   ${dataFora?`<div class="note err small" style="margin-bottom:10px">A data do relatório (${esc(r.data)}) não é deste mês. Escolha o dia correto abaixo.</div>`:''}
   ${!nV&&!nP?`<div class="note err" style="margin-bottom:10px">Nenhum valor de setor foi encontrado. ${S.sample?'Tente pela foto/IA ou ':''}digite manualmente.</div>`:''}
   <div class="row" style="margin-bottom:10px"><label class="f">Lançar no dia<select id="rDia">${dias.map(k=>`<option value="${k}" ${k===alvo?'selected':''}>${fDateL(k)}${temVenda(doc.dias?.[k])?' • já tem dados':''}</option>`).join('')}</select></label>
@@ -730,7 +734,7 @@ async function renderUsuarios(app){
   let us=[]; try{ us=(await chamarUsuarios({acao:'listar'})).usuarios; }catch(e){ app.innerHTML=`<div class="note err">${esc(e.message)}</div>`; return; }
   if(S.view!=='usuarios') return;
   const nomeSet = ids => ids.map(nomeSetor).join(', ');
-  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Usuários</h1><p class="sub" style="margin:0">Cada encarregado vê e lança apenas os setores marcados. Só o gerente vê a loja inteira e mexe nas metas.</p></div><div class="sp"></div><button class="btn" id="uVer">👁 Ver como encarregado</button><button class="btn p" id="uNovo">＋ Novo usuário</button></div>
+  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:14px"><div><h1>Usuários</h1><p class="sub" style="margin:0">Cada encarregado vê apenas os setores marcados (as vendas são lançadas só pelo gerente). Só o gerente vê a loja inteira e mexe nas metas.</p></div><div class="sp"></div><button class="btn" id="uVer">👁 Ver como encarregado</button><button class="btn p" id="uNovo">＋ Novo usuário</button></div>
   <div class="card"><div class="tw"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Acesso</th><th>Setores</th><th>Último acesso</th><th></th></tr></thead><tbody>
   ${us.map(u=>`<tr><td><b>${esc(u.nome||'—')}</b>${u.id===S.user.id?' <span class="badge b-none">você</span>':''}</td><td class="small">${esc(u.email)}</td><td>${u.papel==='gerente'?'<span class="badge b-good">Gerente</span>':'<span class="badge b-none">Encarregado</span>'}</td><td class="small">${u.papel==='gerente'?'Todos':esc(nomeSet(u.setores||[]))}</td><td class="small muted">${u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'nunca entrou'}</td><td style="white-space:nowrap">${u.papel==='encarregado'?`<button class="btn" data-ver="${u.id}" style="padding:4px 10px" title="Ver o site como este encarregado vê">👁</button> `:''}<button class="btn" data-ed="${u.id}" style="padding:4px 10px">Editar</button></td></tr>`).join('')}
   </tbody></table></div></div>
@@ -749,7 +753,7 @@ function formUsuario(u){
     <label class="f">${novo?'Senha inicial':'Nova senha (deixe vazio para manter)'}<input id="uSenha" type="text" placeholder="mínimo 8 caracteres" value="${novo?gerarSenha():''}"></label>
     <label class="f">Acesso<select id="uPapel"><option value="encarregado" ${u?.papel!=='gerente'?'selected':''}>Encarregado (só os setores marcados)</option><option value="gerente" ${u?.papel==='gerente'?'selected':''}>Gerente (tudo)</option></select></label>
   </div>
-  <div id="uSetBox" style="margin-top:12px"><div class="small" style="font-weight:600;color:var(--ink2);margin-bottom:6px">Setores que pode ver e lançar</div>
+  <div id="uSetBox" style="margin-top:12px"><div class="small" style="font-weight:600;color:var(--ink2);margin-bottom:6px">Setores que pode ver</div>
     <div class="chk">${S.setoresAll.map(x=>`<label><input type="checkbox" value="${x.id}" ${sel.has(x.id)?'checked':''}>${esc(x.nome)}</label>`).join('')}</div></div>
   <div id="uErr" class="note err small hide" style="margin-top:10px"></div>
   <div class="row" style="margin-top:14px">${novo||u.id===S.user.id?'':'<button class="btn" id="uDel" style="color:var(--bad)">Excluir</button>'}<div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">${novo?'Criar usuário':'Salvar'}</button></div>`);
@@ -921,7 +925,7 @@ function minhaConta(){
     closeModal(); toast('Senha alterada ✔'); };
 }
 const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['metas','Metas do mês'],['historico','Histórico'],['usuarios','Usuários']];
-const VIEWS_E=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['historico','Histórico']];
+const VIEWS_E=[['painel','Painel'],['setor','Setores'],['balancos','Balanços'],['historico','Histórico']];
 function montarCabecalho(){
   const v=S.gerente?VIEWS_G:VIEWS_E;
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
@@ -1073,4 +1077,53 @@ function verificarInatividade(){
     a.innerHTML='⏳ Sem atividade: você vai sair do site em 1 minuto. <button class="btn y" style="padding:4px 10px">Continuar conectado</button>';
     a.querySelector('button').onclick=marcarAtividade; document.body.appendChild(a); S._avisoInat=a;
   }
+}
+
+
+/* ===================== leitura de imagem (OCR, sem custo, roda no navegador) ===================== */
+let _tesseract=null;
+function carregarTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(_tesseract) return _tesseract;
+  _tesseract=new Promise((ok,erro)=>{ const sc=document.createElement('script'); sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; sc.onload=ok; sc.onerror=()=>{ _tesseract=null; erro(new Error('Não foi possível carregar o leitor de imagem. Verifique a internet.')); }; document.head.appendChild(sc); });
+  return _tesseract;
+}
+async function prepararImagem(src){ // aumenta, deixa em tons de cinza e com mais contraste (melhora a leitura)
+  let w,h,draw;
+  if(src instanceof HTMLCanvasElement){ w=src.width; h=src.height; draw=ctx=>ctx.drawImage(src,0,0,w,h); }
+  else { const url=URL.createObjectURL(src); const img=await new Promise((ok,er)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=er; i.src=url; }); URL.revokeObjectURL(url);
+    const esc=Math.min(3, Math.max(1, 2400/Math.max(img.width,img.height))); w=Math.round(img.width*esc); h=Math.round(img.height*esc); draw=ctx=>ctx.drawImage(img,0,0,w,h); }
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); draw(ctx);
+  const d=ctx.getImageData(0,0,w,h), a=d.data;
+  for(let i=0;i<a.length;i+=4){ let g=0.299*a[i]+0.587*a[i+1]+0.114*a[i+2]; g=g>170?255:(g<90?0:(g-90)*255/80); a[i]=a[i+1]=a[i+2]=g; }
+  ctx.putImageData(d,0,0); return c;
+}
+function limparTextoOcr(t){
+  return t.split(/\r?\n/).map(l=>l
+    .replace(/(\d)\s+(?=\d{3}[,.]\d{2}\b)/g,'$1')      // "20 841,31" -> "20841,31"
+    .replace(/(\d)[.,]\s+(\d{2})\b/g,'$1,$2')            // "841, 31" -> "841,31"
+    .replace(/(?<=\d)[Oo](?=\d)|(?<=\d)[Oo]\b/g,'0')     // O lido no lugar de 0
+    .replace(/(?<=\d)[lI|](?=\d)/g,'1')
+  ).filter(l=>l.trim());
+}
+async function ocrParaRevisao(fontes, nome){
+  busy('Lendo a imagem… (a primeira vez demora um pouco)');
+  await carregarTesseract();
+  const worker=await Tesseract.createWorker('por');
+  let texto='';
+  try{
+    for(let i=0;i<fontes.length;i++){ const m=$('#modalRoot h2'); if(m) m.innerHTML=`<span class="spin"></span> Lendo ${fontes.length>1?`imagem ${i+1} de ${fontes.length}`:'a imagem'}…`;
+      const c=await prepararImagem(fontes[i]); const { data } = await worker.recognize(c); texto+=data.text+'\n'; }
+  } finally { await worker.terminate(); }
+  const linhas=limparTextoOcr(texto);
+  const r=Parser.parseLines(linhas.map(l=>({text:l}))); r.fonte=nome+' (leitura da imagem)';
+  r.obs=(Object.keys(r.vendas).length? 'Valores lidos da imagem. A leitura de foto pode errar algum número — confira cada setor com o relatório antes de salvar.' : 'Não consegui identificar os setores na imagem. Tente um print mais nítido, ou digite os valores.') + (r.obs? ' '+r.obs:'');
+  r.textoLido=linhas.join('\n');
+  reviewImport(r);
+}
+async function importImages(files){
+  if(!S.gerente) return toast('Só o gerente lança vendas.');
+  files=files.filter(f=>f.type.startsWith('image/')).slice(0,6); if(!files.length) return toast('Escolha uma imagem (foto ou print).');
+  try{ await ocrParaRevisao(files, files.length>1?`${files.length} imagens`:files[0].name); }
+  catch(e){ console.error(e); closeModal(); toast('Não consegui ler a imagem: '+(e.message||e),6000); }
 }
