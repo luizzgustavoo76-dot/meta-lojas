@@ -178,7 +178,7 @@ function renderPainel(app, doc){
   ${S.gerente?renderDiariasCard(doc):''}
   `;
   bindCutoff();
-  app.querySelectorAll('[data-s]').forEach(el=>el.onclick=()=>{ S.setorSel=el.dataset.s; location.hash='#setor'; });
+  app.querySelectorAll('[data-s]').forEach(el=>el.onclick=()=>{ S.setorSel=el.dataset.s; S.setorAba='dia'; S.painelScroll=window.scrollY; S.voltarPainel=true; location.hash='#setor'; });
   app.querySelectorAll('th.sort').forEach(th=>th.onclick=()=>{ const k=th.dataset.k; if(S.sortKey===k) S.sortDir=-(S.sortDir||-1); else {S.sortKey=k;S.sortDir=k==='nome'?1:-1;} render(); });
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   $('#btnXlsx').onclick=()=>exportXlsx(doc);
@@ -324,7 +324,7 @@ function renderSetor(app, doc){
   const compS = comparativos(doc, S.cutoff, s.id);
   app.innerHTML = `
   <div class="row" style="align-items:flex-end;margin-bottom:14px">
-    <div><h1>${esc(s.nome)}</h1><p class="sub" style="margin:0">${mesLabel(doc.mes)}${S.gerente?` · representa ${pct(s.share)} da meta da loja`:''}</p></div>
+    <div>${S.voltarPainel?'<button class="btn" id="bVoltarPainel" style="margin-bottom:8px">← Voltar ao painel</button>':''}<h1>${esc(s.nome)}</h1><p class="sub" style="margin:0">${mesLabel(doc.mes)}${S.gerente?` · representa ${pct(s.share)} da meta da loja`:''}</p></div>
     <div class="sp"></div>
     <label class="f">Setor<select id="selSetor">${setores.map(x=>`<option value="${x.id}" ${x.id===s.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
     ${S.setorAba==='ana'?'':cutoffSelect(doc)}
@@ -353,6 +353,7 @@ function renderSetor(app, doc){
     <tfoot><tr><td>Total</td><td class="n">${brl0(sum(s.daily.map(d=>d.meta)))}</td><td class="n">${brl0(s.real)}</td><td></td><td></td><td></td><td></td><td></td><td class="n">${brl0(s.perda)}</td><td class="n">${pct(s.pPerda,2)}</td></tr></tfoot></table></div>
   </div>`}`;
   $('#selSetor').onchange=e=>{S.setorSel=e.target.value; render();};
+  const bv=$('#bVoltarPainel'); if(bv) bv.onclick=()=>{ if(history.length>1) history.back(); else location.hash='#painel'; };
   bindCutoff();
   $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); });
   if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
@@ -1096,10 +1097,13 @@ function montarCabecalho(){
 }
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
-  S.view=v.includes(h)?h:'painel';
+  const antes=S.view; S.view=v.includes(h)?h:'painel';
+  if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   $('#bConta')?.classList.toggle('on', S.view==='conta');
   render();
+  // ao trocar de tela, começa do topo; ao voltar para o painel, volta para onde estava
+  if(antes!==S.view){ if(S.view==='painel' && S.voltarPainel && S.painelScroll!=null){ const y=S.painelScroll; requestAnimationFrame(()=>window.scrollTo(0,y)); S.voltarPainel=false; } else window.scrollTo(0,0); }
 }
 function fillMesSelect(){
   const sel=$('#selMes'); const ks=[...S.mesList].sort().reverse();
