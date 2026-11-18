@@ -13,7 +13,7 @@
     else if (ld > -1) { const p = s.split('.'); if (p.length > 2 || p[p.length - 1].length === 3) s = s.replace(/\./g, ''); }
     const v = parseFloat(s); return isNaN(v) ? NaN : (neg ? -v : v);
   }
-  const NUMRE = /\(?-?(?:R\$\s?)?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?\)?|\(?-?(?:R\$\s?)?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\)?|\(?-?(?:R\$\s?)?\d+(?:[.,]\d{1,2})?\)?/g;
+  const NUMRE = /\(?-?(?:R\$\s?)?\d{1,3}(?:\.\d{3})+(?:,\d{1,3})?\)?|\(?-?(?:R\$\s?)?\d{1,3}(?:,\d{3})+(?:\.\d{1,3})?\)?|\(?-?(?:R\$\s?)?\d+(?:[.,]\d{1,3})?\)?/g;
   function extractNums(str) { const out = []; (String(str).match(NUMRE) || []).forEach(t => { const v = parseNum(t.replace(/[()]/g, '')); if (!isNaN(v)) out.push(t.startsWith('(') ? -v : v); }); return out; }
 
   // sinônimos usados em relatórios e planilhas

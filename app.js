@@ -1241,10 +1241,10 @@ async function linhasDoArquivo(f){
   if(nome.endsWith('.pdf')){
     if(!window.pdfjsLib) throw new Error('Leitor de PDF não carregou.');
     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; const out=[]; const imgs=[];
-    for(let p=1;p<=Math.min(pdf.numPages,20);p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent();
+    for(let p=1;p<=Math.min(pdf.numPages,300);p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent();
       const map=new Map(); for(const it of tc.items){ const y=Math.round(it.transform[5]/3); if(!map.has(y)) map.set(y,[]); map.get(y).push({x:it.transform[4],s:it.str}); }
       [...map.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,its])=>out.push({text:its.sort((a,b)=>a.x-b.x).map(i=>i.s).join('  ')}));
-      if(!tc.items.length && p<=3){ const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; imgs.push(c); } }
+      if(!tc.items.length && p>=pdf.numPages-1){ const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; imgs.push(c); } }
     if(out.join('').replace(/\s/g,'').length<20 && imgs.length) return await linhasOcr(imgs);
     return out;
   }
@@ -1261,7 +1261,7 @@ async function extrairPerdaArquivo(f){
   let data=null;
   for(const l of linhas){ const m=String(l.text).match(/(\d{2})[\/.-](\d{2})[\/.-](\d{2,4})/); if(m){ const y=m[3].length===2?'20'+m[3]:m[3]; const k=`${y}-${m[2]}-${m[1]}`; if(!isNaN(new Date(k))){ data=k; break; } } }
   const numsDe=l=>{ if(l.nums&&l.nums.length) return l.nums; const t=String(l.text).replace(/^[^0-9(-]*/,''); return Parser.extractNums(t).filter(v=>!(Number.isInteger(v)&&Math.abs(v)<100)); };
-  const grupos=[/perda|diferen[cç]a|quebra|falta|sobra\s*\/\s*falta|resultado/i, /total\s*geral|total/i];
+  const grupos=[/total\s+(?:de\s+|das\s+)?perdas?/i, /perda|diferen[cç]a|quebra|falta|sobra\s*\/\s*falta|resultado/i, /total\s*geral|total/i];
   for(const re of grupos){
     const cands=linhas.filter(l=>re.test(String(l.text))).map(l=>({l, ns:numsDe(l)})).filter(x=>x.ns.length);
     if(cands.length){ const x=cands[cands.length-1]; const v=x.ns[x.ns.length-1]; return {valor:round2(Math.abs(v)), linha:String(x.l.text), data}; }
