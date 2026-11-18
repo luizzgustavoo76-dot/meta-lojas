@@ -129,7 +129,7 @@ async function renderAnaliseSetor(box, s){
     ${cartao('Mês passado, mesmo período', totLm, pm0, pm1)}
     ${proj!=null?`<div class="kpi"><div class="l">Projeção do mês</div><div class="v">${brl0(proj)}</div><div class="d">no ritmo até o dia ${dias}${totLyM!=null?` · ${mesLabel(lyMes[0].slice(0,7))} fechou ${brl0(totLyM)} ${varHtml(proj,totLyM)}`:''}</div></div>`:''}
     <div class="kpi"><div class="l">Mix de produtos</div><div class="v">${A.itens}</div><div class="d">${base?`${nNovos} novo(s) · ${nParados} parou(ram) de vender vs. ${nomeBase}`:'com venda no período'}</div></div>
-    ${bals.length?`<div class="kpi"><div class="l">Perda nos balanços</div><div class="v">${brl0(perdaTot)}</div><div class="d">${pct(perdaTot/(A.tot||1),2)} da venda · ${bals.map(b=>`${b.periodo_inicio?fDate(b.periodo_inicio)+' a ':''}${fDate(b.data)}`).join(', ')}</div></div>`:''}
+    ${bals.length?`<div class="kpi"><div class="l">Perdas dos produtos no balanço</div><div class="v">${brl0(perdaTot)}</div><div class="d">soma das perdas, sem descontar as sobras · resultado do balanço ${brl0(bals.reduce((x,b)=>x+(+b.valor_perda||0),0))} · ${bals.map(b=>`${b.periodo_inicio?fDate(b.periodo_inicio)+' a ':''}${fDate(b.data)}`).join(', ')}</div></div>`:''}
   </div>
   ${base?`<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">🎯 Onde olhar primeiro</h2><div class="sp"></div><span class="small muted">comparado com o ${nomeBase} · toque no produto para ver</span></div>
     <div class="an-olg">
@@ -148,7 +148,7 @@ async function renderAnaliseSetor(box, s){
     <div class="tabs2" id="anFil">${[['todos','Todos'],['alertas','⚠ Alertas'],['queda','📉 Quedas'],['alta','📈 Altas'],['A','⭐ Curva A'],['parado','⛔ Pararam'],['novo','🆕 Novos']].map(([k,t])=>`<button data-f="${k}" class="${(S.anaFil||'todos')===k?'on':''}">${t}</button>`).join('')}
       <span class="sp"></span><button data-x="abrir">Abrir todos</button><button data-x="fechar">Fechar todos</button></div>
     <div id="anCasc"></div>
-    <div class="small muted" style="margin-top:10px">Var. = venda contra o ${nomeBase} no mesmo período${base?` (${fD(S.anaBase==='ano'?pa0:pm0)} a ${fD(S.anaBase==='ano'?pa1:pm1)})`:''}. Part. = participação na venda do setor. Curva A = produtos que somam 80% da venda. ${bals.length?'Perda bal. = perda do produto no balanço do período.':''}</div>
+    <div class="small muted" style="margin-top:10px">Var. = venda contra o ${nomeBase} no mesmo período${base?` (${fD(S.anaBase==='ano'?pa0:pm0)} a ${fD(S.anaBase==='ano'?pa1:pm1)})`:''}. Part. = participação na venda do setor. Curva A = produtos que somam 80% da venda. ${bals.length?'Perda bal. = perda do produto no balanço que cruza o período (sem descontar sobras).':''}</div>
   </div>`;
   if(S.anaOrd) $('#anOrd').value=S.anaOrd;
   S.anaAbertos=S.anaAbertos||new Set();
