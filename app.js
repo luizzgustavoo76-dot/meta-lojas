@@ -841,24 +841,31 @@ function formBalanco(b){
    <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
     <label class="f">Setor<select id="fbSetor">${ordem.map(x=>`<option value="${x.id}" ${(b?.setor_id||S.balSetor||'acougue')===x.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
     <label class="f">Data do balanço<input type="date" id="fbData" value="${b?.data||todayIso()}"></label>
-    <label class="f">Perda apurada (R$)<input class="in" id="fbValor" inputmode="decimal" value="${b?nf(+b.valor_perda):''}" placeholder="0,00"></label>
+    <label class="f">Perda apurada (R$) — sai do arquivo<input class="in" id="fbValor" inputmode="decimal" value="${b?nf(+b.valor_perda):''}" placeholder="lido do relatório"></label>
     <label class="f">Relatório do balanço ${novo?'':'(deixe vazio para manter)'}<input type="file" id="fbArq" accept=".xlsx,.xls,.csv,.pdf,image/*"></label>
    </div>
    <label class="f" style="margin-top:10px">Observação<textarea id="fbObs" rows="3" style="border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit">${esc(b?.observacao||'')}</textarea></label>
-   <p class="small muted" id="fbDica">Se o relatório for Excel/CSV e tiver uma linha de total, o site tenta preencher a perda sozinho — confira antes de salvar.</p>
+   <p class="small muted" id="fbDica">Anexe o relatório (Excel, CSV, PDF ou foto): o site lê o valor da perda e a data sozinho. Se quiser, você pode corrigir o valor antes de salvar.</p>
    <div id="fbErr" class="note err small hide"></div>
    <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">${novo?'Salvar balanço':'Salvar'}</button></div>`);
   $('#mN',m).onclick=closeModal;
-  $('#fbArq',m).onchange=async()=>{ const f=$('#fbArq',m).files[0]; if(!f||!/\.(xlsx|xls|csv)$/i.test(f.name)||!window.XLSX) return;
-    try{ const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
-      let tot=null; for(const r of rows){ const lab=r.find(c=>typeof c==='string' && /total|perda|diferen/i.test(c)); if(lab){ const nums=r.filter(c=>typeof c==='number'); if(nums.length) tot=nums[nums.length-1]; } }
-      if(tot!=null && !$('#fbValor',m).value){ $('#fbValor',m).value=nf(Math.abs(tot)); $('#fbValor',m).classList.add('chg'); $('#fbDica',m).textContent=`Valor ${brl(Math.abs(tot))} lido da linha de total do arquivo — confira.`; }
-    }catch(_){ } };
+  let leitura=null; const dataPadrao=$('#fbData',m).value;
+  const lerArquivo=()=>{ const f=$('#fbArq',m).files[0]; if(!f){ leitura=null; return; }
+    const dica=$('#fbDica',m); dica.innerHTML='<span class="spin"></span> Lendo o relatório para achar o valor da perda…';
+    leitura=extrairPerdaArquivo(f).then(r=>{
+      if(r.valor!=null){ $('#fbValor',m).value=nf(r.valor); $('#fbValor',m).classList.add('chg'); dica.innerHTML=`✔ Perda de <b>${brl(r.valor)}</b> lida do arquivo (linha: “${esc(r.linha.slice(0,70))}”). Confira e salve.`; }
+      else dica.innerHTML='<span style="color:var(--bad)">Não achei o valor da perda no arquivo.</span> Digite o valor acima.';
+      if(r.data && $('#fbData',m).value===dataPadrao){ $('#fbData',m).value=r.data; }
+      return r; }).catch(e=>{ dica.innerHTML='<span style="color:var(--bad)">Não consegui ler o arquivo.</span> Digite o valor acima.'; return {valor:null}; });
+  };
+  $('#fbArq',m).onchange=lerArquivo;
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#fbErr',m); e.textContent=t; e.classList.remove('hide'); };
-    const setor=$('#fbSetor',m).value, data=$('#fbData',m).value, valor=parseNum($('#fbValor',m).value), obs=$('#fbObs',m).value.trim(), f=$('#fbArq',m).files[0];
+    const f=$('#fbArq',m).files[0];
+    if(leitura && !$('#fbValor',m).value.trim()){ $('#mY',m).disabled=true; $('#mY',m).textContent='Lendo arquivo…'; await leitura; $('#mY',m).disabled=false; $('#mY',m).textContent=novo?'Salvar balanço':'Salvar'; }
+    const setor=$('#fbSetor',m).value, data=$('#fbData',m).value, valor=parseNum($('#fbValor',m).value), obs=$('#fbObs',m).value.trim();
     if(!data) return err('Informe a data do balanço.');
-    if(isNaN(valor)) return err('Informe o valor da perda (pode ser 0).');
+    if(isNaN(valor)) return err(f? 'Não achei o valor da perda no arquivo. Digite o valor da perda.' : 'Anexe o relatório do balanço ou digite o valor da perda.');
     if(f && f.size>25*1024*1024) return err('O arquivo passa de 25 MB.');
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
     try{
@@ -1216,3 +1223,46 @@ function instalarApp(){
    <div class="row"><div class="sp"></div><button class="btn p" onclick="closeModal()">Entendi</button></div>`);
 }
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+
+
+/* ===================== valor da perda a partir do relatório do balanço ===================== */
+async function linhasDoArquivo(f){
+  const nome=f.name.toLowerCase();
+  if(/\.(xlsx|xls|xlsm|csv)$/.test(nome)){
+    if(!window.XLSX) throw new Error('Leitor de Excel não carregou.');
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}); const out=[];
+    for(const sn of wb.SheetNames){ const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:null});
+      for(const r of rows){ const cells=r.filter(c=>c!=null&&c!==''); if(!cells.length) continue;
+        out.push({text:cells.map(c=>c instanceof Date?fDate(isoOf(c))+'/'+c.getFullYear():c).join('  '), nums:cells.filter(c=>typeof c==='number')}); } }
+    return out;
+  }
+  if(nome.endsWith('.pdf')){
+    if(!window.pdfjsLib) throw new Error('Leitor de PDF não carregou.');
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; const out=[]; const imgs=[];
+    for(let p=1;p<=Math.min(pdf.numPages,20);p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent();
+      const map=new Map(); for(const it of tc.items){ const y=Math.round(it.transform[5]/3); if(!map.has(y)) map.set(y,[]); map.get(y).push({x:it.transform[4],s:it.str}); }
+      [...map.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,its])=>out.push({text:its.sort((a,b)=>a.x-b.x).map(i=>i.s).join('  ')}));
+      if(!tc.items.length && p<=3){ const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; imgs.push(c); } }
+    if(out.join('').replace(/\s/g,'').length<20 && imgs.length) return await linhasOcr(imgs);
+    return out;
+  }
+  if(f.type.startsWith('image/')) return await linhasOcr([f]);
+  return [];
+}
+async function linhasOcr(fontes){
+  await carregarTesseract(); const w=await Tesseract.createWorker('por'); let t='';
+  try{ for(const x of fontes){ const c=await prepararImagem(x); const { data } = await w.recognize(c); t+=data.text+'\n'; } } finally { await w.terminate(); }
+  return limparTextoOcr(t).map(l=>({text:l}));
+}
+async function extrairPerdaArquivo(f){
+  const linhas=await linhasDoArquivo(f);
+  let data=null;
+  for(const l of linhas){ const m=String(l.text).match(/(\d{2})[\/.-](\d{2})[\/.-](\d{2,4})/); if(m){ const y=m[3].length===2?'20'+m[3]:m[3]; const k=`${y}-${m[2]}-${m[1]}`; if(!isNaN(new Date(k))){ data=k; break; } } }
+  const numsDe=l=>{ if(l.nums&&l.nums.length) return l.nums; const t=String(l.text).replace(/^[^0-9(-]*/,''); return Parser.extractNums(t).filter(v=>!(Number.isInteger(v)&&Math.abs(v)<100)); };
+  const grupos=[/perda|diferen[cç]a|quebra|falta|sobra\s*\/\s*falta|resultado/i, /total\s*geral|total/i];
+  for(const re of grupos){
+    const cands=linhas.filter(l=>re.test(String(l.text))).map(l=>({l, ns:numsDe(l)})).filter(x=>x.ns.length);
+    if(cands.length){ const x=cands[cands.length-1]; const v=x.ns[x.ns.length-1]; return {valor:round2(Math.abs(v)), linha:String(x.l.text), data}; }
+  }
+  return {valor:null, linha:'', data};
+}
