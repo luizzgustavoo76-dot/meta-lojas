@@ -233,6 +233,12 @@ function compAnoAnterior(doc, cutoff){
 
 /* ---------- comparativos: mês passado e ano passado, mesmo período e mesmo dia ---------- */
 function mesmoDiaEm(mes, dia){ const ds=diasDoMes(mes); return ds[Math.min(dia,ds.length)-1]; }
+function mesmoDiaSemanaEm(mes, ref){ // dia do mês alvo com o mesmo dia da semana, o mais perto do mesmo número de dia
+  const alvo=pDate(ref).getDay(), dia=+ref.slice(8); let melhor=null, dist=99;
+  for(const k of diasDoMes(mes)){ if(pDate(k).getDay()!==alvo) continue; const d=Math.abs(+k.slice(8)-dia); if(d<dist || (d===dist && +k.slice(8)>dia)){ melhor=k; dist=d; } }
+  return melhor;
+}
+function vendaNoDia(doc, k, sid){ if(!doc||!k) return null; const r=calc(doc,k); const x= sid ? r.setores.find(z=>z.id===sid) : r.loja; const d=x?.daily.find(z=>z.k===k); return d? {k, real:d.real} : null; }
 function numerosAte(doc, cut, sid){
   const r=calc(doc,cut); const x = sid ? r.setores.find(z=>z.id===sid) : r.loja; if(!x) return null;
   const d=x.daily.find(z=>z.k===cut);
@@ -245,6 +251,8 @@ function comparativos(doc, cutoff, sid){
   const atual=numerosAte(doc,cutoff,sid);
   const pm=S.months[mp]? numerosAte(S.months[mp], mesmoDiaEm(mp,dia), sid) : null;
   const pa=S.months[ma]? numerosAte(S.months[ma], mesmoDiaEm(ma,dia), sid) : null;
+  // venda do dia: compara com o mesmo dia da semana (terça com terça…)
+  for(const [ref,mm] of [[pm,mp],[pa,ma]]){ if(!ref) continue; const v=vendaNoDia(S.months[mm], mesmoDiaSemanaEm(mm,cutoff), sid); ref.diaK=v?.k||null; ref.dia=v?.real||0; }
   return { atual, pm:(pm&&pm.real)?pm:null, pa:(pa&&pa.real)?pa:null, mp, ma, dia };
 }
 function varTxt(a, b, ruimSeSobe){ if(!b) return '<span class="muted">—</span>'; const v=a/b-1; const bom = ruimSeSobe ? v<=0 : v>=0;
@@ -262,10 +270,10 @@ function cardComparativos(c, titulo){
   const colP=(ref)=> ref ? `<td class="n">${ref.pPerda!=null?pct(ref.pPerda,2):'—'}</td><td class="n">${difPP(a.pPerda, ref.pPerda)}</td>` : '<td class="n muted">sem dados</td><td></td>';
   const hd=(ref, rot)=> ref ? `${rot}<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(ref.cut.slice(0,7))}</span>` : rot;
   return `<div class="card" style="margin-top:12px">
-    <div class="row" style="margin-bottom:8px"><h2 style="margin:0">📊 Comparativo ${titulo?'— '+esc(titulo):''}</h2><div class="sp"></div><span class="small muted">Mesmo período (dia 1 até dia ${c.dia}) e mesmo dia do mês</span></div>
+    <div class="row" style="margin-bottom:8px"><h2 style="margin:0">📊 Comparativo ${titulo?'— '+esc(titulo):''}</h2><div class="sp"></div><span class="small muted">Acumulado: dia 1 até dia ${c.dia} · Venda do dia: mesmo dia da semana</span></div>
     <div class="tw"><table><thead><tr><th></th><th class="n">Atual<br><span class="small muted" style="text-transform:none;font-weight:500">${mesLabel(c.atual.cut.slice(0,7))}</span></th><th class="n">${hd(pm,'Mês passado')}</th><th class="n">Variação</th><th class="n">${hd(pa,'Ano passado')}</th><th class="n">Variação</th></tr></thead><tbody>
       <tr><td><b>Venda acumulada</b><div class="small muted">dia 1 até dia ${c.dia}</div></td><td class="n"><b>${brl0(a.real)}</b></td>${col(pm,'real')}${col(pa,'real')}</tr>
-      <tr><td><b>Venda do dia</b><div class="small muted">${fDateL(a.cut)}${pm?` · ${fDateL(pm.cut)}`:''}${pa?` · ${fDateL(pa.cut)}/${pa.cut.slice(2,4)}`:''}</div></td><td class="n"><b>${a.dia?brl0(a.dia):'—'}</b></td>${col(pm,'dia')}${col(pa,'dia')}</tr>
+      <tr><td><b>Venda do dia</b><div class="small muted">mesmo dia da semana: ${fDateL(a.cut)}${pm?.diaK?` · ${fDateL(pm.diaK)}`:''}${pa?.diaK?` · ${fDateL(pa.diaK)}/${pa.diaK.slice(2,4)}`:''}</div></td><td class="n"><b>${a.dia?brl0(a.dia):'—'}</b></td>${col(pm,'dia')}${col(pa,'dia')}</tr>
       <tr><td><b>Perda acumulada</b><div class="small muted">inclui balanços</div></td><td class="n"><b>${brl0(a.perda)}</b></td>${col(pm,'perda',true)}${col(pa,'perda',true)}</tr>
       <tr><td><b>% de perda sobre a venda</b></td><td class="n"><b>${a.pPerda!=null?pct(a.pPerda,2):'—'}</b></td>${colP(pm)}${colP(pa)}</tr>
     </tbody></table></div>
