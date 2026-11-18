@@ -1,3 +1,4 @@
+const VERSAO_SITE = (()=>{ try{ return new URL(document.currentScript.src).searchParams.get('v')||''; }catch(_){ return ''; } })();
 /* ===================== utilidades ===================== */
 const $ = (s, r=document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -949,8 +950,9 @@ function montarCabecalho(){
   const v=S.gerente?VIEWS_G:VIEWS_E;
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
   $('#hctl').classList.remove('hide');
-  $('#userBox').innerHTML=`<button id="bConta" title="Minha conta">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
+  $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
   $('#bConta').onclick=minhaConta;
+  $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]);
@@ -1018,7 +1020,7 @@ async function iniciarSessao(){
     const cur=todayIso().slice(0,7); S.mes = S.mesList.includes(cur)?cur:(S.mesList[S.mesList.length-1]||null);
     if(S.mes) await carregarMes(S.mes);
     if(S.mes){ const [y,mm]=S.mes.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); carregarAnteriores(S.mes); }
-    S.loaded=true; document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route(); iniciarInatividade();
+    S._ultimaCarga=Date.now(); S.loaded=true; document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route(); iniciarInatividade();
   }catch(e){ console.error(e); $('#app').innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message||e)}</div>`; }
 }
 
@@ -1266,3 +1268,40 @@ async function extrairPerdaArquivo(f){
   }
   return {valor:null, linha:'', data};
 }
+
+
+/* ===================== atualizar dados e aviso de versão nova do site ===================== */
+async function atualizarDados(avisar){
+  if(!S.loaded) return;
+  const b=$('#bAtualizar'); if(b){ b.disabled=true; b.textContent='⏳'; }
+  try{
+    const manter=S.mes; S.months={}; S._tudo=false; await carregarListaMeses();
+    if(manter && S.mesList.includes(manter)) await carregarMes(manter);
+    S.cutoff=null; S._ultimaCarga=Date.now(); render(); if(avisar) toast('Números atualizados ✔');
+  }catch(e){ if(avisar) toast('Não foi possível atualizar: '+e.message,5000); }
+  finally{ if(b){ b.disabled=false; b.textContent='🔄'; } }
+}
+async function verificarVersao(){
+  try{
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'}); if(!r.ok) return;
+    const { versao } = await r.json();
+    if(versao && VERSAO_SITE && versao!==VERSAO_SITE) mostrarAvisoVersao();
+  }catch(_){ }
+}
+function recarregarSite(){ const u=new URL(location.href); u.searchParams.set('r', Date.now()); location.replace(u.toString()); }
+function mostrarAvisoVersao(){
+  if($('#avisoVersao')) return;
+  const d=document.createElement('div'); d.id='avisoVersao';
+  d.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:120;background:var(--dark);color:#fff;border:2px solid var(--yellow);border-radius:14px;padding:10px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px #0006;max-width:94vw;flex-wrap:wrap;justify-content:center';
+  d.innerHTML='<span>✨ <b>Nova atualização do site disponível</b></span><button class="btn y" id="bNovaVersao">Atualizar agora</button><button class="btn" id="bDepois" style="background:#26241f;color:#fff;border-color:#3a3731">Depois</button>';
+  document.body.appendChild(d);
+  $('#bNovaVersao').onclick=recarregarSite;
+  $('#bDepois').onclick=()=>{ d.remove(); clearTimeout(S._lembrarVersao); S._lembrarVersao=setTimeout(verificarVersao, 30*60*1000); };
+}
+setInterval(verificarVersao, 3*60*1000);
+setTimeout(verificarVersao, 8000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden) return;
+  verificarVersao();
+  if(S.loaded && S.view!=='tv' && Date.now()-(S._ultimaCarga||0)>5*60*1000) atualizarDados(false); // voltou para o site depois de um tempo: busca os números novos
+});
