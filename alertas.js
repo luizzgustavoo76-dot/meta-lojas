@@ -78,7 +78,7 @@ function htmlAlerta(a,i){
   return `<div class="alerta" style="border-left:4px solid ${cor};padding:8px 10px;margin:6px 0;background:#fff;border-radius:8px;border:1px solid var(--line);border-left-width:4px;border-left-color:${cor}">
     <div style="display:flex;gap:8px;align-items:flex-start;cursor:${a.itens.length?'pointer':'default'}" data-alt="${i}"><span>${a.nivel==='alto'?'🔴':'🟡'}</span><div style="flex:1"><b>${esc(a.titulo)}</b><div class="small muted">${a.tipo==='troca'?'🔄 Trocas':'🗑️ Perdas'} · ${esc(a.detalhe)}</div></div>${a.itens.length?'<span class="muted" data-alts="'+i+'">▸</span>':''}</div>
     ${a.itens.length?`<div class="hide small" data-altd="${i}" style="margin:6px 0 2px 26px;line-height:1.6">${a.itens.map(t=>'• '+esc(t)).join('<br>')}</div>`:''}
-    <div style="margin:6px 0 0 26px"><a class="small" href="#setor" data-ir="${a.setor}|${a.aba}">Abrir ${a.aba==='trc'?'🔄 Trocas':'🗑️ Perdas'} do ${esc(nomeSetor(a.setor))} →</a></div></div>`;
+    <div style="margin:6px 0 0 26px"><a class="small" href="#setor" data-ir="${a.setor}|${a.aba}">Abrir ${a.aba==="trc"?"🔄 Trocas":"🗑️ Perdas"} · ${esc(nomeSetor(a.setor))} →</a></div></div>`;
 }
 function ligarAlertas(el){
   el.querySelectorAll('[data-alt]').forEach(h=>h.onclick=()=>{ const i=h.dataset.alt; const d=el.querySelector(`[data-altd="${i}"]`); if(!d) return; const ab=d.classList.toggle('hide'); const s=el.querySelector(`[data-alts="${i}"]`); if(s) s.textContent=ab?'▸':'▾'; });
