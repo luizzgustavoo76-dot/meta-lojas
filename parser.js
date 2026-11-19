@@ -228,6 +228,34 @@
     res.venda=round2(res.departamentos.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0));
     return res;
   }
-  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas };
+
+  /* ---------- "PERDAS DA FILIAL ... NO PERIODO DE x A y" (perdas por produto) ---------- */
+  function analisarRelatorioPerdas(linhas){
+    const textos = linhas.map(l => (typeof l==='string' ? l : String(l.text||'')).replace(/\s+/g,' ').trim());
+    const cab = textos.find(t=>/PERDAS DA FILIAL .*PERIODO DE \d{2}\/\d{2}\/\d{2,4} A \d{2}\/\d{2}\/\d{2,4}/i.test(t)); if(!cab) return null;
+    const pm = cab.match(/FILIAL (\d+).*PERIODO DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+    const res={ tipo:'perdas', filial:pm[1], periodo:{ini:dataBR(pm[2]), fim:dataBR(pm[3])}, emitido:null, secoes:[], total:null };
+    let sec=null;
+    for(const t of textos){ if(!t) continue;
+      if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
+      let m=t.match(/^(SECAO|DEPTO|DEPARTAMENTO|GRUPO|SUBGRUPO):?\s*(\d+)\s*-\s*(.+)$/i);
+      if(m){ const cod=+m[2]; sec=res.secoes.find(x=>x.codigo===cod); if(!sec){ sec={codigo:cod, nome:m[3].trim(), nivel:m[1].toUpperCase(), itens:[]}; res.secoes.push(sec); } continue; }
+      m=t.match(/^TOTAL:?\s+(.+)$/i); if(m){ const n=m[1].split(' ').map(numBR); if(n.length>=4) res.total={ent:n[0],sai:n[1],ven:n[2],q:n[3]}; continue; }
+      if(sec && /^\d+\s+\S/.test(t)){
+        const tk=t.split(' '); if(tk.length<8) continue;
+        const ult=tk.slice(-6); if(!/%$/.test(ult[4])) continue;
+        const nums=[ult[0],ult[1],ult[2],ult[3],ult[5]].map(numBR); if(nums.some(v=>v==null)) continue;
+        const desc=tk.slice(1,-6).join(' '); if(!desc) continue;
+        const [e,sa,v,q,cu]=nums; const pc=parseFloat(ult[4])||0;
+        sec.itens.push({ c:tk[0], d:desc, e, s:sa, v, q, pc, cu, val:round2(q*cu) });
+      }
+    }
+    res.secoes=res.secoes.filter(x=>x.itens.length); if(!res.secoes.length || !res.periodo.ini) return null;
+    res.itens=res.secoes.reduce((a,x)=>a+x.itens.length,0);
+    res.qtd=round2(res.secoes.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.q,0),0));
+    res.valor=round2(res.secoes.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.val,0),0));
+    return res;
+  }
+  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Parser = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -335,11 +335,11 @@ function renderSetor(app, doc){
     <div>${S.voltarPainel?'<button class="btn" id="bVoltarPainel" style="margin-bottom:8px">← Voltar ao painel</button>':''}<h1>${esc(s.nome)}</h1><p class="sub" style="margin:0">${mesLabel(doc.mes)}${S.gerente?` · representa ${pct(s.share)} da meta da loja`:''}</p></div>
     <div class="sp"></div>
     <label class="f">Setor<select id="selSetor">${setores.map(x=>`<option value="${x.id}" ${x.id===s.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
-    ${S.setorAba==='ana'?'':cutoffSelect(doc)}
+    ${S.setorAba==='ana'||S.setorAba==='per'?'':cutoffSelect(doc)}
   </div>
-  <div class="tabs2 abas-setor" id="abSetor"><button data-a="dia" class="${S.setorAba!=='bal'?'on':''}">📈 Dia a dia</button><button data-a="bal" class="${S.setorAba==='bal'?'on':''}">📦 Balanço</button><button data-a="ana" class="${S.setorAba==='ana'?'on':''}">🔎 Análise de vendas</button></div>
-  ${S.setorAba!=='bal'&&S.setorAba!=='ana'&&!S.gerente?cardHojeEncarregado(doc,loja,s):''}
-  ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':S.setorAba==='ana'?'<div id="anaBox"><div class="empty"><span class="spin"></span> Carregando análise…</div></div>':`
+  <div class="tabs2 abas-setor" id="abSetor"><button data-a="dia" class="${(S.setorAba!=='bal'&&S.setorAba!=='ana'&&S.setorAba!=='per')?'on':''}">📈 Dia a dia</button><button data-a="bal" class="${S.setorAba==='bal'?'on':''}">📦 Balanço</button><button data-a="ana" class="${S.setorAba==='ana'?'on':''}">🔎 Análise de vendas</button><button data-a="per" class="${S.setorAba==='per'?'on':''}">🗑️ Perdas</button></div>
+  ${S.setorAba!=='bal'&&S.setorAba!=='ana'&&S.setorAba!=='per'&&!S.gerente?cardHojeEncarregado(doc,loja,s):''}
+  ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':S.setorAba==='ana'?'<div id="anaBox"><div class="empty"><span class="spin"></span> Carregando análise…</div></div>':S.setorAba==='per'?'<div id="perBox"><div class="empty"><span class="spin"></span> Carregando perdas…</div></div>':`
   <div class="grid kpis">
     <div class="kpi hero ${S.gerente?'':'m-hide'}"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
     <div class="kpi"><div class="l">Realizado</div><div class="v">${brl0(s.real)}</div><div class="d">Meta até a data ${brl0(s.metaAte)}</div></div>
@@ -369,9 +369,10 @@ function renderSetor(app, doc){
   bindCutoff();
   $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); marcarBnav(); });
   app.querySelectorAll('[data-goaba]').forEach(a=>a.onclick=e=>{ e.preventDefault(); S.setorAba=a.dataset.goaba; render(); window.scrollTo(0,0); });
-  if(!S.gerente && S.setorAba!=='bal' && S.setorAba!=='ana') preencherQuedasEncarregado(s);
+  if(!S.gerente && S.setorAba!=='bal' && S.setorAba!=='ana' && S.setorAba!=='per') preencherQuedasEncarregado(s);
   if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
   if(S.setorAba==='ana'){ renderAnaliseSetor($('#anaBox'), s); return; }
+  if(S.setorAba==='per'){ renderPerdasSetor($('#perBox'), s); return; }
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   drawLojaChart({daily:s.daily},'chSet');
   aplicarCelular(app);
@@ -515,6 +516,7 @@ async function importPdf(file){
   }
   const rv=Parser.analisarRelatorioVendas(lines);
   if(rv){ closeModal(); return lancarPorRelatorio(rv, file); }
+  if(Parser.analisarRelatorioPerdas(lines)){ closeModal(); return importarRelatorioPerdas(file, S.setorSel||''); }
   const text=lines.join('\n');
   if(text.replace(/\s/g,'').length<30){ // PDF escaneado → imagens
     const canvases=[]; for(let p=1;p<=Math.min(pdf.numPages,4);p++){ const pg=await pdf.getPage(p); const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; canvases.push(c); }
