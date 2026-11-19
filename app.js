@@ -835,8 +835,15 @@ function bindImportarPlanilhas(host){
 }
 
 /* ===================== USUÁRIOS (gerente) ===================== */
-async function chamarUsuarios(body){
-  const { data, error } = await S.sb.functions.invoke('usuarios',{ body });
+async function tokenValido(forcar){ // celular em segundo plano deixa o token vencer: renova antes de chamar o servidor
+  let { data:{ session } } = await S.sb.auth.getSession();
+  if(forcar || !session || (session.expires_at||0)*1000 < Date.now()+60000){ const r=await S.sb.auth.refreshSession(); if(r.data?.session) session=r.data.session; }
+  return session?.access_token||null;
+}
+async function chamarUsuarios(body, tentou){
+  const tk=await tokenValido(!!tentou);
+  const { data, error } = await S.sb.functions.invoke('usuarios',{ body, headers: tk?{ Authorization:'Bearer '+tk }:{} });
+  if(error && !tentou && (error.context?.status===401)) return chamarUsuarios(body, true);
   if(error){ let msg=error.message; try{ const j=await error.context.json(); if(j?.erro) msg=j.erro; }catch(_){} throw new Error(msg); }
   if(data?.erro) throw new Error(data.erro); return data;
 }
@@ -1126,6 +1133,7 @@ function montarCabecalho(){
   montarBnav();
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && S.sb && S.user){ try{ S.sb.auth.startAutoRefresh?.(); tokenValido(false).catch(()=>{}); }catch(_){} } });
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
   const antes=S.view; if(S.gerente && (h==='lancar'||h==='metas')){ S.admAberto=h; S._admRolar=true; S.view='conta'; history.replaceState(null,'','#conta'); } else S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
