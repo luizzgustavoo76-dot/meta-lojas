@@ -94,7 +94,7 @@ async function renderAnaliseSetor(box, s){
   try{
     [cur, ly, lm, lyM] = await Promise.all([ carregarAnalise(sid,ini,fim), carregarAnalise(sid,pa0,pa1), carregarAnalise(sid,pm0,pm1), lyMes?carregarAnalise(sid,lyMes[0],lyMes[1]):null ]);
     try{ if(ehBdj()) throw 0; S._metasDep=await q(S.sb.from('metas_departamento').select('dep_codigo,meta').eq('mes',fim.slice(0,7)).eq('setor_id',sid)); }catch(_){ S._metasDep=[]; }
-    bals=(await q(S.sb.from('balancos').select('id,data,periodo_inicio,valor_perda,analise,arquivo_path,arquivo_nome').eq('setor_id',sid).gte('data',ini).order('data'))).filter(b=>(b.periodo_inicio||b.data)<=fim);
+    bals=ehBdj()?[]:(await q(S.sb.from('balancos').select('id,data,periodo_inicio,valor_perda,analise,arquivo_path,arquivo_nome').eq('setor_id',sid).gte('data',ini).order('data'))).filter(b=>(b.periodo_inicio||b.data)<=fim);
   }catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo() || !cur) return;
   if(!S.anaBase || (S.anaBase==='ano'&&!ly&&lm) ) S.anaBase = ly ? 'ano' : (lm ? 'mes' : 'ano');
