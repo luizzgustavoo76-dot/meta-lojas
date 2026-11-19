@@ -73,12 +73,12 @@ async function calcularAlertas(forcar){
   return al;
 }
 
-function htmlAlerta(a,i){
+function htmlAlerta(a,i,aqui){
   const cor=a.nivel==='alto'?'var(--bad)':'var(--warn)';
   return `<div class="alerta" style="border-left:4px solid ${cor};padding:8px 10px;margin:6px 0;background:#fff;border-radius:8px;border:1px solid var(--line);border-left-width:4px;border-left-color:${cor}">
     <div style="display:flex;gap:8px;align-items:flex-start;cursor:${a.itens.length?'pointer':'default'}" data-alt="${i}"><span>${a.nivel==='alto'?'🔴':'🟡'}</span><div style="flex:1"><b>${esc(a.titulo)}</b><div class="small muted">${a.tipo==='troca'?'🔄 Trocas':'🗑️ Perdas'} · ${esc(a.detalhe)}</div></div>${a.itens.length?'<span class="muted" data-alts="'+i+'">▸</span>':''}</div>
     ${a.itens.length?`<div class="hide small" data-altd="${i}" style="margin:6px 0 2px 26px;line-height:1.6">${a.itens.map(t=>'• '+esc(t)).join('<br>')}</div>`:''}
-    <div style="margin:6px 0 0 26px"><a class="small" href="#setor" data-ir="${a.setor}|${a.aba}">Abrir ${a.aba==="trc"?"🔄 Trocas":"🗑️ Perdas"} · ${esc(nomeSetor(a.setor))} →</a></div></div>`;
+${(aqui && aqui.setor===a.setor && aqui.aba===a.aba)?'':`    <div style="margin:6px 0 0 26px"><a class="small" href="#setor" data-ir="${a.setor}|${a.aba}">Abrir ${a.aba==="trc"?"🔄 Trocas":"🗑️ Perdas"} · ${esc(nomeSetor(a.setor))} →</a></div>`}</div>`;
 }
 function ligarAlertas(el){
   el.querySelectorAll('[data-alt]').forEach(h=>h.onclick=()=>{ const i=h.dataset.alt; const d=el.querySelector(`[data-altd="${i}"]`); if(!d) return; const ab=d.classList.toggle('hide'); const s=el.querySelector(`[data-alts="${i}"]`); if(s) s.textContent=ab?'▸':'▾'; });
@@ -109,7 +109,7 @@ async function cardAlertas(app, filtroSetor, ancora){
   if(!al.length){ box.innerHTML=`<div class="row"><h2 style="margin:0">🔔 Alertas de perdas e trocas</h2><div class="sp"></div><span class="small" style="color:var(--good)">✔ nenhum alerta</span></div>`; return; }
   const alto=al.filter(a=>a.nivel==='alto').length;
   box.innerHTML=`<details ${alto?'open':''}><summary style="cursor:pointer"><h2 style="display:inline;margin:0">🔔 Alertas de perdas e trocas</h2> <span class="small" style="color:${alto?'var(--bad)':'var(--warn)'}">${alto?`🔴 ${alto} importante(s)`:''}${alto&&al.length>alto?' · ':''}${al.length>alto?`🟡 ${al.length-alto} de atenção`:''}</span></summary>
-    <div style="margin-top:6px">${al.slice(0,6).map(htmlAlerta).join('')}</div>${al.length>6?`<button class="btn" id="alTodos" style="margin-top:6px">Ver todos os ${al.length} alertas</button>`:''}</details>`;
+    <div style="margin-top:6px">${al.slice(0,6).map((a,i)=>htmlAlerta(a,i,filtroSetor?{setor:filtroSetor,aba:'per'}:null)).join('')}</div>${al.length>6?`<button class="btn" id="alTodos" style="margin-top:6px">Ver todos os ${al.length} alertas</button>`:''}</details>`;
   ligarAlertas(box); const t=$('#alTodos'); if(t) t.onclick=abrirAlertas;
 }
 
