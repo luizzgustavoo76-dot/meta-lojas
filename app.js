@@ -101,8 +101,9 @@ function render(){
     return;
   }
   if(!S.cutoff || !S.cutoff.startsWith(doc.mes)) S.cutoff = lastSetorDay(doc) || lastDataDay(doc) || diasDoMes(doc.mes)[0];
-  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardTrocasPainel(app,doc); cardTetoPainel(app,doc); }
+  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardTetoPainel(app,doc); }
   else if(S.view==='perdas' && S.gerente) renderPerdasLoja(app,doc);
+  else if(S.view==='trocas' && S.gerente) renderTrocasLoja(app,doc);
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
@@ -1104,7 +1105,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico'],['metas','Metas do mês']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['lancar','Lançar vendas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico'],['metas','Metas do mês']];
 const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);

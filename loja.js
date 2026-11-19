@@ -210,39 +210,60 @@ async function renderPerdasLoja(app, doc){
   $('#plSel').onchange=e=>{ S.plPer=e.target.value; renderPerdasLoja(app,doc); };
 }
 
-/* ---------- Painel: relatório geral de trocas (só gerente) ---------- */
-async function cardTrocasPainel(app, doc){
-  if(!S.gerente) return;
-  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('periodo_inicio,periodo_fim').gte('periodo_fim',doc.mes+'-01').lte('periodo_fim',fimDoMes(doc.mes)).order('periodo_fim',{ascending:false}).limit(50)); }catch(_){ return; }
-  if(!app.isConnected) return;
-  const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px'; box.id='trcPainel';
-  const ancora=$('#ckBox')||app.querySelector('.row'); (ancora?.nextSibling? app.insertBefore(box, ancora.nextSibling) : app.appendChild(box));
-  if(!per.length){ box.innerHTML=`<div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">🔄 Trocas da loja</h2><div class="sp"></div><span class="small muted">nenhum relatório de trocas em ${mesLabel(doc.mes)} — importe o “Resumo de produtos transferidos”</span></div>`; return; }
-  per.sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
-  const ini=per[0].periodo_inicio, fim=per[0].periodo_fim;
+/* ---------- Tela "Trocas" (menu de cima, só gerente): relatório geral de trocas ---------- */
+async function renderTrocasLoja(app, doc){
+  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap"><div><h1>Trocas da loja</h1><p class="sub" style="margin:0">Produtos transferidos para troca — por setor e por produto. Ficam fora da perda e do teto.</p></div><div class="sp"></div><span id="tlPer"></span>${botaoImportarVarios('bVT')}</div><div id="tlBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
+  ligarImportarVarios('bVT');
+  const box=$('#tlBox'); const vivo=()=>S.view==='trocas' && box.isConnected;
+  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(500)); }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  if(!vivo()) return;
+  const periodos=[...new Map(per.map(x=>[x.periodo_inicio+'|'+x.periodo_fim,x])).values()].sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
+  if(!periodos.length){ box.innerHTML='<div class="card empty"><h2>Nenhum relatório de trocas ainda</h2><p>Importe o “Resumo de produtos transferidos” do sistema pelo botão 📥 Importar relatórios.</p></div>'; return; }
+  const atual=todayIso().slice(0,4);
+  if(!S.tlPer || !periodos.some(p=>p.periodo_inicio+'|'+p.periodo_fim===S.tlPer)){ const p=periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]; S.tlPer=p.periodo_inicio+'|'+p.periodo_fim; }
+  $('#tlPer').innerHTML=`<label class="f" style="margin:0">Período<select id="tlSel">${periodos.map(p=>{ const k=p.periodo_inicio+'|'+p.periodo_fim; return `<option value="${k}" ${k===S.tlPer?'selected':''}>${fD(p.periodo_inicio)} a ${fD(p.periodo_fim)}</option>`; }).join('')}</select></label>`;
+  $('#tlSel').onchange=e=>{ S.tlPer=e.target.value; renderTrocasLoja(app,doc); };
+  const [ini,fim]=S.tlPer.split('|');
   let T=[],TL=[],L=[];
-  try{ [T,TL,L]=await Promise.all([ q(S.sb.from('analise_trocas').select('setor_id,custo,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)), q(S.sb.from('analise_trocas').select('setor_id,custo').eq('periodo_inicio',addAnos(ini,-1)).eq('periodo_fim',addAnos(fim,-1))), todasLinhas(()=>S.sb.from('lancamentos').select('setor_id,venda').gte('data',ini).lte('data',fim)) ]); }catch(_){ box.remove(); return; }
-  if(!box.isConnected) return;
+  try{ [T,TL,L]=await Promise.all([ q(S.sb.from('analise_trocas').select('setor_id,custo,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)), q(S.sb.from('analise_trocas').select('setor_id,custo,dados').eq('periodo_inicio',addAnos(ini,-1)).eq('periodo_fim',addAnos(fim,-1))), todasLinhas(()=>S.sb.from('lancamentos').select('setor_id,venda').gte('data',ini).lte('data',fim)) ]); }
+  catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  if(!vivo()) return;
   const vs={}; let vLoja=0; for(const x of L){ vs[x.setor_id]=(vs[x.setor_id]||0)+(+x.venda||0); vLoja+=(+x.venda||0); }
   const tot=T.reduce((a,x)=>a+(+x.custo||0),0), totV=T.reduce((a,x)=>a+(+x.venda||0),0), totL=TL.reduce((a,x)=>a+(+x.custo||0),0);
   const mL=Object.fromEntries(TL.map(x=>[x.setor_id,+x.custo]));
+  const lyP=new Map(); for(const x of TL) for(const i of x.dados.itens) lyP.set(String(i.c),i);
   const set=T.map(x=>({id:x.setor_id, c:+x.custo, n:x.dados.itens.length, v:vs[x.setor_id]||0, l:mL[x.setor_id]??null})).sort((a,b)=>b.c-a.c);
   const prods=T.flatMap(x=>x.dados.itens.map(i=>({...i, setor:x.setor_id}))).filter(i=>i.tc>0).sort((a,b)=>b.tc-a.tc);
-  const varP=(a,b)=>{ if(b==null||!b) return ''; const v=a/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
+  const varP=(a,b)=>{ if(b==null) return ''; if(!b) return a?'<span class="an-novo">nova</span>':''; const v=a/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
   const maior=set[0], menor=set[set.length-1];
-  box.innerHTML=`<details ${(typeof ehCelular==='function'&&ehCelular())?'':'open'}><summary style="cursor:pointer"><h2 style="display:inline;margin:0">🔄 Trocas da loja</h2> <span class="small muted">${fD(ini)} a ${fD(fim)} · ${brl0(tot)} a custo${totL?' · ano passado '+brl0(totL)+' '+varP(tot,totL):''}</span></summary>
-    <div class="grid kpis" style="margin-top:10px">
+  let ac=0,n80=0; for(const p of prods){ ac+=p.tc; n80++; if(ac>=tot*0.8) break; }
+  const subiu=TL.length? prods.map(p=>({p,d:p.tc-((lyP.get(String(p.c))||{}).tc||0)})).filter(x=>x.d>0).sort((a,b)=>b.d-a.d).slice(0,5):[];
+  box.innerHTML=`
+    <div class="grid kpis">
       <div class="kpi hero"><div class="l">Total de trocas (custo)</div><div class="v">${brl0(tot)}</div><div class="d">${prods.length} produtos · a preço de venda ${brl0(totV)}</div></div>
       <div class="kpi"><div class="l">Sobre a venda da loja</div><div class="v">${vLoja?pctBR(tot/vLoja,2):'—'}</div><div class="d">venda lançada no período ${brl0(vLoja)}</div></div>
+      <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v">${TL.length?brl0(totL):'—'}</div><div class="d">${TL.length?varP(tot,totL)+' em relação ao ano passado':'importe o relatório de trocas de '+fD(addAnos(ini,-1))+' a '+fD(addAnos(fim,-1))}</div></div>
       <div class="kpi"><div class="l">Maior troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(maior.id))}</div><div class="d">${brl0(maior.c)} · ${pctBR(maior.c/tot,0)} das trocas</div></div>
       <div class="kpi"><div class="l">Menor troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(menor.id))}</div><div class="d">${brl0(menor.c)} · ${pctBR(menor.c/tot,1)} das trocas</div></div>
       <div class="kpi"><div class="l">Produto com maior troca</div><div class="v" style="font-size:16px">${esc(cap1(prods[0]?.d||'—'))}</div><div class="d">${prods[0]?brl(prods[0].tc)+' · '+esc(nomeSetor(prods[0].setor)):''}</div></div>
-      <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v">${totL?brl0(totL):'—'}</div><div class="d">${totL?varP(tot,totL)+' em relação ao ano passado':'importe o relatório de trocas de '+fD(addAnos(ini,-1))+' a '+fD(addAnos(fim,-1))}</div></div>
     </div>
+    <div class="card" style="margin-top:12px"><h2>👀 Onde olhar primeiro</h2><ul class="small" style="margin:6px 0 0 18px;line-height:1.6">
+      <li><b>${n80} produto(s)</b> fazem 80% das trocas da loja (de ${prods.length}).</li>
+      <li><b>${esc(nomeSetor(maior.id))}</b> responde por ${pctBR(maior.c/tot,0)} das trocas${maior.v?` (${pctBR(maior.c/maior.v,2)} da venda do setor)`:''}.</li>
+      <li>Menor troca: <b>${esc(cap1(prods[prods.length-1]?.d||'—'))}</b> (${brl(prods[prods.length-1]?.tc)}, ${esc(nomeSetor(prods[prods.length-1]?.setor))}).</li>
+      ${subiu.length?`<li>Mais subiram contra o ano passado: ${subiu.map(x=>`<b>${esc(cap1(x.p.d))}</b> +${brl0(x.d)}`).join(' · ')}</li>`:''}
+    </ul></div>
     <div class="grid two" style="gap:12px;margin-top:12px">
-      <div><h3 style="margin:0 0 6px">Ranking dos setores</h3>${set.map((x,i)=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;align-items:baseline"><span class="muted small" style="width:18px">${i+1}º</span><b style="flex:1">${esc(nomeSetor(x.id))}</b><b>${brl0(x.c)}</b></div><div class="small muted" style="margin-left:26px">${pctBR(x.c/tot,0)} das trocas · ${x.v?pctBR(x.c/x.v,2)+' da venda do setor':'sem venda lançada'} · ${x.n} produtos${x.l!=null?' · '+varP(x.c,x.l):''}</div><div style="margin-left:26px">${barraPct(x.c/maior.c)}</div></div>`).join('')}</div>
-      <div><h3 style="margin:0 0 6px">10 produtos com maior troca</h3>${prods.slice(0,10).map((p,i)=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;align-items:baseline"><span class="muted small" style="width:18px">${i+1}</span><span style="flex:1">${esc(cap1(p.d))}</span><b>${brl0(p.tc)}</b></div><div class="small muted" style="margin-left:26px">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></div>`).join('')}
-        <p class="small muted" style="margin:6px 0 0">Menor troca: ${esc(cap1(prods[prods.length-1]?.d||'—'))} (${brl(prods[prods.length-1]?.tc)})</p></div>
+      <div class="card"><h2>Ranking dos setores</h2>${set.map((x,i)=>`<div style="padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer" data-trset="${x.id}"><div style="display:flex;gap:8px;align-items:baseline"><span class="muted small" style="width:20px">${i+1}º</span><b style="flex:1">${esc(nomeSetor(x.id))}</b><b>${brl0(x.c)}</b></div><div class="small muted" style="margin-left:28px">${pctBR(x.c/tot,0)} das trocas · ${x.v?pctBR(x.c/x.v,2)+' da venda do setor':'sem venda lançada'} · ${x.n} produtos${x.l!=null?' · ano passado '+brl0(x.l)+' '+varP(x.c,x.l):''}</div><div style="margin-left:28px">${barraPct(x.c/maior.c)}</div></div>`).join('')}<p class="small muted" style="margin:6px 0 0">Toque no setor para abrir a aba 🔄 Trocas dele.</p></div>
+      <div class="card"><h2>10 produtos com maior troca</h2>${prods.slice(0,10).map((p,i)=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;align-items:baseline"><span class="muted small" style="width:20px">${i+1}</span><span style="flex:1">${esc(cap1(p.d))}</span><b>${brl0(p.tc)}</b></div><div class="small muted" style="margin-left:28px">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></div>`).join('')}</div>
     </div>
-    <p class="small muted" style="margin:8px 0 0">Abra cada setor na aba <b>🔄 Trocas</b> para ver todos os produtos. As trocas ficam fora da perda e do teto.</p></details>`;
+    <div class="card" style="margin-top:12px">
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Todos os produtos</h2><div class="sp"></div>
+        <select id="tlSet" style="border:1px solid var(--line);border-radius:8px;padding:5px 6px"><option value="">Todos os setores</option>${set.map(x=>`<option value="${x.id}">${esc(nomeSetor(x.id))}</option>`).join('')}</select>
+        <input id="tlBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:150px"></div>
+      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="m-hide">Setor</th><th class="n m-hide">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th>${TL.length?'<th class="n m-hide">Ano pass.</th>':''}<th class="n">Part.</th></tr></thead><tbody id="tlBody"></tbody></table></div></div>`;
+  const desenha=()=>{ const t=normN2($('#tlBusca').value), st=$('#tlSet').value;
+    $('#tlBody').innerHTML=prods.map((p,k)=>({p,k})).filter(({p})=>(!st||p.setor===st)&&(!t||normN2(p.d).includes(t)||String(p.c)===t)).slice(0,500).map(({p,k})=>{ const o=lyP.get(String(p.c)); return `<tr><td><span class="muted small">${k+1}º · ${esc(p.c)}</span> ${esc(cap1(p.d))}<div class="small muted m-only">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></td><td class="small m-hide">${esc(nomeSetor(p.setor))}</td><td class="n m-hide">${qtBR(p.q)}</td><td class="n m-hide">${brl(p.cu)}</td><td class="n"><b>${brl(p.tc)}</b></td>${TL.length?`<td class="n m-hide">${o?brl(o.tc):'—'}</td>`:''}<td class="n" style="min-width:64px">${pctBR(p.tc/tot,1)}${barraPct(p.tc/prods[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="7" class="muted">Nada encontrado.</td></tr>'; };
+  $('#tlBusca').oninput=desenha; $('#tlSet').onchange=desenha; desenha();
+  box.querySelectorAll('[data-trset]').forEach(d=>d.onclick=()=>{ S.setorSel=d.dataset.trset; S.setorAba='trc'; location.hash='#setor'; });
 }
