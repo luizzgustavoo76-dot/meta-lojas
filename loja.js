@@ -1,0 +1,205 @@
+/* Visão da loja inteira: checklist de importações, importação de vários arquivos, teto de perda,
+   perdas e balanços da loja e cruzamento venda × perda × balanço por produto. */
+
+const ontemIso = () => isoOf(new Date(Date.now()-864e5));
+const nomeTipo = { vendas:'Vendas por departamento', vendas_secao:'Vendas por seção', bandeja:'Embandeijados (por classe)', perdas:'Perdas por produto', acertos:'Acertos de balanço', balanco:'Resultado de balanço', planilha:'Planilha / relatório de vendas' };
+
+/* ---------- impressão digital do arquivo (para avisar repetidos) ---------- */
+async function hashArquivo(f){ const b=await crypto.subtle.digest('SHA-256', await f.arrayBuffer()); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+const esperaModalFechar = () => new Promise(r=>{ const t=setInterval(()=>{ if(!$('#modalRoot').innerHTML.trim()){ clearInterval(t); r(); } }, 400); });
+
+async function identificarArquivo(f){
+  const nome=f.name.toLowerCase();
+  if(/\.(xlsx|xls|xlsm|csv)$/.test(nome) || f.type.startsWith('image/')) return { tipo:'planilha' };
+  const linhas=await linhasDoArquivo(f);
+  const rv=Parser.analisarRelatorioVendas(linhas); if(rv) return { tipo: rv.nivel==='CLASSE'?'bandeja':(rv.nivel && rv.nivel!=='DEPTO'?'vendas_secao':'vendas'), r:rv, ini:rv.periodo.ini, fim:rv.periodo.fim, valor:rv.venda };
+  const ac=Parser.analisarRelatorioAcertos(linhas); if(ac) return { tipo:'acertos', r:ac, ini:ac.periodo.ini, fim:ac.periodo.fim, valor:ac.diferenca };
+  const pe=Parser.analisarRelatorioPerdas(linhas); if(pe) return { tipo:'perdas', r:pe, ini:pe.periodo.ini, fim:pe.periodo.fim, valor:pe.valor };
+  const ba=Parser.analisarBalancoSistema(linhas); if(ba) return { tipo:'balanco', r:ba, ini:ba.periodo?.ini, fim:ba.periodo?.fim, valor:ba.valorPerda };
+  return { tipo:null };
+}
+
+/* ---------- importar vários arquivos de uma vez ---------- */
+async function importarVarios(files){
+  files=[...files].filter(Boolean); if(!files.length) return;
+  if(files.length===1 && /\.(xlsx|xls|xlsm|csv|txt)$/i.test(files[0].name)) return importFile(files[0]);
+  busy(`Identificando ${files.length} arquivo(s)…`);
+  const itens=[];
+  for(const f of files){
+    const it={f, hash:null, tipo:null, avisos:[]};
+    try{ it.hash=await hashArquivo(f); Object.assign(it, await identificarArquivo(f)); }catch(e){ it.erro=e.message; }
+    itens.push(it);
+  }
+  // repetidos: no mesmo lote e já importados antes
+  let ja=[]; try{ ja=await q(S.sb.from('importacoes').select('hash,tipo,periodo_inicio,periodo_fim,arquivo_nome,criado_em').in('hash', itens.map(i=>i.hash).filter(Boolean))); }catch(_){}
+  const vistos=new Set();
+  for(const it of itens){
+    if(it.hash && vistos.has(it.hash)) it.avisos.push('arquivo repetido neste lote'); vistos.add(it.hash);
+    const j=ja.find(x=>x.hash===it.hash); if(j) it.avisos.push(`já importado em ${fD(j.criado_em.slice(0,10))}${j.arquivo_nome?' ('+j.arquivo_nome+')':''}`);
+    if(it.ini){ const ano=+it.ini.slice(0,4), atual=+todayIso().slice(0,4);
+      if(/passad|anterior|\bly\b|ant\b/i.test(it.f.name) && ano===atual) it.avisos.push(`o nome diz “ano passado”, mas o período é de ${ano}`);
+      if(it.fim>todayIso()) it.avisos.push('o período termina no futuro'); }
+    if(!it.tipo && !it.erro) it.avisos.push('não reconheci esse relatório');
+    it.importar = !!it.tipo && !it.avisos.some(a=>/repetido|já importado|não reconheci/.test(a));
+  }
+  closeModal();
+  const ok = await new Promise(res=>{
+    const m=modal(`<h2>📥 Importar ${itens.length} arquivo(s)</h2>
+      <p class="small muted" style="margin-top:-4px">O site reconheceu cada arquivo. Os marcados entram em sequência; cada um abre a conferência dele antes de salvar.</p>
+      <div class="tw"><table><thead><tr><th></th><th>Arquivo</th><th>Tipo</th><th>Período</th><th class="n">Valor</th></tr></thead><tbody>
+      ${itens.map((it,i)=>`<tr style="${it.avisos.length?'background:#fff6dc':''}"><td><input type="checkbox" data-k="${i}" ${it.importar?'checked':''} ${it.tipo?'':'disabled'}></td><td>${esc(it.f.name)}${it.avisos.map(a=>`<div class="small" style="color:var(--bad)">⚠ ${esc(a)}</div>`).join('')}${it.erro?`<div class="small" style="color:var(--bad)">${esc(it.erro)}</div>`:''}</td><td>${it.tipo?esc(nomeTipo[it.tipo]):'—'}</td><td>${it.ini?fD(it.ini)+' a '+fD(it.fim):'—'}</td><td class="n">${it.valor!=null?brl0(it.valor):'—'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Importar marcados</button></div>`);
+    $('#mN',m).onclick=()=>{ closeModal(); res(false); };
+    $('#mY',m).onclick=()=>{ m.querySelectorAll('[data-k]').forEach(c=>itens[+c.dataset.k].importar=c.checked); closeModal(); res(true); };
+  });
+  if(!ok) return;
+  const feitos=[];
+  for(const it of itens.filter(x=>x.importar)){
+    try{
+      let r=null;
+      if(it.tipo==='vendas'||it.tipo==='vendas_secao'){ const um=it.ini===it.fim; const atual=it.fim.slice(0,7)===todayIso().slice(0,7) || it.fim>=isoOf(new Date(Date.now()-40*864e5));
+        if(atual){ await lancarPorRelatorio(it.r, it.f); await esperaModalFechar(); r=true; } else { S.setorAba='ana'; r=await importarRelatorioVendas(it.f, S.setorSel||'acougue', {pre:it.r}); } }
+      else if(it.tipo==='bandeja'){ const ab=S.setorAba; S.setorAba='bdj'; r=await importarRelatorioVendas(it.f,'acougue',{pre:it.r}); if(!r) S.setorAba=ab; }
+      else if(it.tipo==='perdas') r=await importarRelatorioPerdas(it.f, '');
+      else if(it.tipo==='acertos') r=await importarRelatorioAcertos(it.f);
+      else if(it.tipo==='balanco'){ formBalanco(null); const inp=$('#fbArq'); if(inp){ const dt=new DataTransfer(); dt.items.add(it.f); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); } await esperaModalFechar(); r=true; }
+      else if(it.tipo==='planilha'){ await importFile(it.f); await esperaModalFechar(); r=true; }
+      if(r){ feitos.push(it.f.name); try{ await q(S.sb.from('importacoes').upsert({hash:it.hash, tipo:it.tipo, periodo_inicio:it.ini||null, periodo_fim:it.fim||null, arquivo_nome:it.f.name})); }catch(_){} }
+    }catch(e){ toast(`${it.f.name}: ${e.message||e}`, 6000); }
+  }
+  if(feitos.length) toast(`Importação concluída: ${feitos.length} arquivo(s)`, 4000);
+  S._ck=null; render();
+}
+function botaoImportarVarios(id='bVarios'){ return `<button class="btn p" id="${id}">📥 Importar relatórios</button><input type="file" id="${id}Arq" multiple accept=".pdf,.txt,.xlsx,.xls,.xlsm,.csv" class="hide">`; }
+function ligarImportarVarios(id='bVarios'){ const b=$('#'+id); if(!b) return; const i=$('#'+id+'Arq'); b.onclick=()=>i.click(); i.onchange=()=>{ const fs=[...i.files]; i.value=''; if(fs.length) importarVarios(fs); }; }
+
+/* ---------- checklist "Importações de hoje" (Painel do gerente) ---------- */
+async function cardChecklist(app){
+  if(!S.gerente) return; const head=app.querySelector('.row'); if(!head) return;
+  const box=document.createElement('div'); box.id='ckBox'; head.after(box);
+  box.innerHTML='<div class="card" style="margin-bottom:12px"><span class="spin"></span> Conferindo as importações…</div>';
+  const ontem=ontemIso();
+  const ult=async(t,extra)=>{ let b=S.sb.from(t).select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(1); if(extra) b=extra(b); return (await q(b))[0]||null; };
+  const temLy=async(t,x)=>{ if(!x) return 0; const r=await q(S.sb.from(t).select('periodo_inicio,periodo_fim').gte('periodo_fim',addAnos(x.periodo_fim,-1).slice(0,8)+'01').lte('periodo_fim',addAnos(x.periodo_fim,-1).slice(0,8)+'31').limit(50)); return r.some(y=>y.periodo_inicio===addAnos(x.periodo_inicio,-1)&&y.periodo_fim===addAnos(x.periodo_fim,-1)) ? 2 : (r.length?1:0); };
+  let d={};
+  try{
+    const [lv, av, ap, ab, aa] = await Promise.all([ q(S.sb.from('lancamentos').select('data').not('venda','is',null).order('data',{ascending:false}).limit(1)), ult('analise_vendas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_perdas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_bandeja',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_acertos',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')) ]);
+    d={ lv:lv[0]?.data||null, av, ap, ab, aa };
+    [d.avLy, d.apLy, d.abLy] = await Promise.all([ temLy('analise_vendas',av), temLy('analise_perdas',ap), temLy('analise_bandeja',ab) ]);
+  }catch(e){ box.innerHTML=''; return; }
+  if(!box.isConnected) return;
+  const st=(ok,meio)=> ok?'<span style="color:var(--good);font-weight:700">✔</span>':meio?'<span style="color:var(--warn);font-weight:700">●</span>':'<span style="color:var(--bad);font-weight:700">✗</span>';
+  const ate=x=>x?`até ${fD(x.periodo_fim)}`:'nada neste mês';
+  const linhas=[
+    [st(d.lv>=ontem), 'Venda do dia lançada', d.lv?`último dia: ${fD(d.lv)}`:'nenhum dia', 'Vendas por departamento, acumulado até ontem'],
+    [st(d.av?.periodo_fim>=ontem, !!d.av), 'Análise de vendas', ate(d.av), 'mesmo relatório (entra junto com a venda)'],
+    [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
+    [st(d.ab?.periodo_fim>=isoOf(new Date(Date.now()-8*864e5)), !!d.ab), 'Embandeijados (semanal)', ate(d.ab), 'Vendas por classe'],
+    [st(d.avLy===2 && d.apLy===2 && d.abLy===2, d.avLy||d.apLy||d.abLy), 'Base do ano passado', [['vendas',d.avLy,d.av],['perdas',d.apLy,d.ap],['embandeijados',d.abLy,d.ab]].map(([n,v,x])=>`${n} ${v===2?'✔':v===1?`● (falta ${x?fD(addAnos(x.periodo_inicio,-1))+' a '+fD(addAnos(x.periodo_fim,-1)):''})`:'✗'}`).join(' · '), 'para comparar: mesmo período do ano passado'],
+    [st(!!d.aa, true), 'Acertos de balanço (opcional)', ate(d.aa), 'Resumo de acertos/perdas por produto'],
+  ];
+  const pend=linhas.filter(l=>!l[0].includes('✔')).length;
+  box.innerHTML=`<div class="card" style="margin-bottom:12px">
+    <div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📋 Importações de hoje</h2><span class="small muted">${pend?`${pend} item(ns) para olhar`:'tudo em dia ✔'}</span><div class="sp"></div>${botaoImportarVarios('bCk')}</div>
+    <div class="tw" style="margin-top:8px"><table><tbody>${linhas.map(l=>`<tr><td style="width:24px">${l[0]}</td><td><b>${l[1]}</b><div class="small muted m-only">${esc(l[2])}</div></td><td class="small m-hide">${esc(l[2])}</td><td class="small muted m-hide">${esc(l[3])}</td></tr>`).join('')}</tbody></table></div>
+    <p class="small muted" style="margin:6px 0 0">Pode selecionar todos os PDFs de uma vez: o site reconhece cada relatório, avisa se algum é repetido ou está com o período errado, e abre a conferência de um por um.</p></div>`;
+  ligarImportarVarios('bCk');
+}
+
+/* ---------- teto de perda por setor ---------- */
+const TETO_FONTE = 'Referência: Pesquisa de Eficiência Operacional ABRAS (índice de perdas por seção, Brasil). Açougue 2,74% · FLV 4,73% · Padaria e confeitaria 4,62% · Demais perecíveis 2,49% · Mercearia seca 0,48% · Mercearia líquida 0,82% · Limpeza 0,57% · Higiene e perfumaria 0,90% · Bazar 1,18% · Eletroeletrônicos 0,61%.';
+async function carregarTetos(){ if(S._tetos) return S._tetos; const r=await q(S.sb.from('setores').select('id,teto_perda')); S._tetos=Object.fromEntries((r||[]).map(x=>[x.id, x.teto_perda==null?null:+x.teto_perda])); return S._tetos; }
+function perdaVendaMes(doc, ate){ const p={}, v={}; for(const k of diasDoMes(doc.mes)){ if(ate && k>ate) break; const d=doc.dias?.[k]; if(!d) continue;
+    for(const [id,x] of Object.entries(d.vendas||{})) v[id]=(v[id]||0)+(+x||0); for(const [id,x] of Object.entries(d.perdas||{})) p[id]=(p[id]||0)+(+x||0); } return {p,v}; }
+function semaforo(pc, teto){ if(teto==null||pc==null) return {cor:'var(--muted)', ico:'—', txt:'sem teto'}; const r=pc/teto; return r<=0.8?{cor:'var(--good)',ico:'🟢',txt:'dentro'}:r<=1?{cor:'var(--warn)',ico:'🟡',txt:'perto do teto'}:{cor:'var(--bad)',ico:'🔴',txt:'acima do teto'}; }
+function tabelaTeto(doc, tetos, ate){
+  const {p,v}=perdaVendaMes(doc, ate);
+  const ls=doc.setores.map(s=>{ const pc=v[s.id]? (p[s.id]||0)/v[s.id]*100 : null; return {s, perda:p[s.id]||0, venda:v[s.id]||0, pc, teto:tetos[s.id], sm:semaforo(pc,tetos[s.id])}; }).sort((a,b)=>((b.pc||0)/(b.teto||99))-((a.pc||0)/(a.teto||99)));
+  return `<div class="tw"><table><thead><tr><th>Setor</th><th class="n">Perda no mês</th><th class="n m-hide">Venda</th><th class="n">% da venda</th><th class="n">Teto</th><th>Situação</th></tr></thead><tbody>
+    ${ls.map(x=>`<tr><td><b>${esc(x.s.nome)}</b></td><td class="n">${brl0(x.perda)}</td><td class="n m-hide">${brl0(x.venda)}</td><td class="n" style="color:${x.sm.cor};font-weight:600">${x.pc==null?'—':x.pc.toLocaleString('pt-BR',{maximumFractionDigits:2})+'%'}</td><td class="n">${x.teto==null?'—':x.teto.toLocaleString('pt-BR')+'%'}</td><td>${x.sm.ico} <span class="small">${x.sm.txt}</span></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+async function cardTetoPainel(app, doc){
+  if(!S.gerente) return; let tetos; try{ tetos=await carregarTetos(); }catch(_){ return; } if(!app.isConnected) return;
+  const {p,v}=perdaVendaMes(doc, S.cutoff); const acima=doc.setores.filter(s=>v[s.id] && tetos[s.id]!=null && (p[s.id]||0)/v[s.id]*100>tetos[s.id]);
+  const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px';
+  box.innerHTML=`<details ${acima.length?'open':''}><summary style="cursor:pointer"><h2 style="display:inline;margin:0">🎯 Perda × teto</h2> <span class="small muted">${acima.length?`🔴 ${acima.length} setor(es) acima do teto: ${acima.map(s=>esc(s.nome)).join(', ')}`:'🟢 todos os setores dentro do teto'}</span></summary>
+    <div style="margin-top:10px">${tabelaTeto(doc,tetos,S.cutoff)}</div><p class="small muted" style="margin:6px 0 0">Perda lançada no mês até ${fD(S.cutoff)} (dia a dia + balanços) ÷ venda do setor. Ajuste os tetos em <a href="#metas">Metas do mês</a>. <a href="#perdas">Ver perdas da loja →</a></p></details>`;
+  app.appendChild(box);
+}
+async function cardTetoConfig(app){
+  if(!S.gerente) return; let tetos; try{ S._tetos=null; tetos=await carregarTetos(); }catch(_){ return; } if(!app.isConnected) return;
+  const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px';
+  box.innerHTML=`<h2>🎯 Teto de perda por setor (% da venda)</h2><p class="small muted" style="margin-top:-4px">${esc(TETO_FONTE)} Os valores começam na média do Brasil; ajuste para a meta da loja.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">${S.setoresAll.map(s=>`<label class="f">${esc(s.nome)}<input class="in" inputmode="decimal" data-teto="${s.id}" value="${tetos[s.id]==null?'':String(tetos[s.id]).replace('.',',')}" placeholder="%"></label>`).join('')}</div>
+    <div class="row" style="margin-top:10px"><div class="sp"></div><button class="btn p" id="bTeto">Salvar tetos</button></div>`;
+  app.appendChild(box);
+  $('#bTeto').onclick=async()=>{ try{ for(const i of box.querySelectorAll('[data-teto]')){ const v=i.value.trim()===''?null:parseNum(i.value); if(v!=null && (isNaN(v)||v<0||v>100)) return toast('Teto inválido em '+nomeSetor(i.dataset.teto),4000);
+      if(v!==tetos[i.dataset.teto]) await q(S.sb.from('setores').update({teto_perda:v}).eq('id',i.dataset.teto)); } S._tetos=null; toast('Tetos salvos ✔'); }catch(e){ toast(e.message,5000); } };
+}
+
+/* ---------- Perdas da loja inteira ---------- */
+async function renderPerdasLoja(app, doc){
+  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1>Perdas da loja</h1><p class="sub" style="margin:0">Todos os setores: teto, perdas por produto, acertos de balanço e os produtos que mais pesam</p></div><div class="sp"></div>${botaoImportarVarios('bVL')}</div><div id="plBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
+  ligarImportarVarios('bVL');
+  const box=$('#plBox'); const vivo=()=>S.view==='perdas' && box.isConnected;
+  let tetos, perPer=[], acPer=[];
+  try{ [tetos, perPer, acPer] = await Promise.all([ carregarTetos(), q(S.sb.from('analise_perdas').select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(300)), q(S.sb.from('analise_acertos').select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(300)) ]); }
+  catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  if(!vivo()) return;
+  const periodos=[...new Map([...perPer,...acPer].map(x=>[x.periodo_inicio+'|'+x.periodo_fim,x])).values()].sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
+  const atual=new Date().getFullYear()+'';
+  S.plPer = S.plPer && periodos.some(p=>p.periodo_inicio+'|'+p.periodo_fim===S.plPer) ? S.plPer : ((periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]) ? (()=>{ const p=periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]; return p.periodo_inicio+'|'+p.periodo_fim; })() : null);
+  const tetoHtml=`<div class="card"><h2>🎯 Perda do mês × teto — ${mesLabel(doc.mes)}</h2>${tabelaTeto(doc,tetos,S.cutoff)}<p class="small muted" style="margin:6px 0 0">Até ${fD(S.cutoff)}. ${esc(TETO_FONTE)}</p></div>`;
+  if(!S.plPer){ box.innerHTML=tetoHtml+'<div class="card empty" style="margin-top:12px"><h2>Nenhum relatório de perdas ainda</h2><p>Importe o relatório “Perdas da filial” e o “Resumo de acertos/perdas por produto” do sistema.</p></div>'; return; }
+  const [ini,fim]=S.plPer.split('|'); const lyI=addAnos(ini,-1), lyF=addAnos(fim,-1);
+  let P=[],PL=[],A=[],AL=[],V=[],L=[],BAL=[];
+  try{ [P,PL,A,AL,V,L,BAL]=await Promise.all([
+      q(S.sb.from('analise_perdas').select('setor_id,valor,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)),
+      q(S.sb.from('analise_perdas').select('setor_id,valor,dados').eq('periodo_inicio',lyI).eq('periodo_fim',lyF)),
+      q(S.sb.from('analise_acertos').select('setor_id,diferenca,faltas,sobras,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)),
+      q(S.sb.from('analise_acertos').select('setor_id,diferenca,faltas,sobras').eq('periodo_inicio',lyI).eq('periodo_fim',lyF)),
+      q(S.sb.from('analise_vendas').select('setor_id,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)),
+      todasLinhas(()=>S.sb.from('lancamentos').select('setor_id,venda').gte('data',ini).lte('data',fim)),
+      q(S.sb.from('balancos').select('setor_id,data,periodo_inicio,analise').gte('data',ini).lte('data',fim)) ]); }
+  catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  if(!vivo()) return;
+  const vendaSet={}; for(const x of L) vendaSet[x.setor_id]=(vendaSet[x.setor_id]||0)+(+x.venda||0);
+  const by=(arr,k='setor_id')=>Object.fromEntries(arr.map(x=>[x[k],x]));
+  const mP=by(P), mPL=by(PL), mA=by(A), mAL=by(AL);
+  const ids=[...new Set([...P,...PL,...A,...AL].map(x=>x.setor_id))];
+  const varP=(a,b)=>{ if(b==null) return '<span class="muted">—</span>'; if(!b) return a?'<span class="an-novo">nova</span>':'—'; const v=a/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
+  const tot=(o,f)=>ids.reduce((a,id)=>a+(o[id]?+o[id][f]:0),0);
+  const ranking=ids.map(id=>({id, p:mP[id]?+mP[id].valor:0, pl:mPL[id]?+mPL[id].valor:null, a:mA[id]?-mA[id].diferenca:null, al:mAL[id]?-mAL[id].diferenca:null, v:vendaSet[id]||0})).sort((x,y)=>(y.p+(y.a||0))-(x.p+(x.a||0)));
+  // produtos: perda + falta de balanço, cruzando com a venda
+  const prod=new Map(); const pk=c=>{ c=String(c); if(!prod.has(c)) prod.set(c,{c, d:'', setor:'', venda:0, perda:0, qp:0, falta:0, sobra:0}); return prod.get(c); };
+  for(const r of P) for(const s of r.dados.secoes) for(const i of s.itens){ if(!i.q && !i.v) continue; const x=pk(i.c); x.d=x.d||i.d.replace(/^[FV] /,''); x.setor=x.setor||r.setor_id; x.perda+=i.val; x.qp+=i.q; }
+  const temAcertos=A.length>0;
+  if(temAcertos){ for(const r of A) for(const i of r.dados.itens){ const x=pk(i.c); x.d=x.d||i.d; x.setor=x.setor||r.setor_id; if(i.vd<0) x.falta+=-i.vd; else x.sobra+=i.vd; } }
+  else { for(const b of BAL){ if((b.periodo_inicio||b.data)<ini) continue; const an=b.analise||{}; const lista=an.perdasProdutos||(an.top||[]).map(p=>[p.codigo,-p.valor]); for(const [c,v] of lista){ if(v>0 && prod.has(String(c))){ const x=pk(c); x.falta+=v; x.setor=x.setor||b.setor_id; } } } }
+  for(const r of V) for(const dep of r.dados.departamentos) for(const p of dep.produtos){ const c=String(p.c); if(prod.has(c)){ const x=prod.get(c); x.venda+=p.v; x.d=x.d||p.d; x.setor=x.setor||r.setor_id; } }
+  const lista=[...prod.values()].map(x=>({...x, total:x.perda+x.falta})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  const nSem=lista.filter(x=>!x.venda).length;
+  box.innerHTML=`${tetoHtml}
+    <div class="card" style="margin-top:12px"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📊 Perdas e balanços por setor</h2><div class="sp"></div>
+      <label class="f" style="margin:0">Período<select id="plSel">${periodos.map(p=>{ const k=p.periodo_inicio+'|'+p.periodo_fim; return `<option value="${k}" ${k===S.plPer?'selected':''}>${fD(p.periodo_inicio)} a ${fD(p.periodo_fim)}</option>`; }).join('')}</select></label></div>
+      <div class="grid kpis" style="margin-top:10px">
+        <div class="kpi hero"><div class="l">Perdas por produto (relatório de perdas)</div><div class="v">${brl0(tot(mP,'valor'))}</div><div class="d">${PL.length?`ano passado ${brl0(tot(mPL,'valor'))} · ${varP(tot(mP,'valor'),tot(mPL,'valor'))}`:'sem base do ano passado'}</div></div>
+        <div class="kpi"><div class="l">Resultado dos balanços (faltas − sobras)</div><div class="v">${A.length?brl0(-tot(mA,'diferenca')):'—'}</div><div class="d">${A.length?(AL.length?`ano passado ${brl0(-tot(mAL,'diferenca'))} · ${varP(-tot(mA,'diferenca'),-tot(mAL,'diferenca'))}`:'sem base do ano passado'):(AL.length?`ano passado ${brl0(-tot(mAL,'diferenca'))} · importe o “Resumo de acertos” deste período`:'importe o “Resumo de acertos/perdas por produto”')}</div></div>
+      </div>
+      <div class="tw" style="margin-top:10px"><table><thead><tr><th>Setor</th><th class="n">Perdas</th><th class="n m-hide">Ano pass.</th><th class="n">Var.</th><th class="n">Balanço</th><th class="n m-hide">Ano pass.</th><th class="n">Perdas + balanço</th><th class="n">% da venda</th></tr></thead><tbody>
+      ${ranking.map(x=>{ const t=x.p+(x.a||0); const pc=x.v? t/x.v*100:null; const sm=semaforo(pc,tetos[x.id]); return `<tr><td><b>${esc(nomeSetor(x.id))}</b></td><td class="n">${brl0(x.p)}</td><td class="n m-hide">${x.pl==null?'—':brl0(x.pl)}</td><td class="n">${varP(x.p,x.pl)}</td><td class="n">${x.a==null?'—':brl0(x.a)}</td><td class="n m-hide">${x.al==null?'—':brl0(x.al)}</td><td class="n"><b>${brl0(t)}</b></td><td class="n" style="color:${sm.cor}">${pc==null?'—':pc.toLocaleString('pt-BR',{maximumFractionDigits:2})+'%'} ${sm.ico}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      <p class="small muted" style="margin:6px 0 0">Balanço positivo = faltou mercadoria (perda); negativo = sobrou. % da venda usa a venda lançada no período.</p></div>
+    <div class="card" style="margin-top:12px"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">🧩 Produtos problema — venda × perda × balanço</h2><div class="sp"></div>
+      <select id="plSet" style="border:1px solid var(--line);border-radius:8px;padding:5px 6px"><option value="">Todos os setores</option>${ids.map(id=>`<option value="${id}" ${S.plSet===id?'selected':''}>${esc(nomeSetor(id))}</option>`).join('')}</select>
+      <input id="plBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:150px"></div>
+      <p class="small muted" style="margin:6px 0 8px">Soma o que o produto perdeu (relatório de perdas) com o que faltou no balanço ${temAcertos?'(resumo de acertos)':'(balanços lançados no período)'}, e compara com o que ele vendeu${V.length?'':' — importe o relatório de vendas desse período para ver a venda'}.${nSem?` ${nSem} produto(s) com perda não tiveram venda no período.`:''}</p>
+      <div class="tw" style="max-height:65vh"><table><thead><tr><th>#</th><th>Produto</th><th class="m-hide">Setor</th><th class="n">Venda</th><th class="n">Perda</th><th class="n">Falta balanço</th><th class="n">Total</th><th class="n">% da venda</th></tr></thead><tbody id="plBody"></tbody></table></div></div>`;
+  const desenha=()=>{ const t=normN2($('#plBusca').value), s=$('#plSet').value; S.plSet=s;
+    const ls=lista.filter(x=>(!s||x.setor===s) && (!t||normN2(x.d).includes(t)||x.c===t)).slice(0,150);
+    $('#plBody').innerHTML = ls.map((x,i)=>{ const pc=x.venda? x.total/x.venda : null; return `<tr><td class="muted">${i+1}</td><td><span class="muted small">${esc(x.c)}</span> ${esc(cap1(x.d))}</td><td class="small m-hide">${esc(nomeSetor(x.setor))}</td><td class="n">${x.venda?brl0(x.venda):'<span class="muted">sem venda</span>'}</td><td class="n">${x.perda?brl0(x.perda):'—'}</td><td class="n">${x.falta?brl0(x.falta):'—'}</td><td class="n"><b>${brl0(x.total)}</b></td><td class="n" style="${pc!=null&&pc>=0.1?'color:var(--bad);font-weight:600':''}">${pc==null?'—':pctBR(pc,1)}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>'; };
+  $('#plBusca').oninput=desenha; $('#plSet').onchange=desenha; desenha();
+  $('#plSel').onchange=e=>{ S.plPer=e.target.value; renderPerdasLoja(app,doc); };
+}

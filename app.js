@@ -101,11 +101,12 @@ function render(){
     return;
   }
   if(!S.cutoff || !S.cutoff.startsWith(doc.mes)) S.cutoff = lastSetorDay(doc) || lastDataDay(doc) || diasDoMes(doc.mes)[0];
-  if(S.view==='painel') renderPainel(app,doc);
+  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardTetoPainel(app,doc); }
+  else if(S.view==='perdas' && S.gerente) renderPerdasLoja(app,doc);
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
-  else if(S.view==='metas' && S.gerente) renderMetas(app,doc);
+  else if(S.view==='metas' && S.gerente){ renderMetas(app,doc); cardTetoConfig(app); }
   else if(S.view==='diarias' && S.gerente) renderDiarias(app,doc);
   else renderPainel(app,doc);
 }
@@ -426,7 +427,7 @@ function renderLancar(app, doc){
 
   <div class="grid imp" style="margin-top:12px">
     <div class="drop" id="dropImg"><div class="ico">📷</div><h3>Foto ou print do relatório</h3><p>O site lê a imagem (OCR) e preenche os setores · funciona melhor com print ou foto reta e nítida</p><div style="margin-top:10px"><button class="btn y" id="bImg">Escolher imagem</button></div><input type="file" id="fImg" accept="image/*" multiple class="hide"></div>
-    <div class="drop" id="dropFile"><div class="ico">📊</div><h3>Relatório em arquivo</h3><p>Excel, CSV ou PDF · aceita a “Relação de vendas com rentabilidade” (de um dia ou acumulada) e a planilha mensal antiga</p><div style="margin-top:10px"><button class="btn y" id="bFile">Escolher arquivo</button></div><input type="file" id="fFile" accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" class="hide"></div>
+    <div class="drop" id="dropFile"><div class="ico">📊</div><h3>Relatório em arquivo</h3><p>Excel, CSV ou PDF · aceita vários de uma vez: vendas (acumulada ou do dia), perdas, embandeijados, acertos e balanços — o site reconhece cada um</p><div style="margin-top:10px"><button class="btn y" id="bFile">Escolher arquivo</button></div><input type="file" id="fFile" accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" multiple class="hide"></div>
     <div class="drop"><div class="ico">📋</div><h3>Colar texto</h3><p>Copie as linhas do relatório e cole aqui</p><div style="margin-top:10px"><button class="btn y" id="bPaste">Colar relatório</button></div></div>
   </div>
 
@@ -461,9 +462,9 @@ function renderLancar(app, doc){
   const fImg=$('#fImg'), fFile=$('#fFile');
   $('#bFile').onclick=()=>fFile.click();
   $('#bImg').onclick=()=>fImg.click(); fImg.onchange=()=>{ const fs=[...fImg.files]; fImg.value=''; if(fs.length) importImages(fs); };
-  fFile.onchange=()=>{ if(fFile.files[0]) importFile(fFile.files[0]); fFile.value=''; };
+  fFile.onchange=()=>{ const fs=[...fFile.files]; fFile.value=''; if(fs.length) importarVarios(fs); };
   $('#bPaste').onclick=pasteDialog;
-  for(const [id,fn] of [['dropImg',f=>importImages(f.filter(x=>x.type.startsWith('image/')))],['dropFile',f=>f[0].type.startsWith('image/')?importImages(f):importFile(f[0])]]){
+  for(const [id,fn] of [['dropImg',f=>importImages(f.filter(x=>x.type.startsWith('image/')))],['dropFile',f=>f[0].type.startsWith('image/')?importImages(f):importarVarios(f)]]){
     const z=$('#'+id); z.ondragover=e=>{e.preventDefault();z.classList.add('over');}; z.ondragleave=()=>z.classList.remove('over');
     z.ondrop=e=>{e.preventDefault();z.classList.remove('over'); const fs=[...e.dataTransfer.files]; if(!fs.length) return; fn(fs); };
   }
@@ -1100,7 +1101,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['diarias','Diárias'],['historico','Histórico'],['metas','Metas do mês']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['lancar','Lançar vendas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico'],['metas','Metas do mês']];
 const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);

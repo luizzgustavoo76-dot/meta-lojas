@@ -96,6 +96,8 @@ async function renderAnaliseSetor(box, s){
     try{ if(ehBdj()) throw 0; S._metasDep=await q(S.sb.from('metas_departamento').select('dep_codigo,meta').eq('mes',fim.slice(0,7)).eq('setor_id',sid)); }catch(_){ S._metasDep=[]; }
     bals=ehBdj()?[]:(await q(S.sb.from('balancos').select('id,data,periodo_inicio,valor_perda,analise,arquivo_path,arquivo_nome').eq('setor_id',sid).gte('data',ini).order('data'))).filter(b=>(b.periodo_inicio||b.data)<=fim);
   }catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
+  let partB=null; if(ehBdj()){ try{ const g=async(i,f)=>{ const r=await q(S.sb.from('analise_vendas').select('venda').eq('setor_id',sid).eq('periodo_inicio',i).eq('periodo_fim',f).limit(1)); if(r[0]) return +r[0].venda; const l=await todasLinhas(()=>S.sb.from('lancamentos').select('venda').eq('setor_id',sid).gte('data',i).lte('data',f)); const t=l.reduce((a,x)=>a+(+x.venda||0),0); return t||null; };
+      partB={ g:await g(ini,fim), gl:await g(pa0,pa1) }; }catch(_){} }
   if(!vivo() || !cur) return;
   if(!S.anaBase || (S.anaBase==='ano'&&!ly&&lm) ) S.anaBase = ly ? 'ano' : (lm ? 'mes' : 'ano');
   const base = S.anaBase==='ano' ? ly : lm;
@@ -130,6 +132,7 @@ async function renderAnaliseSetor(box, s){
   </div>
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">Venda de ${fD(ini)} até ${fD(fim)}</div><div class="v">${brl0(A.tot)}</div><div class="d">${A.itens} produtos vendidos · ${A.deps.filter(d=>d.v>0).length} departamentos</div></div>
+    ${partB?(()=>{ const p=partB.g?A.tot/partB.g:null, pl=(partB.gl&&totLy!=null)?totLy/partB.gl:null; return `<div class="kpi"><div class="l">Participação na venda do ${esc(s.nome)}</div><div class="v">${p==null?'—':pctBR(p,1)}</div><div class="d">${partB.g?'venda total do setor '+brl0(partB.g):'sem a venda total do setor no período'}${pl!=null?` · ano passado ${pctBR(pl,1)} (${p!=null?(p>=pl?'▲ +':'▼ ')+((p-pl)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+' p.p.':''})`:''}</div></div>`; })():''}
     ${cartao('Ano passado, mesmo período', totLy, pa0, pa1)}
     ${cartao('Mês passado, mesmo período', totLm, pm0, pm1)}
     ${proj!=null?`<div class="kpi"><div class="l">Projeção do mês</div><div class="v">${brl0(proj)}</div><div class="d">no ritmo até o dia ${dias}${totLyM!=null?` · ${mesLabel(lyMes[0].slice(0,7))} fechou ${brl0(totLyM)} ${varHtml(proj,totLyM)}`:''}</div></div>`:''}
