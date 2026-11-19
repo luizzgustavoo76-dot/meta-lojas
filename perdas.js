@@ -43,7 +43,7 @@ async function importarRelatorioPerdas(f, setorAtual){
     <div class="tw" style="max-height:300px;overflow:auto;margin-top:8px"><table><thead><tr><th>Seção</th><th class="n">Produtos</th><th class="n">Perda</th><th>Setor do site</th></tr></thead><tbody>
       ${grupos.map((g,i)=>`<tr><td><b>${g.sec.codigo}</b> ${esc(cap1(g.sec.nome))}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(totG(g))}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
     </tbody></table></div>
-    <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin-top:12px"><input type="checkbox" id="rpAcerta" checked style="margin-top:3px"><span><b>Acertar a perda lançada no site</b> para ficar igual ao relatório. A diferença vai no dia ${fD(r.periodo.fim)}.</span></label>
+    <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin-top:12px"><input type="checkbox" id="rpAcerta" ${r.periodo.fim>=isoOf(new Date(Date.now()-60*864e5))?'checked':''} style="margin-top:3px"><span><b>Acertar a perda lançada no site</b> para ficar igual ao relatório. A diferença vai no dia ${fD(r.periodo.fim)}.</span></label>
     <div id="rpResumo" class="small" style="margin-top:8px"></div>
     <div id="rpErr" class="note err small hide" style="margin-top:8px"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar perdas</button></div>`);
@@ -99,8 +99,11 @@ async function renderPerdasSetor(box, s){
   try{ reg=(await q(S.sb.from('analise_perdas').select('*').eq('id',selId)))[0];
     lancado=await perdaLancada(sid, reg.periodo_inicio, reg.periodo_fim);
     const lv=await q(S.sb.from('lancamentos').select('venda').eq('setor_id',sid).gte('data',reg.periodo_inicio).lte('data',reg.periodo_fim)); venda=(lv||[]).reduce((a,x)=>a+(+x.venda||0),0);
+    const l=await q(S.sb.from('analise_perdas').select('valor,dados,periodo_inicio,periodo_fim').eq('setor_id',sid).eq('periodo_inicio',addAnos(reg.periodo_inicio,-1)).eq('periodo_fim',addAnos(reg.periodo_fim,-1)).limit(1)); reg._ly=l[0]||null;
   }catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
+  const LY=reg._ly, lyMap=new Map(); if(LY) for(const x of LY.dados.secoes) for(const i of x.itens) lyMap.set(String(i.c),i);
+  const varP=(a,b)=>{ if(b==null) return '<span class="muted">—</span>'; if(!b) return a>0?'<span class="an-novo">nova</span>':'<span class="muted">—</span>'; const v=a/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
   const itens=reg.dados.secoes.flatMap(x=>x.itens.map(i=>({...i, sec:x.nome})));
   const tot=itens.reduce((a,i)=>a+i.val,0), qt=itens.reduce((a,i)=>a+i.q,0), ent=itens.reduce((a,i)=>a+i.e,0);
   const comPerda=itens.filter(i=>i.q>0).sort((a,b)=>b.val-a.val);
@@ -117,6 +120,7 @@ async function renderPerdasSetor(box, s){
     </div>
     <div class="grid kpis">
       <div class="kpi hero"><div class="l">Perda de ${fD(reg.periodo_inicio)} até ${fD(reg.periodo_fim)}</div><div class="v">${brl0(tot)}</div><div class="d">${comPerda.length} produtos com perda · ${qtBR(qt)} perdidos</div></div>
+      <div class="kpi"><div class="l">Ano passado (${LY?fD(LY.periodo_inicio)+' a '+fD(LY.periodo_fim):'mesmo período'})</div><div class="v">${LY?brl0(LY.valor):'—'}</div><div class="d">${LY?varP(tot,+LY.valor)+' em relação ao ano passado':'importe o relatório de perdas do ano passado para comparar'}</div></div>
       <div class="kpi"><div class="l">Perda sobre as entradas</div><div class="v">${pctBR(ent?qt/ent:null)}</div><div class="d">quantidade perdida ÷ quantidade que entrou</div></div>
       <div class="kpi"><div class="l">Perda sobre a venda</div><div class="v">${pctBR(venda?tot/venda:null,2)}</div><div class="d">venda lançada no período: ${brl0(venda)}</div></div>
       <div class="kpi"><div class="l">Lançado no site</div><div class="v">${brl0(lancado)}</div><div class="d">${Math.abs(lancado-tot)<1?'✔ igual ao relatório':`diferença de ${brl(tot-lancado)} para o relatório`}</div></div>
@@ -125,17 +129,19 @@ async function renderPerdasSetor(box, s){
       <li><b>${n80} produto(s)</b> fazem 80% da perda do setor.</li>
       ${top.map(i=>`<li><b>${esc(cap1(i.d))}</b> — ${brl0(i.val)} (${pctBR(i.val/tot,0)} da perda do setor; ${qtBR(i.q)} perdidos)</li>`).join('')}
       ${altos.length?`<li>Perdem 30% ou mais do que sai da loja: ${altos.map(i=>`<b>${esc(cap1(i.d))}</b> ${pctBR(saida(i),0)}`).join(' · ')}</li>`:''}
+      ${LY?(()=>{ const piores=comPerda.map(i=>({i, d:i.val-((lyMap.get(String(i.c))||{}).val||0)})).filter(x=>x.d>0).sort((a,b)=>b.d-a.d).slice(0,3); const melhores=[...lyMap.values()].map(o=>{ const n=itens.find(i=>String(i.c)===String(o.c)); return {o, d:(n?n.val:0)-o.val}; }).filter(x=>x.d<0).sort((a,b)=>a.d-b.d).slice(0,3);
+        return `${piores.length?`<li>Mais subiram contra o ano passado: ${piores.map(x=>`<b>${esc(cap1(x.i.d))}</b> +${brl0(x.d)}`).join(' · ')}</li>`:''}${melhores.length?`<li>Mais caíram: ${melhores.map(x=>`<b>${esc(cap1(x.o.d))}</b> ${brl0(x.d)}`).join(' · ')}</li>`:''}`; })():''}
       ${ant?`<li>Período anterior importado (${fD(ant.periodo_inicio)} a ${fD(ant.periodo_fim)}): ${brl0(ant.valor)}.</li>`:''}
     </ul></div>
     <div class="card" style="margin-top:12px">
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Produtos</h2><div class="sp"></div>
         <input id="pdBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:160px">
         <label class="small" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="pdSo" checked> só com perda</label></div>
-      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="n">Entrou</th><th class="n">Vendeu</th><th class="n">Perdeu</th><th class="n m-hide">Custo méd.</th><th class="n">Perda R$</th><th class="n">% da saída</th><th class="n m-hide">Part.</th></tr></thead><tbody id="pdBody"></tbody></table></div>
+      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="n">Entrou</th><th class="n">Vendeu</th><th class="n">Perdeu</th><th class="n m-hide">Custo méd.</th><th class="n">Perda R$</th>${LY?'<th class="n">Ano pass.</th><th class="n">Var.</th>':''}<th class="n">% da saída</th><th class="n m-hide">Part.</th></tr></thead><tbody id="pdBody"></tbody></table></div>
     </div>`;
   const desenha=()=>{ const t=normN2($('#pdBusca').value), so=$('#pdSo').checked;
     const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>!t || normN2(i.d).includes(t) || String(i.c)===t);
-    $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td><td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Nenhum produto.</td></tr>'; };
+    $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td>${LY?(()=>{ const o=lyMap.get(String(i.c)); return `<td class="n">${o?brl(o.val):'—'}</td><td class="n">${varP(i.val,o?o.val:0)}</td>`; })():''}<td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td></tr>`; }).join('') || '<tr><td colspan="10" class="muted">Nenhum produto.</td></tr>'; };
   $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; desenha();
   $('#pdSel').onchange=e=>{ S.perSel[sid]=+e.target.value; renderPerdasSetor(box,s); };
   ligar();

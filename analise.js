@@ -15,7 +15,7 @@ function varHtml(a,b){ if(b==null) return '<span class="muted">—</span>'; if(!
   const v=a/b-1; const c=Math.abs(v)<0.0005?'inherit':v>0?'var(--good)':'var(--bad)'; return `<span style="color:${c};font-weight:700">${v>0?'▲ +':v<0?'▼ ':''}${pct(v)}</span>`; }
 
 async function carregarAnalise(sid, ini, fim){
-  const r=await q(S.sb.from('analise_vendas').select('id,periodo_inicio,periodo_fim,venda,dados').eq('setor_id',sid).eq('periodo_inicio',ini).eq('periodo_fim',fim).limit(1));
+  const r=await q(S.sb.from(tabAna()).select('id,periodo_inicio,periodo_fim,venda,dados').eq('setor_id',sid).eq('periodo_inicio',ini).eq('periodo_fim',fim).limit(1));
   return r[0]||null;
 }
 
@@ -72,16 +72,16 @@ async function completarBalancosAntigos(bals){ // balanços salvos antes de guar
 }
 
 async function renderAnaliseSetor(box, s){
-  const sid=s.id; const vivo=()=>S.view==='setor' && S.setorAba==='ana' && S.setorSel===sid && box.isConnected;
-  const btnImp = S.gerente? `<button class="btn p" id="anImp">＋ Importar relatório de vendas</button><input type="file" id="anArq" accept=".pdf,.txt" class="hide">`:'';
+  const sid=s.id; const modoAba=S.setorAba; const vivo=()=>S.view==='setor' && S.setorAba===modoAba && S.setorSel===sid && box.isConnected;
+  const btnImp = S.gerente? `<button class="btn p" id="anImp">＋ Importar relatório de ${ehBdj()?'embandeijados':'vendas'}</button><input type="file" id="anArq" accept=".pdf,.txt" class="hide">`:'';
   let lista=[];
-  try{ lista=await q(S.sb.from('analise_vendas').select('id,periodo_inicio,periodo_fim,venda').eq('setor_id',sid).order('periodo_fim',{ascending:false}).order('periodo_inicio',{ascending:true}).limit(200)); }
+  try{ lista=await q(S.sb.from(tabAna()).select('id,periodo_inicio,periodo_fim,venda').eq('setor_id',sid).order('periodo_fim',{ascending:false}).order('periodo_inicio',{ascending:true}).limit(200)); }
   catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
   lista.sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
   const ligarImp=()=>{ const b=$('#anImp'); if(b){ b.onclick=()=>$('#anArq').click(); $('#anArq').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(f) importarRelatorioVendas(f, sid); }; } };
   if(!lista.length){
-    box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de vendas do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe a “Relação de vendas com rentabilidade” do sistema (PDF). O site separa por departamento e por produto, e compara com o mesmo período do ano passado quando esse relatório também for importado.':'Assim que o gerente importar o relatório de vendas do sistema, a análise por departamento e produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div>`;
+    box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de ${ehBdj()?'embandeijados':'vendas'} do ${esc(s.nome)} ainda</h2><p>${ehBdj()?(S.gerente?'Importe a “Relação de vendas com rentabilidade” do sistema tirada por <b>classe</b> (bovinos, suínos, frangos, linguiças e hortifrúti bandeja). A análise mostra só os embandeijados, produto por produto, e compara com o ano passado quando esse relatório também for importado.':'Assim que o gerente importar o relatório de embandeijados, a análise aparece aqui.'):S.gerente?'Importe a “Relação de vendas com rentabilidade” do sistema (PDF). O site separa por departamento e por produto, e compara com o mesmo período do ano passado quando esse relatório também for importado.':'Assim que o gerente importar o relatório de vendas do sistema, a análise por departamento e produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div>`;
     ligarImp(); return;
   }
   S.anaSel=S.anaSel||{}; const sel=lista.find(x=>x.id===S.anaSel[sid])||lista[0]; S.anaSel[sid]=sel.id;
@@ -93,7 +93,7 @@ async function renderAnaliseSetor(box, s){
   let cur, ly, lm, lyM, bals=[];
   try{
     [cur, ly, lm, lyM] = await Promise.all([ carregarAnalise(sid,ini,fim), carregarAnalise(sid,pa0,pa1), carregarAnalise(sid,pm0,pm1), lyMes?carregarAnalise(sid,lyMes[0],lyMes[1]):null ]);
-    try{ S._metasDep=await q(S.sb.from('metas_departamento').select('dep_codigo,meta').eq('mes',fim.slice(0,7)).eq('setor_id',sid)); }catch(_){ S._metasDep=[]; }
+    try{ if(ehBdj()) throw 0; S._metasDep=await q(S.sb.from('metas_departamento').select('dep_codigo,meta').eq('mes',fim.slice(0,7)).eq('setor_id',sid)); }catch(_){ S._metasDep=[]; }
     bals=(await q(S.sb.from('balancos').select('id,data,periodo_inicio,valor_perda,analise,arquivo_path,arquivo_nome').eq('setor_id',sid).gte('data',ini).order('data'))).filter(b=>(b.periodo_inicio||b.data)<=fim);
   }catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo() || !cur) return;
@@ -204,7 +204,7 @@ async function renderAnaliseSetor(box, s){
   let tm; $('#anBusca').oninput=e=>{ clearTimeout(tm); tm=setTimeout(()=>{ S.anaBusca=e.target.value; desenhar(); },200); };
   $('#anOrd').onchange=e=>{ S.anaOrd=e.target.value; desenhar(); };
   box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{ S.anaFil='todos'; S.anaBusca=''; $('#anBusca').value=''; $('#anFil').querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('on',x.dataset.f==='todos')); S.anaAbertos.add(+b.dataset.dep); S.anaFoco=b.dataset.go; desenhar(); });
-  const del=$('#anDel'); if(del) del.onclick=()=>confirmBox(`Apagar o relatório de vendas de ${fD(ini)} a ${fD(fim)} do ${s.nome}?`, async()=>{ try{ await q(S.sb.from('analise_vendas').delete().eq('id',sel.id)); delete S.anaSel[sid]; toast('Relatório apagado'); renderAnaliseSetor(box,s); }catch(e){ toast(e.message,5000); } });
+  const del=$('#anDel'); if(del) del.onclick=()=>confirmBox(`Apagar o relatório de vendas de ${fD(ini)} a ${fD(fim)} do ${s.nome}?`, async()=>{ try{ await q(S.sb.from(tabAna()).delete().eq('id',sel.id)); delete S.anaSel[sid]; toast('Relatório apagado'); renderAnaliseSetor(box,s); }catch(e){ toast(e.message,5000); } });
   ligarImp();
   if(bals.length && await completarBalancosAntigos(bals) && vivo()) renderAnaliseSetor(box,s);
 }
@@ -216,7 +216,8 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   let r=opts.pre||null, mapa=[];
   try{ if(!r) r=Parser.analisarRelatorioVendas(await linhasDoArquivo(f)); mapa=await q(S.sb.from('departamentos').select('codigo,nome,setor_id')); }
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
-  if(r && r.nivel && r.nivel!=='DEPTO' && !r._dividido){ // relatório por SEÇÃO: separa cada produto no setor certo
+  if(r && r.nivel==='CLASSE'){ r._bandeja=true; if(!ehBdj()) S.setorAba='bdj'; }
+  if(r && r.nivel && r.nivel!=='DEPTO' && r.nivel!=='CLASSE' && !r._dividido){ // relatório por SEÇÃO: separa cada produto no setor certo
     try{ busy('Separando os produtos por setor…'); const prod=new Map();
       for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
       r=dividirPorSetor(r, prod, mapa); r.semMapa=!prod.size;
@@ -227,14 +228,14 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   return await new Promise(async resolver=>{
   const conf = r.totalGeral?.venda!=null ? Math.abs(r.totalGeral.venda-r.venda)<1 && (!r.totalGeral.itens || r.totalGeral.itens===r.itens) : null;
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
-  const sug=d=>{ if(d._setor!==undefined) return d._setor||''; const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
-  let existentes=[]; try{ existentes=await q(S.sb.from('analise_vendas').select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
+  const sug=d=>{ if(r._bandeja) return /HORTI/i.test(d.nome)?'hortifruti':'acougue'; if(d._setor!==undefined) return d._setor||''; const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
+  let existentes=[]; try{ existentes=await q(S.sb.from(tabAna()).select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
   const opcoesSetor=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
   const ontem = isoOf(new Date(Date.now()-864e5));
   const fimSugerido = (r.periodo.fim>=todayIso() && r.periodo.ini<=ontem) ? ontem : r.periodo.fim;
   const umDia = r.periodo.ini===fimSugerido;
-  const m=modal(`<h2>📊 Relatório de vendas por produto${opts.lancar?' — lançar venda do dia':''}</h2>
+  const m=modal(`<h2>📊 Relatório de vendas ${r._bandeja?'de embandeijados (por classe)':'por produto'}${opts.lancar?' — lançar venda do dia':''}</h2>
     <div class="grid kpis" style="margin:8px 0">
       <div class="kpi"><div class="l">Período</div><div class="v" style="font-size:20px">${fD(r.periodo.ini)} a ${fD(r.periodo.fim)}</div><div class="d">${r.filial?'filial '+esc(r.filial):''}${r.emitido?' · emitido '+fD(r.emitido):''}</div>
         <label class="f" style="margin-top:6px">Considerar a venda até<input type="date" id="rvFim" value="${fimSugerido}" min="${r.periodo.ini}" max="${r.periodo.fim}"></label>
@@ -270,18 +271,18 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       if(guardar){ const path=`${r.periodo.ini}_${r.periodo.fim}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
         const up=await S.sb.storage.from('relatorios').upload(path, f, {upsert:false, contentType:f.type||undefined});
         rel=((await q(S.sb.from('relatorios_venda').insert({ periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name, arquivo_path:up.error?null:path, cupons:r.cupons, total_venda:r.venda }).select('id')))||[])[0]||null; }
-      if(!r._dividido){ const ps=[]; for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) ps.push({codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()});
+      if(!r._dividido && !r._bandeja){ const ps=[]; for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) ps.push({codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()});
         for(let i=0;i<ps.length;i+=500) await q(S.sb.from('produtos_setor').upsert(ps.slice(i,i+500), {onConflict:'codigo'})); }
-      if(!r._dividido) await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
+      if(!r._dividido && !r._bandeja) await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
       const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push({codigo:x.d.codigo, nome:x.d.nome, produtos:x.d.produtos}); }
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));
-      if(guardar) await q(S.sb.from('analise_vendas').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
+      if(guardar) await q(S.sb.from(tabAna()).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
       closeModal();
       S.anaSel=S.anaSel||{}; for(const x of rows) delete S.anaSel[x.setor_id];
       if(opts.lancar){ resolver({ porSetor:Object.fromEntries(rows.map(x=>[x.setor_id,x.venda])), ini:r.periodo.ini, fim:r.periodo.fim }); return; }
       toast(`Análise salva ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`, 4500);
-      if(S.view==='setor'){ if(!por[S.setorSel]) S.setorSel=Object.keys(por)[0]; S.setorAba='ana'; render(); }
+      if(S.view==='setor'){ if(!por[S.setorSel]) S.setorSel=Object.keys(por)[0]; S.setorAba=r._bandeja?'bdj':'ana'; render(); }
       resolver(true);
     }catch(e){ err('Não foi possível salvar: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent=opts.lancar?'Continuar':'Salvar análise'; }
   };
@@ -307,3 +308,7 @@ function dividirPorSetor(r, prod, mapa){
   }
   return {...r, departamentos:grupos, _dividido:true};
 }
+
+/* aba de embandeijados (açougue e hortifrúti) usa a mesma análise, guardada em outra tabela */
+function ehBdj(){ return S.setorAba==='bdj'; }
+function tabAna(){ return ehBdj() ? 'analise_bandeja' : 'analise_vendas'; }
