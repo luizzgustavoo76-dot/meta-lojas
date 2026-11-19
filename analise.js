@@ -220,7 +220,8 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   if(!r){ toast('Esse arquivo não parece a “Relação de vendas com rentabilidade” do sistema.', 6000); return null; }
   return await new Promise(async resolver=>{
   const conf = r.totalGeral?.venda!=null ? Math.abs(r.totalGeral.venda-r.venda)<1 && (!r.totalGeral.itens || r.totalGeral.itens===r.itens) : null;
-  const sug=d=>{ const m=mapa.find(x=>x.codigo===d.codigo); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
+  const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
+  const sug=d=>{ const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
   let existentes=[]; try{ existentes=await q(S.sb.from('analise_vendas').select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
   const opcoesSetor=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
@@ -244,8 +245,10 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     <div id="rvErr" class="note err small hide" style="margin-top:8px"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">${opts.lancar?'Continuar':'Salvar análise'}</button></div>`);
   const resumo=()=>{ const por={}; m.querySelectorAll('select[data-i]').forEach(s=>{ if(!s.value) return; const d=r.departamentos[+s.dataset.i]; por[s.value]=(por[s.value]||0)+d.produtos.reduce((a,p)=>a+p.v,0); });
+    const sem=[...m.querySelectorAll('select[data-i]')].filter(x=>!x.value); sem.forEach(x=>x.closest('tr').style.background='#fff6dc'); m.querySelectorAll('select[data-i]').forEach(x=>{ if(x.value) x.closest('tr').style.background=''; });
+    const vSem=sem.reduce((a,x)=>a+r.departamentos[+x.dataset.i].produtos.reduce((b,p)=>b+p.v,0),0);
     const subst=Object.keys(por).filter(id=>existentes.some(e=>e.setor_id===id));
-    $('#rvResumo',m).innerHTML = Object.keys(por).length ? `Vai salvar: ${Object.entries(por).map(([id,v])=>`<b>${esc(nomeSetor(id))}</b> ${brl0(v)}`).join(' · ')}${subst.length?`<br><span style="color:var(--warn)">Já existe relatório desse período para ${subst.map(nomeSetor).join(', ')} — será substituído.</span>`:''}` : '<span style="color:var(--bad)">Nenhum departamento escolhido.</span>'; };
+    $('#rvResumo',m).innerHTML = Object.keys(por).length ? `Vai salvar: ${Object.entries(por).map(([id,v])=>`<b>${esc(nomeSetor(id))}</b> ${brl0(v)}`).join(' · ')}${sem.length?`<br><span style="color:var(--bad)">⚠ ${sem.length} departamento(s) sem setor (${brl0(vSem)}) — essa venda não entra. Escolha o setor nas linhas em amarelo.</span>`:''}${subst.length?`<br><span style="color:var(--warn)">Já existe relatório desse período para ${subst.map(nomeSetor).join(', ')} — será substituído.</span>`:''}` : '<span style="color:var(--bad)">Nenhum departamento escolhido.</span>'; };
   m.querySelectorAll('select[data-i]').forEach(s=>s.onchange=resumo); resumo();
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
@@ -260,7 +263,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       if(guardar){ const path=`${r.periodo.ini}_${r.periodo.fim}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
         const up=await S.sb.storage.from('relatorios').upload(path, f, {upsert:false, contentType:f.type||undefined});
         rel=((await q(S.sb.from('relatorios_venda').insert({ periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name, arquivo_path:up.error?null:path, cupons:r.cupons, total_venda:r.venda }).select('id')))||[])[0]||null; }
-      await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo'}));
+      await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
       const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push(x.d); }
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));
