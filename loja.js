@@ -71,7 +71,7 @@ async function importarVarios(files){
     }catch(e){ toast(`${it.f.name}: ${e.message||e}`, 6000); }
   }
   if(feitos.length) toast(`Importação concluída: ${feitos.length} arquivo(s)`, 4000);
-  S._ck=null; render();
+  S._ck=null; S._alertas=null; render(); atualizarSino(true);
 }
 function botaoImportarVarios(id='bVarios'){ return `<button class="btn p" id="${id}">📥 Importar relatórios</button><input type="file" id="${id}Arq" multiple accept=".pdf,.txt,.xlsx,.xls,.xlsm,.csv" class="hide">`; }
 function ligarImportarVarios(id='bVarios'){ const b=$('#'+id); if(!b) return; const i=$('#'+id+'Arq'); b.onclick=()=>i.click(); i.onchange=()=>{ const fs=[...i.files]; i.value=''; if(fs.length) importarVarios(fs); }; }

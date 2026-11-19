@@ -93,6 +93,7 @@ function render(){
   destroyCharts();
   const app=$('#app');
   if(!S.loaded){ return; }
+  atualizarSino().catch(()=>{});
   const doc=curDoc();
   if(!doc){
     app.innerHTML = S.gerente ? `<div class="card empty"><h2>Nenhum mês cadastrado ainda</h2><p>Crie o primeiro mês ou importe as planilhas mensais em <a href="#metas">Metas do mês</a>.</p></div>`
@@ -101,7 +102,7 @@ function render(){
     return;
   }
   if(!S.cutoff || !S.cutoff.startsWith(doc.mes)) S.cutoff = lastSetorDay(doc) || lastDataDay(doc) || diasDoMes(doc.mes)[0];
-  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardTetoPainel(app,doc); }
+  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardAlertas(app); cardTetoPainel(app,doc); }
   else if(S.view==='perdas' && S.gerente) renderPerdasLoja(app,doc);
   else if(S.view==='trocas' && S.gerente) renderTrocasLoja(app,doc);
   else if(S.view==='setor') renderSetor(app,doc);
@@ -369,7 +370,7 @@ function renderSetor(app, doc){
   bindCutoff();
   $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); marcarBnav(); });
   app.querySelectorAll('[data-goaba]').forEach(a=>a.onclick=e=>{ e.preventDefault(); S.setorAba=a.dataset.goaba; render(); window.scrollTo(0,0); });
-  if(!S.gerente && !['bal','ana','per','bdj','trc'].includes(S.setorAba)) preencherQuedasEncarregado(s);
+  if(!S.gerente && !['bal','ana','per','bdj','trc'].includes(S.setorAba)){ preencherQuedasEncarregado(s); cardAlertas(app, s.id); }
   if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
   if(S.setorAba==='bdj' && !['acougue','hortifruti'].includes(s.id)) S.setorAba='ana';
   if(S.setorAba==='ana'||S.setorAba==='bdj'){ renderAnaliseSetor($('#anaBox'), s); return; }
@@ -927,7 +928,7 @@ function desenharCascataAdm(){
   const k=S.admAberto; const c=k && $('#admCx_'+k); if(!c){ S._admCont=null; return; }
   S._admCont=c; c.classList.remove('hide'); const doc=curDoc();
   if(k==='lancar'){ if(doc) renderLancar(c,doc); else c.innerHTML='<div class="empty">Nenhum mês cadastrado. Abra Metas do mês para criar.</div>'; }
-  else { renderMetas(c,doc); if(doc) cardTetoConfig(c); }
+  else { renderMetas(c,doc); if(doc){ cardTetoConfig(c); cardLimitesAlertas(c); } }
   if(S._admRolar){ S._admRolar=false; setTimeout(()=>c.closest('.adm-cx')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
 }
 function formUsuario(u){
@@ -1128,10 +1129,11 @@ function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
   $('#hctl').classList.remove('hide');
-  $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta e administração">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
+  $('#userBox').innerHTML=`<button id="bAlertas" title="Alertas de perdas e trocas">🔔</button><button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta e administração">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
   $('#bConta').onclick=()=>{ location.hash='#conta'; };
   montarBnav();
   $('#bAtualizar').onclick=()=>atualizarDados(true);
+  $('#bAlertas').onclick=()=>abrirAlertas();
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && S.sb && S.user){ try{ S.sb.auth.startAutoRefresh?.(); tokenValido(false).catch(()=>{}); }catch(_){} } });
 function route(){

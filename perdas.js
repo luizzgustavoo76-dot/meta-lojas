@@ -77,7 +77,7 @@ async function importarRelatorioPerdas(f, setorAtual){
           dia.perdas[x.setor_id]=novo; ajustes.push(`${nomeSetor(x.setor_id)} ${d>=0?'+':''}${brl(d)}`); }
         if(ajustes.length){ await saveDoc(nd, 'Perda acertada pelo relatório'); msg+=` · perda do dia ${fD(fim)} acertada: ${ajustes.join(' · ')}`; }
       }
-      closeModal(); toast(msg, 7000);
+      S._alertas=null; closeModal(); toast(msg, 7000);
       if(S.view==='setor'){ if(!por[S.setorSel]) S.setorSel=Object.keys(por)[0]; S.setorAba='per'; render(); }
       resolver(true);
     }catch(e){ err('Não foi possível concluir: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar perdas'; }
@@ -263,7 +263,7 @@ async function importarRelatorioTrocas(f){
       const rows=Object.entries(por).map(([id,its])=>({ setor_id:id, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name,
         custo:round2(its.reduce((a,i)=>a+i.tc,0)), venda:round2(its.reduce((a,i)=>a+i.tv,0)), dados:{ emitido:r.emitido, origem:r.origem, destino:r.destino, itens:its } }));
       await q(S.sb.from('analise_trocas').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
-      closeModal(); toast(`Trocas salvas ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`, 5000);
+      S._alertas=null; closeModal(); toast(`Trocas salvas ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`, 5000);
       if(S.view==='setor'){ S.setorAba='trc'; if(!por[S.setorSel]) S.setorSel=Object.keys(por).find(x=>SETORES_TROCA.includes(x))||Object.keys(por)[0]; } render();
       resolver(true);
     }catch(e){ const x=$('#rtErr',m); x.textContent='Não foi possível salvar: '+(e.message||e); x.classList.remove('hide'); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar trocas'; }
