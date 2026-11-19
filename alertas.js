@@ -47,10 +47,11 @@ async function calcularAlertas(forcar){
 
   // 2) perdas por produto
   for(const r of P){ const its=r.dados.secoes.flatMap(x=>x.itens).filter(i=>i.q>0); const tot=+r.valor||0; if(!tot) continue; const per=`${fD(r.periodo_inicio)} a ${fD(r.periodo_fim)}`;
-    const ly=lyDe(PL,r); if(ly && +ly.valor>0){ const d=tot/+ly.valor-1; if(d*100>L.perdaSubiu) add(d>0.5?'alto':'medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: perda subiu ${pctBR(d,0)} contra o ano passado`,`${brl0(tot)} em ${per} · ano passado ${brl0(+ly.valor)}`,'per'); }
+    const ly=lyDe(PL,r); if(ly){ const b=+ly.valor||0; if(b>=200){ const d=tot/b-1; if(d*100>L.perdaSubiu) add(d>0.5?'alto':'medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: perda subiu ${pctBR(d,0)} contra o ano passado`,`${brl0(tot)} em ${per} · ano passado ${brl0(b)}`,'per'); }
+      else if(tot>=200 && tot-b>=200) add('alto','perda',r.setor_id,`${nomeSetor(r.setor_id)}: perda saiu de ${brl0(b)} para ${brl0(tot)}`,`${per} · no ano passado quase não teve perda`,'per'); }
     const alt=its.filter(i=>{ const s=i.v+i.q>0?i.q/(i.v+i.q):0; return s*100>=L.prodSaida && i.val>=L.prodSaidaMin; }).sort((a,b)=>b.val-a.val);
     if(alt.length) add(alt.some(i=>i.val>=L.prodSaidaMin*4)?'alto':'medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: ${alt.length} produto(s) perdem ${L.prodSaida}% ou mais do que sai`,`${per}`,'per', alt.slice(0,8).map(i=>`${cap1(i.d)} — perde ${pctBR(i.q/(i.v+i.q),0)} · ${brl0(i.val)}`));
-    const conc=its.filter(i=>i.val/tot*100>=L.prodConc).sort((a,b)=>b.val-a.val);
+    const conc=its.length>=5 ? its.filter(i=>i.val/tot*100>=L.prodConc && i.val>=L.prodSaidaMin).sort((a,b)=>b.val-a.val) : [];
     if(conc.length) add('medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: perda concentrada em ${conc.length===1?'um produto':conc.length+' produtos'}`,`${per}`,'per', conc.map(i=>`${cap1(i.d)} — ${pctBR(i.val/tot,0)} da perda do setor · ${brl0(i.val)}`));
   }
 
@@ -58,7 +59,7 @@ async function calcularAlertas(forcar){
   for(const r of T){ const tot=+r.custo||0; if(!tot) continue; const per=`${fD(r.periodo_inicio)} a ${fD(r.periodo_fim)}`;
     const ven=vendaPer(r.setor_id, r.periodo_inicio, r.periodo_fim);
     if(ven && tot/ven*100>L.trocaPctVenda) add(tot/ven*100>L.trocaPctVenda*2?'alto':'medio','troca',r.setor_id,`${nomeSetor(r.setor_id)}: trocas em ${pctBR(tot/ven,2)} da venda`,`${brl0(tot)} em ${per} (limite ${L.trocaPctVenda.toLocaleString('pt-BR')}%)`,'trc');
-    const ly=lyDe(TL,r); if(ly && +ly.custo>0){ const d=tot/+ly.custo-1; if(d*100>L.trocaSubiu) add(d>0.5?'alto':'medio','troca',r.setor_id,`${nomeSetor(r.setor_id)}: trocas subiram ${pctBR(d,0)} contra o ano passado`,`${brl0(tot)} · ano passado ${brl0(+ly.custo)}`,'trc'); }
+    const ly=lyDe(TL,r); if(ly && +ly.custo>=100){ const d=tot/+ly.custo-1; if(d*100>L.trocaSubiu) add(d>0.5?'alto':'medio','troca',r.setor_id,`${nomeSetor(r.setor_id)}: trocas subiram ${pctBR(d,0)} contra o ano passado`,`${brl0(tot)} · ano passado ${brl0(+ly.custo)}`,'trc'); }
     const big=r.dados.itens.filter(i=>i.tc>=L.trocaProdMin).sort((a,b)=>b.tc-a.tc);
     if(big.length) add('medio','troca',r.setor_id,`${nomeSetor(r.setor_id)}: ${big.length} produto(s) com troca de ${brl0(L.trocaProdMin)} ou mais`,`${per}`,'trc', big.slice(0,8).map(i=>`${cap1(i.d)} — ${brl(i.tc)} · ${qtBR(i.q)} un/kg`));
   }
