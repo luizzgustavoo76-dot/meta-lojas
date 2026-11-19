@@ -133,7 +133,7 @@ async function cardTetoConfig(app){
   if(!S.gerente) return; let tetos; try{ S._tetos=null; tetos=await carregarTetos(); }catch(_){ return; } if(!app.isConnected) return;
   const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px';
   box.innerHTML=`<h2>🎯 Teto de perda por setor (% da venda)</h2><p class="small muted" style="margin-top:-4px">${esc(TETO_FONTE)} Os valores começam na média do Brasil; ajuste para a meta da loja.</p>
-    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">${S.setoresAll.map(s=>`<label class="f">${esc(s.nome)}<input class="in" inputmode="decimal" data-teto="${s.id}" value="${tetos[s.id]==null?'':String(tetos[s.id]).replace('.',',')}" placeholder="%"></label>`).join('')}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">${S.setoresAll.map(s=>`<label class="f">${esc(s.nome)}<input class="in" inputmode="decimal" data-teto="${s.id}" value="${tetos[s.id]==null?'':String(tetos[s.id]).replace('.',',')}" placeholder="%"></label>`).join('')}</div>
     <div class="row" style="margin-top:10px"><div class="sp"></div><button class="btn p" id="bTeto">Salvar tetos</button></div>`;
   app.appendChild(box);
   $('#bTeto').onclick=async()=>{ try{ for(const i of box.querySelectorAll('[data-teto]')){ const v=i.value.trim()===''?null:parseNum(i.value); if(v!=null && (isNaN(v)||v<0||v>100)) return toast('Teto inválido em '+nomeSetor(i.dataset.teto),4000);

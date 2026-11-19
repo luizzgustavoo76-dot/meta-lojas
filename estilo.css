@@ -195,7 +195,8 @@ div.setor-det{margin:6px 0 12px;background:#f6f4ef;border-radius:12px}
   .brand{gap:8px;min-width:0}.brand b{font-size:15px;white-space:nowrap}
   .hctl select{padding:6px 6px;font-size:14px;max-width:150px}
   #userBox{gap:4px}#userBox button{padding:6px 8px;font-size:13px}
-  #bAtualizar{display:none}
+  #bAtualizar{display:none} body.enc #bAtualizar{display:inline-block}
+  .t-metas{table-layout:fixed;width:100%} .t-metas th:first-child,.t-metas td:first-child{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;max-width:none!important;width:44%} .t-metas td:first-child input{font-size:12.5px;padding:0} .t-metas th:nth-child(2){width:34%!important} .t-metas th:nth-child(3){width:22%!important} .t-metas input.in{width:100%;min-width:0;padding:7px 6px}
   .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--dark);border-top:2px solid var(--red);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
   .bnav.hide{display:none}
   .bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;color:#cfcac0;text-decoration:none;padding:5px 2px;border-radius:10px;font-size:11px;font-weight:600}
