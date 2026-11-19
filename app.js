@@ -1135,6 +1135,7 @@ function montarCabecalho(){
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && S.sb && S.user){ try{ S.sb.auth.startAutoRefresh?.(); tokenValido(false).catch(()=>{}); }catch(_){} } });
+['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false})); // iPhone: bloqueia o zoom de pinça
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
   const antes=S.view; if(S.gerente && (h==='lancar'||h==='metas')){ S.admAberto=h; S._admRolar=true; S.view='conta'; history.replaceState(null,'','#conta'); } else S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
