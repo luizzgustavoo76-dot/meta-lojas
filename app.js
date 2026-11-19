@@ -919,6 +919,7 @@ async function renderAdmin(box){
   box.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>{ const u=us.find(x=>x.id===b.dataset.ver); entrarVisualizacao(u.nome||u.email, u.setores||[]); });
   box.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>formUsuario(us.find(u=>u.id===b.dataset.ed)));
   box.querySelectorAll('[data-admcx]').forEach(h=>h.onclick=()=>{ S.admAberto = S.admAberto===h.dataset.admcx ? null : h.dataset.admcx; atualizarCabecasAdm(box); desenharCascataAdm(); });
+  cardRankingEncarregados(box, us);
   desenharCascataAdm();
 }
 function atualizarCabecasAdm(box){ for(const k of ['lancar','metas']){ const on=S.admAberto===k; const c=$('#admCx_'+k); if(c) c.classList.toggle('hide',!on); const b=box.querySelector(`[data-admseta="${k}"]`); if(b){ b.textContent=on?'Fechar ▾':'Abrir ▸'; b.classList.toggle('p',!on); } const card=c?.closest('.adm-cx'); if(card) card.style.borderColor=on?'var(--dark)':'var(--line)'; } }
@@ -1160,14 +1161,20 @@ function telaLogin(msg){
   ['#nav','#hctl','#userBox'].forEach(x=>$(x).classList.add('hide'));
   $('#app').innerHTML=`<div class="login"><img class="login-logo" src="logo.png?v=2" alt="Supermercados Bom Dia São Luiz"><h1>Entrar</h1><p class="sub">Painel de metas da loja Bom Dia São Luiz — Araruna.</p>
    ${msg?`<div class="note err small" style="margin-bottom:12px">${esc(msg)}</div>`:''}
-   <form id="fLogin"><label class="f">E-mail<input id="lEmail" type="email" autocomplete="username" required></label>
-   <label class="f">Senha<input id="lSenha" type="password" autocomplete="current-password" required></label>
+   <form id="fLogin" method="post" action="#"><label class="f">E-mail<input id="lEmail" name="username" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+   <label class="f">Senha<span style="position:relative;display:block"><input id="lSenha" name="password" type="password" autocomplete="current-password" required style="padding-right:44px;width:100%"><button type="button" id="lOlho" title="Mostrar senha" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;font-size:18px;cursor:pointer">👁</button></span></label>
+   <label class="small" style="display:flex;gap:6px;align-items:center;margin:2px 0 12px"><input type="checkbox" id="lLembrar"> Lembrar meu e-mail neste aparelho</label>
    <div id="lErr" class="note err small hide" style="margin-bottom:10px"></div>
    <button class="btn p" style="width:100%;justify-content:center" id="lBtn">Entrar</button></form>
-   <p class="small muted" style="margin-top:16px">Esqueceu a senha? Peça ao gerente para cadastrar uma nova.<br><a href="#" id="lPrim">Primeiro acesso do gerente</a></p></div>`;
+   <p class="small muted" style="margin-top:12px">📱 No celular: quando o aparelho perguntar, toque em <b>Salvar senha</b>. Nas próximas vezes a digital ou o Face ID preenche tudo.</p>
+   <p class="small muted" style="margin-top:8px">Esqueceu a senha? Peça ao gerente para cadastrar uma nova.<br><a href="#" id="lPrim">Primeiro acesso do gerente</a></p></div>`;
+  try{ const em=localStorage.getItem('metas_email'); if(em){ $('#lEmail').value=em; $('#lLembrar').checked=true; setTimeout(()=>$('#lSenha').focus(),50); } }catch(_){}
+  $('#lOlho').onclick=()=>{ const i=$('#lSenha'); i.type=i.type==='password'?'text':'password'; $('#lOlho').textContent=i.type==='password'?'👁':'🙈'; };
   $('#fLogin').onsubmit=async e=>{ e.preventDefault(); const er=$('#lErr'); er.classList.add('hide'); $('#lBtn').disabled=true;
     const { error } = await S.sb.auth.signInWithPassword({ email:$('#lEmail').value.trim(), password:$('#lSenha').value });
     if(error){ er.textContent = /invalid/i.test(error.message)?'E-mail ou senha incorretos.':error.message; er.classList.remove('hide'); $('#lBtn').disabled=false; return; }
+    try{ if($('#lLembrar').checked) localStorage.setItem('metas_email',$('#lEmail').value.trim()); else localStorage.removeItem('metas_email'); }catch(_){}
+    try{ if(window.PasswordCredential && navigator.credentials?.store) await navigator.credentials.store(new PasswordCredential({id:$('#lEmail').value.trim(), password:$('#lSenha').value, name:$('#lEmail').value.trim()})); }catch(_){}
     marcarAtividade(); iniciarSessao(); };
   $('#lPrim').onclick=e=>{ e.preventDefault(); telaPrimeiroAcesso(); };
 }
