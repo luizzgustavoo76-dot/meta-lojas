@@ -289,10 +289,10 @@ function renderDiarias(app, doc){
 
 /* ===================== CELULAR ===================== */
 const ehCelular = () => window.matchMedia('(max-width:760px)').matches;
-const BNAV_G=[['painel','📊','Painel'],['setor','🏪','Setores'],['lancar','➕','Lançar'],['balancos','📦','Balanços'],['mais','☰','Mais']];
+const BNAV_G=[['painel','📊','Painel'],['setor','🏪','Setores'],['lancar','➕','Lançar'],['perdas','🗑️','Perdas'],['mais','☰','Mais']];
 function montarBnav(){
   const nav=$('#bnav'); if(!nav) return;
-  const itens = S.gerente ? BNAV_G : [['setor:dia','🏪',meusSetoresIds().length>1?'Setores':'Meu setor'],['setor:ana','🔎','Análise'],['setor:bal','📦','Balanço'],['historico','📅','Histórico']];
+  const itens = S.gerente ? BNAV_G : [['setor:dia','🏪',meusSetoresIds().length>1?'Setores':'Meu setor'],['setor:ana','🔎','Análise'],['setor:per','🗑️','Perdas'],['setor:bal','📦','Balanço'],['historico','📅','Histórico']];
   nav.innerHTML=itens.map(([k,i,t])=>`<a href="#" data-bn="${k}"><span class="bn-i">${i}</span><span class="bn-t">${t}</span></a>`).join('');
   nav.classList.remove('hide');
   nav.querySelectorAll('[data-bn]').forEach(a=>a.onclick=e=>{ e.preventDefault(); const k=a.dataset.bn;
@@ -309,7 +309,7 @@ function marcarBnav(){
     a.classList.toggle('on',on); });
 }
 function menuMais(){
-  const it=[['perdas','🗑️','Perdas da loja'],['diarias','💵','Diárias'],['historico','📅','Histórico'],['metas','🎯','Metas do mês'],['conta','👤','Minha conta e administração']];
+  const it=[['balancos','📦','Balanços'],['diarias','💵','Diárias'],['historico','📅','Histórico'],['metas','🎯','Metas do mês'],['conta','👤','Minha conta e administração']];
   const m=modal(`<div class="sheet"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Mais opções</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
     ${it.map(([k,i,t])=>`<a class="sheet-i ${S.view===k?'on':''}" href="#${k}"><span>${i}</span>${t}</a>`).join('')}
     <button class="sheet-i" id="mmAtual"><span>🔄</span>Atualizar os números</button>
