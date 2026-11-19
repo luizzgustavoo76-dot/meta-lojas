@@ -131,7 +131,7 @@ function renderPainel(app, doc){
   <div class="row" style="align-items:flex-end;margin-bottom:14px">
     <div><h1>${S.gerente?mesLabel(doc.mes):`${esc(meusNomes)} — ${mesLabel(doc.mes)}`}</h1>${S.gerente?'':`<p class="sub" style="margin:0 0 2px">Painel ${doc.setores.length>1?'dos seus setores':'do seu setor'}</p>`}<p class="sub" style="margin:0">Acumulado até <b>${fDateL(S.cutoff)}</b> · ${loja.diasRest} dia(s) restante(s)</p></div>
     <div class="sp"></div>${cutoffSelect(doc)}
-    <button class="btn d-only" id="btnXlsx">⬇ Baixar Excel</button>
+    ${S.gerente?'<button class="btn d-only" id="btnXlsx">⬇ Baixar Excel</button>':''}
     ${S.gerente?'<a class="btn p" href="#lancar">＋ Lançar vendas</a>':''}
   </div>
   ${metaWarn?`<div class="note" style="margin-bottom:12px">A soma das metas diárias (${brl0(loja.metaDiasSum)}) é diferente da meta do mês (${brl0(loja.metaMes)}). Ajuste em <a href="#metas">Metas do mês</a>.</div>`:''}
@@ -185,7 +185,7 @@ function renderPainel(app, doc){
   app.querySelectorAll('.rk-l[data-s]').forEach(el=>el.onclick=()=>{ const alvo=app.querySelector(`.dtable tr[data-s="${el.dataset.s}"]`); if(alvo && alvo.offsetParent){ alvo.scrollIntoView({block:'center'}); abrirSetorNoPainel(alvo, doc, true); } else { const c=app.querySelector(`.mcards [data-s="${el.dataset.s}"]`); if(c){ c.scrollIntoView({block:'center'}); abrirSetorNoPainel(c, doc, true); } } });
   app.querySelectorAll('th.sort').forEach(th=>th.onclick=()=>{ const k=th.dataset.k; if(S.sortKey===k) S.sortDir=-(S.sortDir||-1); else {S.sortKey=k;S.sortDir=k==='nome'?1:-1;} render(); });
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
-  $('#btnXlsx').onclick=()=>exportXlsx(doc);
+  const bx=$('#btnXlsx'); if(bx) bx.onclick=()=>exportXlsx(doc);
   aplicarCelular(app);
   drawLojaChart(loja);
   drawRank(setores);
@@ -648,6 +648,7 @@ function bindNovoMes(host, doc){
 
 /* ===================== exportar Excel ===================== */
 async function exportXlsx(doc){
+  if(!S.gerente) return toast('Só o gerente pode baixar o Excel.');
   if(!window.XLSX) return toast('Leitor de Excel não carregou.');
   const {loja,setores,dias}=calc(doc,S.cutoff);
   const wb=XLSX.utils.book_new();
