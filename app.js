@@ -88,7 +88,7 @@ function calc(doc, cutoff){
 function destroyCharts(){ S.charts.forEach(c=>{try{c.destroy()}catch(e){}}); S.charts=[]; }
 function render(){
   if(S.view==='balancos' && S.loaded){ fillMesSelect(); destroyCharts(); return renderBalancos($('#app')); }
-  if(S.view==='conta' && S.loaded){ fillMesSelect(); destroyCharts(); return renderConta($('#app')); }
+  if(S.view==='conta' && S.loaded){ fillMesSelect(); destroyCharts(); if(S.admAberto && S._admCont?.isConnected) return desenharCascataAdm(); return renderConta($('#app')); }
   fillMesSelect();
   destroyCharts();
   const app=$('#app');
@@ -105,9 +105,7 @@ function render(){
   else if(S.view==='perdas' && S.gerente) renderPerdasLoja(app,doc);
   else if(S.view==='trocas' && S.gerente) renderTrocasLoja(app,doc);
   else if(S.view==='setor') renderSetor(app,doc);
-  else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
-  else if(S.view==='metas' && S.gerente){ renderMetas(app,doc); app.insertAdjacentHTML('afterbegin','<a href="#conta" class="small" style="display:inline-block;margin-bottom:8px">← Painel do administrador</a>'); cardTetoConfig(app); }
   else if(S.view==='diarias' && S.gerente) renderDiarias(app,doc);
   else renderPainel(app,doc);
 }
@@ -888,7 +886,7 @@ async function renderAdmin(box){
   const quando = t => t ? new Date(t).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '<span class="muted">nunca entrou</span>';
   box.innerHTML=`
   <div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1 style="margin:0">⚙️ Painel do administrador</h1><p class="sub" style="margin:0">Só você (gerente) vê esta parte. Encarregados não têm acesso.</p></div></div>
-  <a href="#metas" class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:12px;text-decoration:none;color:inherit;border:2px solid var(--dark)"><span style="font-size:28px">🎯</span><div style="flex:1"><b style="font-size:17px">Metas do mês</b><div class="small muted">Meta da loja e dos setores, meta de cada dia, criar mês, metas por departamento, datas especiais, teto de perda e importar planilhas</div></div><span class="btn p">Abrir</span></a>
+  ${['lancar','metas'].map(k=>{ const t=k==='lancar'?['➕','Lançar vendas','Importar relatórios, lançar a venda e a perda de cada dia, colar ou digitar valores']:['🎯','Metas do mês','Meta da loja e dos setores, meta de cada dia, criar mês, metas por departamento, datas especiais, teto de perda e importar planilhas']; return `<div class="card adm-cx" style="margin-bottom:12px;border:2px solid ${S.admAberto===k?'var(--dark)':'var(--line)'}"><div data-admcx="${k}" style="display:flex;align-items:center;gap:12px;cursor:pointer"><span style="font-size:26px">${t[0]}</span><div style="flex:1"><b style="font-size:17px">${t[1]}</b><div class="small muted">${t[2]}</div></div><span class="btn ${S.admAberto===k?'':'p'}" data-admseta="${k}">${S.admAberto===k?'Fechar ▾':'Abrir ▸'}</span></div><div id="admCx_${k}" class="${S.admAberto===k?'':'hide'}" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"></div></div>`; }).join('')}
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">Usuários</div><div class="v">${us.length}</div><div class="d">${enc.length} encarregado(s) · ${us.length-enc.length} gerente(s)</div></div>
     <div class="kpi"><div class="l">Entraram nos últimos 7 dias</div><div class="v">${ativos.length}</div><div class="d">${nunca.length?`${nunca.length} nunca entrou`:'todos já entraram'}</div></div>
@@ -906,13 +904,24 @@ async function renderAdmin(box){
   </div>
   <div class="card" style="margin-top:12px">
     <h2>Atalhos</h2>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><a class="btn" href="#metas">🎯 Metas do mês e importar planilhas</a><a class="btn" href="#lancar">🧾 Lançar vendas</a><a class="btn" href="#balancos">📦 Balanços</a><button class="btn" id="aAtual">🔄 Atualizar dados</button></div>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><a class="btn" href="#balancos">📦 Balanços</a><button class="btn" id="aAtual">🔄 Atualizar dados</button></div>
   </div>`;
   $('#uNovo').onclick=()=>formUsuario(null);
   $('#uVer').onclick=()=>escolherVisualizacao();
   $('#aAtual').onclick=()=>atualizarDados(true);
   box.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>{ const u=us.find(x=>x.id===b.dataset.ver); entrarVisualizacao(u.nome||u.email, u.setores||[]); });
   box.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>formUsuario(us.find(u=>u.id===b.dataset.ed)));
+  box.querySelectorAll('[data-admcx]').forEach(h=>h.onclick=()=>{ S.admAberto = S.admAberto===h.dataset.admcx ? null : h.dataset.admcx; atualizarCabecasAdm(box); desenharCascataAdm(); });
+  desenharCascataAdm();
+}
+function atualizarCabecasAdm(box){ for(const k of ['lancar','metas']){ const on=S.admAberto===k; const c=$('#admCx_'+k); if(c) c.classList.toggle('hide',!on); const b=box.querySelector(`[data-admseta="${k}"]`); if(b){ b.textContent=on?'Fechar ▾':'Abrir ▸'; b.classList.toggle('p',!on); } const card=c?.closest('.adm-cx'); if(card) card.style.borderColor=on?'var(--dark)':'var(--line)'; } }
+function desenharCascataAdm(){
+  for(const k of ['lancar','metas']){ const c=$('#admCx_'+k); if(c && S.admAberto!==k) c.innerHTML=''; }
+  const k=S.admAberto; const c=k && $('#admCx_'+k); if(!c){ S._admCont=null; return; }
+  S._admCont=c; c.classList.remove('hide'); const doc=curDoc();
+  if(k==='lancar'){ if(doc) renderLancar(c,doc); else c.innerHTML='<div class="empty">Nenhum mês cadastrado. Abra Metas do mês para criar.</div>'; }
+  else { renderMetas(c,doc); if(doc) cardTetoConfig(c); }
+  if(S._admRolar){ S._admRolar=false; setTimeout(()=>c.closest('.adm-cx')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
 }
 function formUsuario(u){
   const novo=!u; const sel=new Set(u?.setores||[]);
@@ -1106,7 +1115,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['lancar','Lançar vendas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico']];
 const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);
@@ -1118,8 +1127,8 @@ function montarCabecalho(){
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 function route(){
-  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta',...(S.gerente?['metas']:[])];
-  const antes=S.view; S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
+  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
+  const antes=S.view; if(S.gerente && (h==='lancar'||h==='metas')){ S.admAberto=h; S._admRolar=true; S.view='conta'; history.replaceState(null,'','#conta'); } else S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
   if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   $('#bConta')?.classList.toggle('on', S.view==='conta'||S.view==='metas');
