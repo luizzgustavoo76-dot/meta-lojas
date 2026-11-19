@@ -83,7 +83,7 @@ async function cardChecklist(app){
   box.innerHTML='<div class="card" style="margin-bottom:12px"><span class="spin"></span> Conferindo as importações…</div>';
   const ontem=ontemIso();
   const ult=async(t,extra)=>{ let b=S.sb.from(t).select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(1); if(extra) b=extra(b); return (await q(b))[0]||null; };
-  const temLy=async(t,x)=>{ if(!x) return 0; const r=await q(S.sb.from(t).select('periodo_inicio,periodo_fim').gte('periodo_fim',addAnos(x.periodo_fim,-1).slice(0,8)+'01').lte('periodo_fim',addAnos(x.periodo_fim,-1).slice(0,8)+'31').limit(50)); return r.some(y=>y.periodo_inicio===addAnos(x.periodo_inicio,-1)&&y.periodo_fim===addAnos(x.periodo_fim,-1)) ? 2 : (r.length?1:0); };
+  const temLy=async(t,x)=>{ if(!x) return 0; const r=await q(S.sb.from(t).select('periodo_inicio,periodo_fim').gte('periodo_fim',addAnos(x.periodo_fim,-1).slice(0,8)+'01').lte('periodo_fim',fimDoMes(addAnos(x.periodo_fim,-1).slice(0,7))).limit(50)); return r.some(y=>y.periodo_inicio===addAnos(x.periodo_inicio,-1)&&y.periodo_fim===addAnos(x.periodo_fim,-1)) ? 2 : (r.length?1:0); };
   let d={};
   try{
     const [lv, av, ap, ab, aa] = await Promise.all([ q(S.sb.from('lancamentos').select('data').not('venda','is',null).order('data',{ascending:false}).limit(1)), ult('analise_vendas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_perdas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_bandeja',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_acertos',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')) ]);
@@ -213,7 +213,7 @@ async function renderPerdasLoja(app, doc){
 /* ---------- Painel: relatório geral de trocas (só gerente) ---------- */
 async function cardTrocasPainel(app, doc){
   if(!S.gerente) return;
-  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('periodo_inicio,periodo_fim').gte('periodo_fim',doc.mes+'-01').lte('periodo_fim',doc.mes+'-31').order('periodo_fim',{ascending:false}).limit(50)); }catch(_){ return; }
+  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('periodo_inicio,periodo_fim').gte('periodo_fim',doc.mes+'-01').lte('periodo_fim',fimDoMes(doc.mes)).order('periodo_fim',{ascending:false}).limit(50)); }catch(_){ return; }
   if(!app.isConnected) return;
   const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px'; box.id='trcPainel';
   const ancora=$('#ckBox')||app.querySelector('.row'); (ancora?.nextSibling? app.insertBefore(box, ancora.nextSibling) : app.appendChild(box));
