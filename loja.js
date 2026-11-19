@@ -115,7 +115,7 @@ function perdaVendaMes(doc, ate){ const p={}, v={}; for(const k of diasDoMes(doc
 function semaforo(pc, teto){ if(teto==null||pc==null) return {cor:'var(--muted)', ico:'—', txt:'sem teto'}; const r=pc/teto; return r<=0.8?{cor:'var(--good)',ico:'🟢',txt:'dentro'}:r<=1?{cor:'var(--warn)',ico:'🟡',txt:'perto do teto'}:{cor:'var(--bad)',ico:'🔴',txt:'acima do teto'}; }
 function tabelaTeto(doc, tetos, ate){
   const {p,v}=perdaVendaMes(doc, ate);
-  const ls=doc.setores.map(s=>{ const pc=v[s.id]? (p[s.id]||0)/v[s.id]*100 : null; return {s, perda:p[s.id]||0, venda:v[s.id]||0, pc, teto:tetos[s.id], sm:semaforo(pc,tetos[s.id])}; }).sort((a,b)=>((b.pc||0)/(b.teto||99))-((a.pc||0)/(a.teto||99)));
+  const ls=doc.setores.map(s=>{ const pc=v[s.id]? (p[s.id]||0)/v[s.id]*100 : null; return {s, perda:p[s.id]||0, venda:v[s.id]||0, pc, teto:tetos[s.id], sm:p[s.id]?semaforo(pc,tetos[s.id]):{cor:'var(--muted)',ico:'⚪',txt:'sem perda lançada'}}; }).sort((a,b)=>((b.pc||0)/(b.teto||99))-((a.pc||0)/(a.teto||99)));
   return `<div class="tw"><table><thead><tr><th>Setor</th><th class="n">Perda no mês</th><th class="n m-hide">Venda</th><th class="n">% da venda</th><th class="n">Teto</th><th>Situação</th></tr></thead><tbody>
     ${ls.map(x=>`<tr><td><b>${esc(x.s.nome)}</b></td><td class="n">${brl0(x.perda)}</td><td class="n m-hide">${brl0(x.venda)}</td><td class="n" style="color:${x.sm.cor};font-weight:600">${x.pc==null?'—':x.pc.toLocaleString('pt-BR',{maximumFractionDigits:2})+'%'}</td><td class="n">${x.teto==null?'—':x.teto.toLocaleString('pt-BR')+'%'}</td><td>${x.sm.ico} <span class="small">${x.sm.txt}</span></td></tr>`).join('')}
   </tbody></table></div>`;
