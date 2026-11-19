@@ -86,7 +86,7 @@ function ligarAlertas(el){
 }
 
 async function atualizarSino(forcar){
-  const b=$('#bAlertas'); if(!b) return;
+  const b=$('#bAlertas'); if(!b) return; // sino desativado: alertas ficam na área de perdas
   const al=await calcularAlertas(forcar); const n=al.length, alto=al.filter(a=>a.nivel==='alto').length;
   b.innerHTML=`🔔${n?`<span class="sino-n" style="background:${alto?'var(--bad)':'var(--warn)'}">${n}</span>`:''}`;
   b.title=n?`${n} alerta(s) de perdas e trocas`:'Nenhum alerta';
@@ -97,12 +97,12 @@ async function abrirAlertas(){
   $('#mN',m).onclick=closeModal;
   const al=await calcularAlertas(true); atualizarSino();
   const b=$('#alBody',m); if(!b) return;
-  b.innerHTML = al.length ? `<p class="small muted" style="margin:0 0 6px">${al.filter(a=>a.nivel==='alto').length} importante(s) · ${al.filter(a=>a.nivel!=='alto').length} de atenção · mês de ${mesLabel(S.mes)}. Toque no alerta para ver os produtos.</p>${al.map(htmlAlerta).join('')}${S.gerente?'<p class="small muted" style="margin-top:8px">Ajuste os limites em 👤 → Painel do administrador → Metas do mês → Limites dos alertas.</p>':''}` : '<div class="empty">✔ Nenhum alerta no momento.</div>';
+  b.innerHTML = al.length ? `<p class="small muted" style="margin:0 0 6px">${al.filter(a=>a.nivel==='alto').length} importante(s) · ${al.filter(a=>a.nivel!=='alto').length} de atenção · mês de ${mesLabel(S.mes)}. Toque no alerta para ver os produtos.</p>${al.map(htmlAlerta).join('')}` : '<div class="empty">✔ Nenhum alerta no momento.</div>';
   ligarAlertas(b);
 }
-async function cardAlertas(app, filtroSetor){
-  const anc=$('#ckBox')||app.querySelector('.row'); if(!anc) return;
-  const box=document.createElement('div'); box.className='card'; box.style.margin='0 0 12px'; anc.after(box);
+async function cardAlertas(app, filtroSetor, ancora){
+  const anc=ancora||app.querySelector('.row'); if(!anc) return;
+  const box=document.createElement('div'); box.className='card'; box.style.margin='12px 0'; anc.after(box);
   box.innerHTML='<span class="spin"></span> Conferindo alertas…';
   let al=await calcularAlertas(); if(filtroSetor) al=al.filter(a=>a.setor===filtroSetor);
   if(!box.isConnected) return;
@@ -116,11 +116,11 @@ async function cardAlertas(app, filtroSetor){
 async function cardLimitesAlertas(app){
   if(!S.gerente) return; S._limites=null; const L=await carregarLimites(); if(!app.isConnected) return;
   const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px';
-  box.innerHTML=`<h2>🔔 Limites dos alertas</h2><p class="small muted" style="margin-top:-4px">Quando um número passa destes limites, o alerta aparece no 🔔 do topo e no Painel (encarregados veem só os setores deles).</p>
+  box.innerHTML=`<h2>🔔 Limites dos alertas</h2><p class="small muted" style="margin-top:-4px">Quando um número passa destes limites, o alerta aparece na tela Perdas e na aba Perdas de cada setor (encarregados veem só os setores deles).</p>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">${Object.entries(LIMITES_TXT).map(([k,[t,u]])=>`<label class="f">${esc(t)} (${u})<input class="in" inputmode="decimal" data-lim="${k}" value="${String(L[k]).replace('.',',')}"></label>`).join('')}</div>
     <div class="row" style="margin-top:10px"><button class="btn" id="bLimPad">Voltar ao padrão</button><div class="sp"></div><button class="btn p" id="bLim">Salvar limites</button></div>`;
   app.appendChild(box);
-  const salvar=async(v)=>{ try{ await q(S.sb.from('configuracoes').upsert({chave:'alertas', valor:v, atualizado_em:new Date().toISOString()})); S._limites=null; S._alertas=null; atualizarSino(true); toast('Limites salvos ✔'); }catch(e){ toast(e.message,5000); } };
+  const salvar=async(v)=>{ try{ await q(S.sb.from('configuracoes').upsert({chave:'alertas', valor:v, atualizado_em:new Date().toISOString()})); S._limites=null; S._alertas=null; toast('Limites salvos ✔'); }catch(e){ toast(e.message,5000); } };
   $('#bLim').onclick=()=>{ const v={}; for(const i of box.querySelectorAll('[data-lim]')){ const n=parseNum(i.value); if(isNaN(n)||n<0) return toast('Valor inválido: '+LIMITES_TXT[i.dataset.lim][0],4000); v[i.dataset.lim]=n; } salvar(v); };
   $('#bLimPad').onclick=()=>{ box.querySelectorAll('[data-lim]').forEach(i=>i.value=String(LIMITES_PADRAO[i.dataset.lim]).replace('.',',')); salvar({...LIMITES_PADRAO}); };
 }

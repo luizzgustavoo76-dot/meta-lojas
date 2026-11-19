@@ -146,6 +146,7 @@ async function cardTetoConfig(app){
 async function renderPerdasLoja(app, doc){
   app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1>Perdas da loja</h1><p class="sub" style="margin:0">Todos os setores: teto, perdas por produto, acertos de balanço e os produtos que mais pesam</p></div><div class="sp"></div>${botaoImportarVarios('bVL')}</div><div id="plBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
   ligarImportarVarios('bVL');
+  cardAlertas(app, null, app.querySelector('.row'));
   const box=$('#plBox'); const vivo=()=>S.view==='perdas' && box.isConnected;
   let tetos, perPer=[], acPer=[];
   try{ [tetos, perPer, acPer] = await Promise.all([ carregarTetos(), q(S.sb.from('analise_perdas').select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(300)), q(S.sb.from('analise_acertos').select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(300)) ]); }

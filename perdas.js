@@ -143,6 +143,7 @@ async function renderPerdasSetor(box, s){
     const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>!t || normN2(i.d).includes(t) || String(i.c)===t);
     $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td>${LY?(()=>{ const o=lyMap.get(String(i.c)); return `<td class="n">${o?brl(o.val):'—'}</td><td class="n">${varP(i.val,o?o.val:0)}</td>`; })():''}<td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td></tr>`; }).join('') || '<tr><td colspan="10" class="muted">Nenhum produto.</td></tr>'; };
   box.insertAdjacentHTML('beforeend','<div id="acBox"></div>'); cardAcertos($('#acBox'), sid);
+  cardAlertas(box, sid, box.querySelector('.row'));
   $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; desenha();
   $('#pdSel').onchange=e=>{ S.perSel[sid]=+e.target.value; renderPerdasSetor(box,s); };
   ligar();
