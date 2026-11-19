@@ -209,3 +209,40 @@ async function renderPerdasLoja(app, doc){
   $('#plBusca').oninput=desenha; $('#plSet').onchange=desenha; desenha();
   $('#plSel').onchange=e=>{ S.plPer=e.target.value; renderPerdasLoja(app,doc); };
 }
+
+/* ---------- Painel: relatório geral de trocas (só gerente) ---------- */
+async function cardTrocasPainel(app, doc){
+  if(!S.gerente) return;
+  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('periodo_inicio,periodo_fim').gte('periodo_fim',doc.mes+'-01').lte('periodo_fim',doc.mes+'-31').order('periodo_fim',{ascending:false}).limit(50)); }catch(_){ return; }
+  if(!app.isConnected) return;
+  const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px'; box.id='trcPainel';
+  const ancora=$('#ckBox')||app.querySelector('.row'); (ancora?.nextSibling? app.insertBefore(box, ancora.nextSibling) : app.appendChild(box));
+  if(!per.length){ box.innerHTML=`<div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">🔄 Trocas da loja</h2><div class="sp"></div><span class="small muted">nenhum relatório de trocas em ${mesLabel(doc.mes)} — importe o “Resumo de produtos transferidos”</span></div>`; return; }
+  per.sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
+  const ini=per[0].periodo_inicio, fim=per[0].periodo_fim;
+  let T=[],TL=[],L=[];
+  try{ [T,TL,L]=await Promise.all([ q(S.sb.from('analise_trocas').select('setor_id,custo,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)), q(S.sb.from('analise_trocas').select('setor_id,custo').eq('periodo_inicio',addAnos(ini,-1)).eq('periodo_fim',addAnos(fim,-1))), todasLinhas(()=>S.sb.from('lancamentos').select('setor_id,venda').gte('data',ini).lte('data',fim)) ]); }catch(_){ box.remove(); return; }
+  if(!box.isConnected) return;
+  const vs={}; let vLoja=0; for(const x of L){ vs[x.setor_id]=(vs[x.setor_id]||0)+(+x.venda||0); vLoja+=(+x.venda||0); }
+  const tot=T.reduce((a,x)=>a+(+x.custo||0),0), totV=T.reduce((a,x)=>a+(+x.venda||0),0), totL=TL.reduce((a,x)=>a+(+x.custo||0),0);
+  const mL=Object.fromEntries(TL.map(x=>[x.setor_id,+x.custo]));
+  const set=T.map(x=>({id:x.setor_id, c:+x.custo, n:x.dados.itens.length, v:vs[x.setor_id]||0, l:mL[x.setor_id]??null})).sort((a,b)=>b.c-a.c);
+  const prods=T.flatMap(x=>x.dados.itens.map(i=>({...i, setor:x.setor_id}))).filter(i=>i.tc>0).sort((a,b)=>b.tc-a.tc);
+  const varP=(a,b)=>{ if(b==null||!b) return ''; const v=a/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
+  const maior=set[0], menor=set[set.length-1];
+  box.innerHTML=`<details ${(typeof ehCelular==='function'&&ehCelular())?'':'open'}><summary style="cursor:pointer"><h2 style="display:inline;margin:0">🔄 Trocas da loja</h2> <span class="small muted">${fD(ini)} a ${fD(fim)} · ${brl0(tot)} a custo${totL?' · ano passado '+brl0(totL)+' '+varP(tot,totL):''}</span></summary>
+    <div class="grid kpis" style="margin-top:10px">
+      <div class="kpi hero"><div class="l">Total de trocas (custo)</div><div class="v">${brl0(tot)}</div><div class="d">${prods.length} produtos · a preço de venda ${brl0(totV)}</div></div>
+      <div class="kpi"><div class="l">Sobre a venda da loja</div><div class="v">${vLoja?pctBR(tot/vLoja,2):'—'}</div><div class="d">venda lançada no período ${brl0(vLoja)}</div></div>
+      <div class="kpi"><div class="l">Maior troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(maior.id))}</div><div class="d">${brl0(maior.c)} · ${pctBR(maior.c/tot,0)} das trocas</div></div>
+      <div class="kpi"><div class="l">Menor troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(menor.id))}</div><div class="d">${brl0(menor.c)} · ${pctBR(menor.c/tot,1)} das trocas</div></div>
+      <div class="kpi"><div class="l">Produto com maior troca</div><div class="v" style="font-size:16px">${esc(cap1(prods[0]?.d||'—'))}</div><div class="d">${prods[0]?brl(prods[0].tc)+' · '+esc(nomeSetor(prods[0].setor)):''}</div></div>
+      <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v">${totL?brl0(totL):'—'}</div><div class="d">${totL?varP(tot,totL)+' em relação ao ano passado':'importe o relatório de trocas de '+fD(addAnos(ini,-1))+' a '+fD(addAnos(fim,-1))}</div></div>
+    </div>
+    <div class="grid two" style="gap:12px;margin-top:12px">
+      <div><h3 style="margin:0 0 6px">Ranking dos setores</h3>${set.map((x,i)=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;align-items:baseline"><span class="muted small" style="width:18px">${i+1}º</span><b style="flex:1">${esc(nomeSetor(x.id))}</b><b>${brl0(x.c)}</b></div><div class="small muted" style="margin-left:26px">${pctBR(x.c/tot,0)} das trocas · ${x.v?pctBR(x.c/x.v,2)+' da venda do setor':'sem venda lançada'} · ${x.n} produtos${x.l!=null?' · '+varP(x.c,x.l):''}</div><div style="margin-left:26px">${barraPct(x.c/maior.c)}</div></div>`).join('')}</div>
+      <div><h3 style="margin:0 0 6px">10 produtos com maior troca</h3>${prods.slice(0,10).map((p,i)=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:8px;align-items:baseline"><span class="muted small" style="width:18px">${i+1}</span><span style="flex:1">${esc(cap1(p.d))}</span><b>${brl0(p.tc)}</b></div><div class="small muted" style="margin-left:26px">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></div>`).join('')}
+        <p class="small muted" style="margin:6px 0 0">Menor troca: ${esc(cap1(prods[prods.length-1]?.d||'—'))} (${brl(prods[prods.length-1]?.tc)})</p></div>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">Abra cada setor na aba <b>🔄 Trocas</b> para ver todos os produtos. As trocas ficam fora da perda e do teto.</p></details>`;
+}

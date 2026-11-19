@@ -101,7 +101,7 @@ function render(){
     return;
   }
   if(!S.cutoff || !S.cutoff.startsWith(doc.mes)) S.cutoff = lastSetorDay(doc) || lastDataDay(doc) || diasDoMes(doc.mes)[0];
-  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardTetoPainel(app,doc); }
+  if(S.view==='painel'){ renderPainel(app,doc); cardChecklist(app); cardTrocasPainel(app,doc); cardTetoPainel(app,doc); }
   else if(S.view==='perdas' && S.gerente) renderPerdasLoja(app,doc);
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='lancar') renderLancar(app,doc);
@@ -336,11 +336,11 @@ function renderSetor(app, doc){
     <div>${S.voltarPainel?'<button class="btn" id="bVoltarPainel" style="margin-bottom:8px">← Voltar ao painel</button>':''}<h1>${esc(s.nome)}</h1><p class="sub" style="margin:0">${mesLabel(doc.mes)}${S.gerente?` · representa ${pct(s.share)} da meta da loja`:''}</p></div>
     <div class="sp"></div>
     <label class="f">Setor<select id="selSetor">${setores.map(x=>`<option value="${x.id}" ${x.id===s.id?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></label>
-    ${['ana','per','bdj'].includes(S.setorAba)?'':cutoffSelect(doc)}
+    ${['ana','per','bdj','trc'].includes(S.setorAba)?'':cutoffSelect(doc)}
   </div>
-  <div class="tabs2 abas-setor" id="abSetor"><button data-a="dia" class="${(!['bal','ana','per','bdj'].includes(S.setorAba))?'on':''}">📈 Dia a dia</button><button data-a="bal" class="${S.setorAba==='bal'?'on':''}">📦 Balanço</button><button data-a="ana" class="${S.setorAba==='ana'?'on':''}">🔎 <span class="d-inl">Análise de vendas</span><span class="m-inl">Vendas</span></button><button data-a="per" class="${S.setorAba==='per'?'on':''}">🗑️ Perdas</button>${['acougue','hortifruti'].includes(s.id)?`<button data-a="bdj" class="${S.setorAba==='bdj'?'on':''}">🍱 <span class="d-inl">Embandeijados</span><span class="m-inl">Bandejas</span></button>`:''}</div>
-  ${!['bal','ana','per','bdj'].includes(S.setorAba)&&!S.gerente?cardHojeEncarregado(doc,loja,s):''}
-  ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':(S.setorAba==='ana'||S.setorAba==='bdj')?'<div id="anaBox"><div class="empty"><span class="spin"></span> Carregando análise…</div></div>':S.setorAba==='per'?'<div id="perBox"><div class="empty"><span class="spin"></span> Carregando perdas…</div></div>':`
+  <div class="tabs2 abas-setor" id="abSetor"><button data-a="dia" class="${(!['bal','ana','per','bdj','trc'].includes(S.setorAba))?'on':''}">📈 Dia a dia</button><button data-a="bal" class="${S.setorAba==='bal'?'on':''}">📦 Balanço</button><button data-a="ana" class="${S.setorAba==='ana'?'on':''}">🔎 <span class="d-inl">Análise de vendas</span><span class="m-inl">Vendas</span></button><button data-a="per" class="${S.setorAba==='per'?'on':''}">🗑️ Perdas</button>${SETORES_TROCA.includes(s.id)?`<button data-a="trc" class="${S.setorAba==='trc'?'on':''}">🔄 Trocas</button>`:''}${['acougue','hortifruti'].includes(s.id)?`<button data-a="bdj" class="${S.setorAba==='bdj'?'on':''}">🍱 <span class="d-inl">Embandeijados</span><span class="m-inl">Bandejas</span></button>`:''}</div>
+  ${!['bal','ana','per','bdj','trc'].includes(S.setorAba)&&!S.gerente?cardHojeEncarregado(doc,loja,s):''}
+  ${S.setorAba==='bal'?'<div id="balSetorBox"><div class="empty"><span class="spin"></span> Carregando balanços…</div></div>':(S.setorAba==='ana'||S.setorAba==='bdj')?'<div id="anaBox"><div class="empty"><span class="spin"></span> Carregando análise…</div></div>':S.setorAba==='trc'?'<div id="trcBox"><div class="empty"><span class="spin"></span> Carregando trocas…</div></div>':S.setorAba==='per'?'<div id="perBox"><div class="empty"><span class="spin"></span> Carregando perdas…</div></div>':`
   <div class="grid kpis">
     <div class="kpi hero ${S.gerente?'':'m-hide'}"><div class="l">% até a data</div><div class="v">${pct(s.pAte)}</div><div class="d">${STXT[status(s.pAte)]} · ${s.real>=s.metaAte?'+':''}${brl0(s.real-s.metaAte)}</div></div>
     <div class="kpi"><div class="l">Realizado</div><div class="v">${brl0(s.real)}</div><div class="d">Meta até a data ${brl0(s.metaAte)}</div></div>
@@ -370,11 +370,12 @@ function renderSetor(app, doc){
   bindCutoff();
   $('#abSetor').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.setorAba=b.dataset.a; render(); marcarBnav(); });
   app.querySelectorAll('[data-goaba]').forEach(a=>a.onclick=e=>{ e.preventDefault(); S.setorAba=a.dataset.goaba; render(); window.scrollTo(0,0); });
-  if(!S.gerente && !['bal','ana','per','bdj'].includes(S.setorAba)) preencherQuedasEncarregado(s);
+  if(!S.gerente && !['bal','ana','per','bdj','trc'].includes(S.setorAba)) preencherQuedasEncarregado(s);
   if(S.setorAba==='bal'){ renderBalancosSetor($('#balSetorBox'), s, doc); return; }
   if(S.setorAba==='bdj' && !['acougue','hortifruti'].includes(s.id)) S.setorAba='ana';
   if(S.setorAba==='ana'||S.setorAba==='bdj'){ renderAnaliseSetor($('#anaBox'), s); return; }
   if(S.setorAba==='per'){ renderPerdasSetor($('#perBox'), s); return; }
+  if(S.setorAba==='trc'){ if(!SETORES_TROCA.includes(s.id)){ S.setorAba='per'; return render(); } renderTrocasSetor($('#trcBox'), s); return; }
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   drawLojaChart({daily:s.daily},'chSet');
   aplicarCelular(app);

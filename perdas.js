@@ -93,7 +93,7 @@ async function renderPerdasSetor(box, s){
   try{ lista=await q(S.sb.from('analise_perdas').select('id,periodo_inicio,periodo_fim,valor').eq('setor_id',sid).order('periodo_fim',{ascending:false}).limit(100)); }
   catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
-  if(!lista.length){ box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de perdas do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o relatório “Perdas da filial” do sistema (PDF). O site mostra o que mais pesa na perda, produto por produto, e pode acertar a perda lançada para bater com o sistema.':'Assim que o gerente importar o relatório de perdas do sistema, a análise por produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div><div id="acBox"></div><div id="trBox"></div>`; ligar(); cardAcertos($('#acBox'), sid); cardTrocas($('#trBox'), sid); return; }
+  if(!lista.length){ box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de perdas do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o relatório “Perdas da filial” do sistema (PDF). O site mostra o que mais pesa na perda, produto por produto, e pode acertar a perda lançada para bater com o sistema.':'Assim que o gerente importar o relatório de perdas do sistema, a análise por produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div><div id="acBox"></div>`; ligar(); cardAcertos($('#acBox'), sid); return; }
   S.perSel=S.perSel||{}; const selId=S.perSel[sid] && lista.some(x=>x.id===S.perSel[sid]) ? S.perSel[sid] : lista[0].id;
   let reg, lancado=null, venda=null;
   try{ reg=(await q(S.sb.from('analise_perdas').select('*').eq('id',selId)))[0];
@@ -142,7 +142,7 @@ async function renderPerdasSetor(box, s){
   const desenha=()=>{ const t=normN2($('#pdBusca').value), so=$('#pdSo').checked;
     const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>!t || normN2(i.d).includes(t) || String(i.c)===t);
     $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td>${LY?(()=>{ const o=lyMap.get(String(i.c)); return `<td class="n">${o?brl(o.val):'—'}</td><td class="n">${varP(i.val,o?o.val:0)}</td>`; })():''}<td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td></tr>`; }).join('') || '<tr><td colspan="10" class="muted">Nenhum produto.</td></tr>'; };
-  box.insertAdjacentHTML('beforeend','<div id="acBox"></div><div id="trBox"></div>'); cardAcertos($('#acBox'), sid); cardTrocas($('#trBox'), sid);
+  box.insertAdjacentHTML('beforeend','<div id="acBox"></div>'); cardAcertos($('#acBox'), sid);
   $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; desenha();
   $('#pdSel').onchange=e=>{ S.perSel[sid]=+e.target.value; renderPerdasSetor(box,s); };
   ligar();
@@ -251,7 +251,7 @@ async function importarRelatorioTrocas(f){
     <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Grupo</th><th class="n">Produtos</th><th class="n">Custo</th><th>Setor do site</th></tr></thead><tbody>
       ${grupos.map((g,i)=>`<tr style="${g.setor?'':'background:#fff6dc'}"><td>${g.setor?esc(nomeSetor(g.setor)):'<b>Não identificados</b><div class="small muted">'+esc(g.itens.slice().sort((a,b)=>b.tc-a.tc).slice(0,4).map(x=>cap1(x.d)).join(', '))+'…</div>'}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(g.c)}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
     </tbody></table></div>
-    <p class="small muted" style="margin-top:8px">As trocas entram na análise (aba Perdas → Trocas e na tela Perdas da loja), separadas da perda: não mexem na perda lançada nem no teto.</p>
+    <p class="small muted" style="margin-top:8px">As trocas entram na análise (aba Trocas do setor, Painel e tela Perdas da loja), separadas da perda: não mexem na perda lançada nem no teto.</p>
     <div id="rtErr" class="note err small hide"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar trocas</button></div>`);
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
@@ -264,7 +264,7 @@ async function importarRelatorioTrocas(f){
         custo:round2(its.reduce((a,i)=>a+i.tc,0)), venda:round2(its.reduce((a,i)=>a+i.tv,0)), dados:{ emitido:r.emitido, origem:r.origem, destino:r.destino, itens:its } }));
       await q(S.sb.from('analise_trocas').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
       closeModal(); toast(`Trocas salvas ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`, 5000);
-      if(S.view==='setor' && S.setorAba==='per' || S.view==='perdas') render();
+      if(S.view==='setor'){ S.setorAba='trc'; if(!por[S.setorSel]) S.setorSel=Object.keys(por).find(x=>SETORES_TROCA.includes(x))||Object.keys(por)[0]; } render();
       resolver(true);
     }catch(e){ const x=$('#rtErr',m); x.textContent='Não foi possível salvar: '+(e.message||e); x.classList.remove('hide'); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar trocas'; }
   };
@@ -288,4 +288,54 @@ async function cardTrocas(box, sid){
       ${its.slice(0,300).map(i=>`<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.tc)}</b></td><td class="n m-hide">${brl(i.tv)}</td></tr>`).join('')}
     </tbody></table></div></div>`;
   $('#trSel').onchange=e=>{ S.trSel[sid]=+e.target.value; cardTrocas(box,sid); };
+}
+
+/* ===== Aba "Trocas" do setor ===== */
+const SETORES_TROCA = ['pereciveis','merc_seca','merc_salgada','merc_doce','bebidas','perfumaria','limpeza','bazar','leite_gas','eletro'];
+function barraPct(p, cor='var(--brand, #d71f26)'){ return `<div style="height:6px;background:#eee;border-radius:9px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${Math.max(2,Math.min(100,p*100))}%;background:${cor}"></div></div>`; }
+async function renderTrocasSetor(box, s){
+  const sid=s.id; const vivo=()=>S.view==='setor' && S.setorAba==='trc' && S.setorSel===sid && box.isConnected;
+  const btnImp = S.gerente? `<button class="btn p" id="trImp">＋ Importar relatório de trocas</button><input type="file" id="trArq" accept=".pdf,.txt" class="hide">`:'';
+  const ligar=()=>{ const b=$('#trImp'); if(b){ b.onclick=()=>$('#trArq').click(); $('#trArq').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(f) importarRelatorioTrocas(f); }; } };
+  let ls=[]; try{ ls=await q(S.sb.from('analise_trocas').select('id,periodo_inicio,periodo_fim,custo').eq('setor_id',sid).order('periodo_fim',{ascending:false}).limit(60)); }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  if(!vivo()) return;
+  if(!ls.length){ box.innerHTML=`<div class="card empty"><h2>Nenhuma troca do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o “Resumo de produtos transferidos” (trocas) do sistema. O site separa os produtos por setor e mostra o que mais vai para troca.':'Assim que o gerente importar o relatório de trocas, a análise aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div>`; ligar(); return; }
+  S.trSel=S.trSel||{}; const selId=ls.some(x=>x.id===S.trSel[sid])?S.trSel[sid]:ls[0].id;
+  let a, ly=null, lojaTot=0, venda=0;
+  try{ a=(await q(S.sb.from('analise_trocas').select('*').eq('id',selId)))[0];
+    ly=(await q(S.sb.from('analise_trocas').select('custo,dados,periodo_inicio,periodo_fim').eq('setor_id',sid).eq('periodo_inicio',addAnos(a.periodo_inicio,-1)).eq('periodo_fim',addAnos(a.periodo_fim,-1)).limit(1)))[0]||null;
+    lojaTot=(await q(S.sb.from('analise_trocas').select('custo').eq('periodo_inicio',a.periodo_inicio).eq('periodo_fim',a.periodo_fim))).reduce((x,r)=>x+(+r.custo||0),0);
+    venda=(await todasLinhas(()=>S.sb.from('lancamentos').select('venda').eq('setor_id',sid).gte('data',a.periodo_inicio).lte('data',a.periodo_fim))).reduce((x,r)=>x+(+r.venda||0),0);
+  }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  if(!vivo()) return;
+  const its=a.dados.itens.slice().sort((x,y)=>y.tc-x.tc); const tot=+a.custo||0;
+  const lyMap=new Map(); if(ly) for(const i of ly.dados.itens) lyMap.set(String(i.c),i);
+  let ac=0,n80=0; for(const i of its){ ac+=i.tc; n80++; if(ac>=tot*0.8) break; }
+  const varP=(x,b)=>{ if(b==null) return '<span class="muted">—</span>'; if(!b) return x?'<span class="an-novo">nova</span>':'—'; const v=x/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
+  const porDep={}; for(const i of its){ const k=i.dep||'—'; porDep[k]=(porDep[k]||0)+i.tc; }
+  const subiu=ly? its.map(i=>({i,d:i.tc-((lyMap.get(String(i.c))||{}).tc||0)})).filter(x=>x.d>0).sort((x,y)=>y.d-x.d).slice(0,3):[];
+  box.innerHTML=`
+    <div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap"><label class="f" style="margin:0">Período<select id="trSel">${ls.map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${fD(x.periodo_inicio)} a ${fD(x.periodo_fim)} · ${brl0(+x.custo)}</option>`).join('')}</select></label><div class="sp"></div>${btnImp}</div>
+    <div class="grid kpis">
+      <div class="kpi hero"><div class="l">Trocas de ${fD(a.periodo_inicio)} até ${fD(a.periodo_fim)}</div><div class="v">${brl0(tot)}</div><div class="d">a custo · ${its.length} produtos · a preço de venda ${brl0(+a.venda)}</div></div>
+      <div class="kpi"><div class="l">Sobre a venda do setor</div><div class="v">${venda?pctBR(tot/venda,2):'—'}</div><div class="d">venda lançada no período: ${brl0(venda)}</div></div>
+      <div class="kpi"><div class="l">Parte das trocas da loja</div><div class="v">${lojaTot?pctBR(tot/lojaTot,0):'—'}</div><div class="d">trocas da loja no período: ${brl0(lojaTot)}</div></div>
+      <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v">${ly?brl0(+ly.custo):'—'}</div><div class="d">${ly?varP(tot,+ly.custo)+' em relação ao ano passado':'importe o relatório de trocas do ano passado para comparar'}</div></div>
+    </div>
+    <div class="card" style="margin-top:12px"><h2>👀 Onde olhar primeiro</h2><ul class="small" style="margin:6px 0 0 18px;line-height:1.6">
+      <li><b>${n80} produto(s)</b> fazem 80% das trocas do setor.</li>
+      ${its.slice(0,3).map(i=>`<li><b>${esc(cap1(i.d))}</b> — ${brl0(i.tc)} (${pctBR(i.tc/tot,0)} das trocas do setor; ${qtBR(i.q)} un/kg)</li>`).join('')}
+      ${its.length>1?`<li>Menor troca: <b>${esc(cap1(its[its.length-1].d))}</b> — ${brl(its[its.length-1].tc)}</li>`:''}
+      ${subiu.length?`<li>Mais subiram contra o ano passado: ${subiu.map(x=>`<b>${esc(cap1(x.i.d))}</b> +${brl0(x.d)}`).join(' · ')}</li>`:''}
+      ${Object.keys(porDep).length>1?`<li>Por departamento do sistema: ${Object.entries(porDep).sort((x,y)=>y[1]-x[1]).map(([k,v])=>`${esc(cap1(k))} ${brl0(v)}`).join(' · ')}</li>`:''}
+    </ul></div>
+    <div class="card" style="margin-top:12px">
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Produtos</h2><div class="sp"></div><input id="trBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:150px"></div>
+      <div class="tw" style="max-height:60vh"><table><thead><tr><th class="m-hide">#</th><th>Produto</th><th class="n m-hide">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th><th class="n m-hide">Preço venda</th>${ly?'<th class="n m-hide">Ano pass.</th>':''}<th class="n">Part.</th></tr></thead><tbody id="trBody"></tbody></table></div>
+    </div>`;
+  const desenha=()=>{ const t=normN2($('#trBusca').value);
+    $('#trBody').innerHTML=its.map((i,k)=>({i,k})).filter(({i})=>!t||normN2(i.d).includes(t)||String(i.c)===t).slice(0,400).map(({i,k})=>{ const o=lyMap.get(String(i.c)); return `<tr><td class="muted m-hide">${k+1}</td><td><span class="muted small">${k+1}º · ${esc(i.c)}</span> ${esc(cap1(i.d))}<div class="small muted m-only">${qtBR(i.q)} un/kg · ${brl(i.cu)}/un · venda ${brl(i.tv)}${ly?` · ano pass. ${o?brl(o.tc):'—'}`:''}</div></td><td class="n m-hide">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.tc)}</b></td><td class="n m-hide">${brl(i.tv)}</td>${ly?`<td class="n m-hide">${o?brl(o.tc):'—'}</td>`:''}<td class="n" style="min-width:70px">${pctBR(i.tc/tot,1)}${barraPct(i.tc/its[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>'; };
+  $('#trBusca').oninput=desenha; desenha();
+  $('#trSel').onchange=e=>{ S.trSel[sid]=+e.target.value; renderTrocasSetor(box,s); };
+  ligar();
 }
