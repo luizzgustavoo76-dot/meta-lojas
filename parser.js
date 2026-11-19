@@ -275,6 +275,30 @@
     res.diferenca=round2(res.itens.reduce((a,i)=>a+i.vd,0));
     return res;
   }
-  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas, analisarRelatorioAcertos };
+
+  /* ---------- "RESUMO DE PRODUTOS TRANSFERIDOS DA FILIAL x PARA AS FILIAIS y" (trocas) ---------- */
+  function analisarRelatorioTransferencias(linhas){
+    const textos = linhas.map(l => (typeof l==='string' ? l : String(l.text||'')).replace(/\s+/g,' ').trim());
+    const cab = textos.find(t=>/PRODUTOS TRANSFERIDOS.*PERIODO DE \d{2}\/\d{2}\/\d{2,4} A \d{2}\/\d{2}\/\d{2,4}/i.test(t)); if(!cab) return null;
+    const pm = cab.match(/FILIAL (\d+) PARA AS FILIAIS? ([\d, ]+?) NO PERIODO DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+    if(!pm) return null;
+    const res={ tipo:'transferencias', origem:pm[1], destino:pm[2].trim(), periodo:{ini:dataBR(pm[3]), fim:dataBR(pm[4])}, emitido:null, deps:[], total:null };
+    let dep=null;
+    for(const t of textos){ if(!t) continue;
+      if(!res.emitido){ const e=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(e) res.emitido=dataBR(e[1]); }
+      let m=t.match(/^Departamento\s*:\s*(\d+)\s*-\s*(.+)$/i);
+      if(m){ const cod=+m[1]; dep=res.deps.find(x=>x.codigo===cod); if(!dep){ dep={codigo:cod, nome:m[2].trim(), itens:[]}; res.deps.push(dep); } continue; }
+      m=t.match(/^TOTAL GERAL:?\s+(.+)$/i); if(m){ const n=m[1].split(' ').map(numBR); res.total={venda:n[n.length-3], custo:n[n.length-1]}; dep=null; continue; }
+      if(dep && /^\d+\s+\S/.test(t)){ const tk=t.split(' '); if(tk.length<10) continue; const n=tk.slice(-5).map(numBR); if(n.some(v=>v==null)) continue;
+        const d=tk.slice(1,-8).join(' '); if(!d) continue;
+        dep.itens.push({ c:tk[0], d, pv:n[0], tv:round2(n[1]), q:n[2], cu:n[3], tc:round2(n[4]) }); }
+    }
+    res.deps=res.deps.filter(x=>x.itens.length); if(!res.deps.length) return null;
+    res.itens=res.deps.reduce((a,x)=>a+x.itens.length,0);
+    res.custo=round2(res.deps.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.tc,0),0));
+    res.venda=round2(res.deps.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.tv,0),0));
+    return res;
+  }
+  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas, analisarRelatorioAcertos, analisarRelatorioTransferencias };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Parser = api;
 })(typeof window !== 'undefined' ? window : globalThis);
