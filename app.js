@@ -518,6 +518,7 @@ async function importPdf(file){
   const rv=Parser.analisarRelatorioVendas(lines);
   if(rv && rv.nivel==='CLASSE'){ closeModal(); S.setorAba='bdj'; return importarRelatorioVendas(file, 'acougue'); }
   if(rv){ closeModal(); return lancarPorRelatorio(rv, file); }
+  if(Parser.analisarRelatorioAcertos(lines)){ closeModal(); return importarRelatorioAcertos(file); }
   if(Parser.analisarRelatorioPerdas(lines)){ closeModal(); return importarRelatorioPerdas(file, S.setorSel||''); }
   const text=lines.join('\n');
   if(text.replace(/\s/g,'').length<30){ // PDF escaneado → imagens

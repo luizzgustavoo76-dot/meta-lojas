@@ -256,6 +256,25 @@
     res.valor=round2(res.secoes.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.val,0),0));
     return res;
   }
-  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas };
+
+  /* ---------- "RESUMO DE ACERTOS/PERDAS POR PRODUTO NO PERIODO DE x A y" (acertos de balanço) ---------- */
+  function analisarRelatorioAcertos(linhas){
+    const textos = linhas.map(l => (typeof l==='string' ? l : String(l.text||'')).replace(/\s+/g,' ').trim());
+    const cab = textos.find(t=>/RESUMO DE ACERTOS.*PERIODO DE \d{2}\/\d{2}\/\d{2,4} A \d{2}\/\d{2}\/\d{2,4}/i.test(t)); if(!cab) return null;
+    const pm = cab.match(/PERIODO DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+    const res={ tipo:'acertos', periodo:{ini:dataBR(pm[1]), fim:dataBR(pm[2])}, filial:null, emitido:null, itens:[], total:null };
+    for(const t of textos){ if(!t) continue;
+      if(!res.filial){ const f=t.match(/FILIAL:?\s*(\d+)/i); if(f) res.filial=f[1]; }
+      if(!res.emitido){ const e=t.match(/EMISS[AÃ]O:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(e) res.emitido=dataBR(e[1]); }
+      let m=t.match(/TOTAL DIFERENCA:?\s*(-?[\d.,]+)/i); if(m){ res.total=numBR(m[1]); continue; }
+      if(/^\d+\s+\S/.test(t)){ const tk=t.split(' '); if(tk.length<11) continue; const n=tk.slice(-9).map(numBR); if(n.some(v=>v==null)) continue;
+        const d=tk.slice(1,-9).join(' '); if(!d) continue;
+        res.itens.push({ c:tk[0], d, qe:n[0], ve:n[2], qs:n[3], vs:n[5], qd:n[6], vd:n[8] }); }
+    }
+    if(!res.itens.length) return null;
+    res.diferenca=round2(res.itens.reduce((a,i)=>a+i.vd,0));
+    return res;
+  }
+  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas, analisarRelatorioAcertos };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Parser = api;
 })(typeof window !== 'undefined' ? window : globalThis);

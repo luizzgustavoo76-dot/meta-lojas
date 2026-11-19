@@ -93,7 +93,7 @@ async function renderPerdasSetor(box, s){
   try{ lista=await q(S.sb.from('analise_perdas').select('id,periodo_inicio,periodo_fim,valor').eq('setor_id',sid).order('periodo_fim',{ascending:false}).limit(100)); }
   catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
-  if(!lista.length){ box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de perdas do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o relatório “Perdas da filial” do sistema (PDF). O site mostra o que mais pesa na perda, produto por produto, e pode acertar a perda lançada para bater com o sistema.':'Assim que o gerente importar o relatório de perdas do sistema, a análise por produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div>`; ligar(); return; }
+  if(!lista.length){ box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de perdas do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o relatório “Perdas da filial” do sistema (PDF). O site mostra o que mais pesa na perda, produto por produto, e pode acertar a perda lançada para bater com o sistema.':'Assim que o gerente importar o relatório de perdas do sistema, a análise por produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div><div id="acBox"></div>`; ligar(); cardAcertos($('#acBox'), sid); return; }
   S.perSel=S.perSel||{}; const selId=S.perSel[sid] && lista.some(x=>x.id===S.perSel[sid]) ? S.perSel[sid] : lista[0].id;
   let reg, lancado=null, venda=null;
   try{ reg=(await q(S.sb.from('analise_perdas').select('*').eq('id',selId)))[0];
@@ -142,8 +142,86 @@ async function renderPerdasSetor(box, s){
   const desenha=()=>{ const t=normN2($('#pdBusca').value), so=$('#pdSo').checked;
     const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>!t || normN2(i.d).includes(t) || String(i.c)===t);
     $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td>${LY?(()=>{ const o=lyMap.get(String(i.c)); return `<td class="n">${o?brl(o.val):'—'}</td><td class="n">${varP(i.val,o?o.val:0)}</td>`; })():''}<td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td></tr>`; }).join('') || '<tr><td colspan="10" class="muted">Nenhum produto.</td></tr>'; };
+  box.insertAdjacentHTML('beforeend','<div id="acBox"></div>'); cardAcertos($('#acBox'), sid);
   $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; desenha();
   $('#pdSel').onchange=e=>{ S.perSel[sid]=+e.target.value; renderPerdasSetor(box,s); };
   ligar();
 }
 const normN2=t=>String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().trim();
+
+/* ===== Acertos de balanço: "RESUMO DE ACERTOS/PERDAS POR PRODUTO" (vem sem seção: separa pelo cadastro de produtos e pela descrição) ===== */
+function setorPorDescricao(d){ d=String(d||'').toUpperCase().trim();
+  if(/^[FV] /.test(d)) return 'hortifruti';
+  if(/^(ZZ)?(LING|BACON|QJO|QUEIJO|PRESUNTO|MORTADELA|SALAME|APRESUNTADO|PEITO PERU|EMBUTIDO|PIZZA|SALSICHA|BLANQUET|REQUEIJAO|IOGURTE|MANTEIGA|MARGARINA|NUGGETS|HAMBURGUER|LASANHA)/.test(d)) return 'pereciveis';
+  if(/^(BOV|SUI|FGO|FRANGO|CARNE|OVINO|CORDEIRO|CAPRINO)\b/.test(d)) return 'acougue';
+  if(/^(SALG|TORTA|PAO|BOLO|BISC|ROSCA|CUCA|SONHO|BOLINHO|CHURROS|LANCHE|FOCACCIA|ESFIHA)/.test(d)) return 'padaria';
+  return ''; }
+
+async function importarRelatorioAcertos(f){
+  busy('Lendo o resumo de acertos do balanço…');
+  let r=null, prod=new Map();
+  try{ r=Parser.analisarRelatorioAcertos(await linhasDoArquivo(f));
+    if(r){ for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; } } }
+  catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
+  closeModal();
+  if(!r){ toast('Esse arquivo não parece o “Resumo de acertos/perdas por produto” do sistema.', 6000); return null; }
+  const por=new Map(); let porDesc=0;
+  for(const it of r.itens){ let s=prod.get(String(it.c)); if(!s){ s=setorPorDescricao(it.d); if(s) porDesc++; } s=s||''; if(!por.has(s)) por.set(s,[]); por.get(s).push(it); }
+  const grupos=[...por.entries()].map(([setor,itens])=>({setor, itens, v:round2(itens.reduce((a,i)=>a+i.vd,0))})).sort((a,b)=>a.v-b.v);
+  const opcoes=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
+  return await new Promise(resolver=>{
+  const m=modal(`<h2>📦 Acertos de balanço por produto</h2>
+    <div class="grid kpis" style="margin:8px 0">
+      <div class="kpi"><div class="l">Período</div><div class="v" style="font-size:20px">${fD(r.periodo.ini)} a ${fD(r.periodo.fim)}</div><div class="d">filial ${esc(r.filial||'')}${r.emitido?' · emitido '+fD(r.emitido):''}</div></div>
+      <div class="kpi"><div class="l">Resultado (sobras − faltas)</div><div class="v" style="font-size:20px;color:${r.diferenca<0?'var(--bad)':'var(--good)'}">${brl(r.diferenca)}</div><div class="d">${r.itens.length} produtos</div></div>
+    </div>
+    ${r.total!=null?(Math.abs(r.total-r.diferenca)<1?'<div class="note small" style="background:var(--good-bg);border-color:#a9d8b8">✔ Conferido: bate com o TOTAL DIFERENÇA do relatório.</div>':`<div class="note err small">A soma (${brl(r.diferenca)}) não bate com o TOTAL DIFERENÇA (${brl(r.total)}).</div>`):''}
+    <p class="small muted" style="margin:8px 0 6px">O relatório não separa por seção: cada produto foi para o setor pelo cadastro de produtos${porDesc?` (${porDesc} pela descrição, como BOV, LING, F/V…)`:''}. Confira as linhas em amarelo.</p>
+    <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Grupo</th><th class="n">Produtos</th><th class="n">Resultado</th><th>Setor do site</th></tr></thead><tbody>
+      ${grupos.map((g,i)=>`<tr style="${g.setor?'':'background:#fff6dc'}"><td>${g.setor?esc(nomeSetor(g.setor)):'<b>Não identificados</b><div class="small muted">'+esc(g.itens.slice().sort((a,b)=>a.vd-b.vd).slice(0,4).map(x=>cap1(x.d)).join(', '))+'…</div>'}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(g.v)}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="small muted" style="margin-top:8px">Isso entra só na análise (aba Perdas → Acertos de balanço). Não mexe na perda lançada nos dias.</p>
+    <div id="raErr" class="note err small hide"></div>
+    <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar acertos</button></div>`);
+  $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
+  $('#mY',m).onclick=async()=>{
+    const por={}; m.querySelectorAll('select[data-g]').forEach(s=>{ if(s.value) (por[s.value]=por[s.value]||[]).push(...grupos[+s.dataset.g].itens); });
+    if(!Object.keys(por).length){ const e=$('#raErr',m); e.textContent='Escolha o setor de pelo menos um grupo.'; e.classList.remove('hide'); return; }
+    $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
+    try{
+      const rows=Object.entries(por).map(([id,its])=>({ setor_id:id, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name,
+        diferenca:round2(its.reduce((a,i)=>a+i.vd,0)), sobras:round2(its.reduce((a,i)=>a+(i.vd>0?i.vd:0),0)), faltas:round2(its.reduce((a,i)=>a+(i.vd<0?-i.vd:0),0)),
+        dados:{ emitido:r.emitido, filial:r.filial, itens:its } }));
+      await q(S.sb.from('analise_acertos').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
+      closeModal(); toast(`Acertos salvos ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`, 5000);
+      if(S.view==='setor' && S.setorAba==='per') render();
+      resolver(true);
+    }catch(e){ const x=$('#raErr',m); x.textContent='Não foi possível salvar: '+(e.message||e); x.classList.remove('hide'); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar acertos'; }
+  };
+  });
+}
+
+async function cardAcertos(box, sid){
+  let ls=[]; try{ ls=await q(S.sb.from('analise_acertos').select('*').eq('setor_id',sid).order('periodo_fim',{ascending:false}).limit(24)); }catch(_){ return; }
+  if(!box.isConnected) return;
+  const btn=S.gerente?'<button class="btn" id="acImp">＋ Importar acertos de balanço</button><input type="file" id="acArq" accept=".pdf,.txt" class="hide">':'';
+  const ligar=()=>{ const b=$('#acImp'); if(b){ b.onclick=()=>$('#acArq').click(); $('#acArq').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(f) importarRelatorioAcertos(f); }; } };
+  if(!ls.length){ box.innerHTML=`<div class="card" style="margin-top:12px"><div class="row"><h2 style="margin:0">📦 Acertos de balanço</h2><div class="sp"></div>${btn}</div><p class="small muted" style="margin:6px 0 0">Importe o “Resumo de acertos/perdas por produto” do sistema para ver as sobras e faltas dos balanços, produto por produto, e comparar com o ano passado.</p></div>`; ligar(); return; }
+  S.acSel=S.acSel||{}; const a=ls.find(x=>x.id===S.acSel[sid])||ls[0];
+  const ly=ls.find(x=>x.periodo_inicio===addAnos(a.periodo_inicio,-1) && x.periodo_fim===addAnos(a.periodo_fim,-1)) || (ls.find(x=>x.periodo_inicio===addAnos(a.periodo_inicio,1) && x.periodo_fim===addAnos(a.periodo_fim,1)) ? null : null);
+  const lyMap=new Map(); if(ly) for(const i of ly.dados.itens) lyMap.set(String(i.c),i);
+  const its=a.dados.itens.slice().sort((x,y)=>x.vd-y.vd);
+  const cor=v=>v<0?'var(--bad)':'var(--good)';
+  box.innerHTML=`<div class="card" style="margin-top:12px">
+    <div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📦 Acertos de balanço</h2><div class="sp"></div>
+      <select id="acSel" style="border:1px solid var(--line);border-radius:8px;padding:5px 6px">${ls.map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${fD(x.periodo_inicio)} a ${fD(x.periodo_fim)} · ${brl0(x.diferenca)}</option>`).join('')}</select>${btn}</div>
+    <div class="grid kpis" style="margin-top:10px">
+      <div class="kpi"><div class="l">Resultado ${fD(a.periodo_inicio)} a ${fD(a.periodo_fim)}</div><div class="v" style="color:${cor(+a.diferenca)}">${brl0(+a.diferenca)}</div><div class="d">faltas ${brl0(+a.faltas)} · sobras ${brl0(+a.sobras)}</div></div>
+      <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v" style="${ly?'color:'+cor(+ly.diferenca):''}">${ly?brl0(+ly.diferenca):'—'}</div><div class="d">${ly?`faltas ${brl0(+ly.faltas)} · sobras ${brl0(+ly.sobras)}`:'importe o mesmo relatório do ano passado para comparar'}</div></div>
+    </div>
+    <div class="tw" style="max-height:45vh;margin-top:10px"><table><thead><tr><th>Produto</th><th class="n">Sobrou</th><th class="n">Faltou</th><th class="n">Diferença qtd</th><th class="n">Resultado R$</th>${ly?'<th class="n">Ano pass.</th>':''}</tr></thead><tbody>
+      ${its.slice(0,300).map(i=>{ const o=lyMap.get(String(i.c)); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${i.ve?brl(i.ve):'—'}</td><td class="n">${i.vs?brl(i.vs):'—'}</td><td class="n">${qtBR(i.qd)}</td><td class="n" style="color:${cor(i.vd)};font-weight:600">${brl(i.vd)}</td>${ly?`<td class="n">${o?brl(o.vd):'—'}</td>`:''}</tr>`; }).join('')}
+    </tbody></table></div></div>`;
+  $('#acSel').onchange=e=>{ S.acSel[sid]=+e.target.value; cardAcertos(box,sid); };
+  ligar();
+}
