@@ -216,12 +216,18 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   let r=opts.pre||null, mapa=[];
   try{ if(!r) r=Parser.analisarRelatorioVendas(await linhasDoArquivo(f)); mapa=await q(S.sb.from('departamentos').select('codigo,nome,setor_id')); }
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
+  if(r && r.nivel && r.nivel!=='DEPTO' && !r._dividido){ // relatório por SEÇÃO: separa cada produto no setor certo
+    try{ busy('Separando os produtos por setor…'); const prod=new Map();
+      for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
+      r=dividirPorSetor(r, prod, mapa); r.semMapa=!prod.size;
+    }catch(e){ closeModal(); toast('Não consegui separar por setor: '+e.message, 6000); return null; }
+  }
   closeModal();
   if(!r){ toast('Esse arquivo não parece a “Relação de vendas com rentabilidade” do sistema.', 6000); return null; }
   return await new Promise(async resolver=>{
   const conf = r.totalGeral?.venda!=null ? Math.abs(r.totalGeral.venda-r.venda)<1 && (!r.totalGeral.itens || r.totalGeral.itens===r.itens) : null;
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
-  const sug=d=>{ const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
+  const sug=d=>{ if(d._setor!==undefined) return d._setor||''; const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
   let existentes=[]; try{ existentes=await q(S.sb.from('analise_vendas').select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
   const opcoesSetor=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
@@ -236,9 +242,10 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       <div class="kpi"><div class="l">Venda total</div><div class="v" style="font-size:20px">${brl(r.venda)}</div><div class="d">${r.itens} produtos · ${r.departamentos.length} departamentos${r.cupons?` · ${r.cupons} cupons`:''}</div></div>
     </div>
     ${conf===true?'<div class="note small" style="background:var(--good-bg);border-color:#a9d8b8">✔ Conferido: a soma dos produtos bate com o TOTAL GERAL do relatório.</div>':conf===false?`<div class="note err small">A soma dos produtos (${brl(r.venda)}) não bate com o TOTAL GERAL (${brl(r.totalGeral.venda)}). Confira o arquivo.</div>`:''}
+    ${r._dividido?`<div class="note small" style="margin:8px 0">Relatório por <b>seção</b>: cada produto foi separado no setor certo pelo cadastro de produtos${r.semMapa?' — <b style="color:var(--warn)">o cadastro ainda está vazio; importe uma vez o relatório por sub-departamento para a separação ficar exata</b>':''}.</div>`:''}
     <p class="small muted" style="margin:10px 0 6px">Escolha para qual setor do site vai cada departamento do sistema. O site lembra a escolha para os próximos relatórios.</p>
     <div class="tw" style="max-height:340px;overflow:auto"><table><thead><tr><th>Departamento</th><th class="n">Produtos</th><th class="n">Venda</th><th>Setor do site</th></tr></thead><tbody>
-      ${r.departamentos.map((d,i)=>`<tr><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
+      ${r.departamentos.map((d,i)=>`<tr><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}${d._setor!==undefined?` <span class="muted">→ ${esc(d._setor?nomeSetor(d._setor):'?')}</span>`:''}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
     </tbody></table></div>
     <div id="rvResumo" class="small" style="margin-top:10px"></div>
     ${opts.lancar?`<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="rvAna" ${umDia?'':'checked'}> guardar também na Análise de vendas (${umDia?'relatório de um dia só':'acumulado do período'})</label>`:''}
@@ -263,8 +270,10 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       if(guardar){ const path=`${r.periodo.ini}_${r.periodo.fim}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
         const up=await S.sb.storage.from('relatorios').upload(path, f, {upsert:false, contentType:f.type||undefined});
         rel=((await q(S.sb.from('relatorios_venda').insert({ periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name, arquivo_path:up.error?null:path, cupons:r.cupons, total_venda:r.venda }).select('id')))||[])[0]||null; }
-      await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
-      const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push(x.d); }
+      if(!r._dividido){ const ps=[]; for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) ps.push({codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()});
+        for(let i=0;i<ps.length;i+=500) await q(S.sb.from('produtos_setor').upsert(ps.slice(i,i+500), {onConflict:'codigo'})); }
+      if(!r._dividido) await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
+      const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push({codigo:x.d.codigo, nome:x.d.nome, produtos:x.d.produtos}); }
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));
       if(guardar) await q(S.sb.from('analise_vendas').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
@@ -277,4 +286,24 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     }catch(e){ err('Não foi possível salvar: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent=opts.lancar?'Continuar':'Salvar análise'; }
   };
   });
+}
+
+/* Relatório por SEÇÃO → grupos (seção, setor) usando o cadastro de produtos, regras e o setor padrão da seção */
+function setorPorRegra(sec, desc){ const d=String(desc||'').toUpperCase();
+  if(sec===19 && /^LEITE/.test(d)) return 'leite_gas';
+  if(sec===22 && /^LING/.test(d)) return 'pereciveis';
+  if(sec===11 && /\bGAS\b/.test(d)) return 'leite_gas';
+  if(sec===24 && /GELO/.test(d)) return 'bebidas';
+  if(sec===18 && /^(SACO|VASSOURA|RODO|PA |ESCOVA|BALDE|PREND)/.test(d)) return 'bazar';
+  if(sec===31 && /ALCOOL.*GEL/.test(d)) return 'limpeza';
+  return null; }
+function dividirPorSetor(r, prod, mapa){
+  const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim(); const grupos=[];
+  for(const d of r.departamentos){
+    const pad=(mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome))||{}).setor_id||Parser.matchSector(d.nome)||null;
+    const por=new Map();
+    for(const p of d.produtos){ const s=prod.get(String(p.c)) || setorPorRegra(d.codigo,p.d) || pad || ''; if(!por.has(s)) por.set(s,[]); por.get(s).push(p); }
+    for(const [s,ps] of por) grupos.push({codigo:d.codigo, nome:d.nome, produtos:ps, _setor:s});
+  }
+  return {...r, departamentos:grupos, _dividido:true};
 }
