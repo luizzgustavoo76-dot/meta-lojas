@@ -1158,7 +1158,7 @@ async function trocarMes(m){
 
 function telaLogin(msg){
   ['#nav','#hctl','#userBox'].forEach(x=>$(x).classList.add('hide'));
-  $('#app').innerHTML=`<div class="login"><h1>Entrar</h1><p class="sub">Painel de metas da loja Bom Dia São Luiz — Araruna.</p>
+  $('#app').innerHTML=`<div class="login"><img class="login-logo" src="logo.png?v=2" alt="Supermercados Bom Dia São Luiz"><h1>Entrar</h1><p class="sub">Painel de metas da loja Bom Dia São Luiz — Araruna.</p>
    ${msg?`<div class="note err small" style="margin-bottom:12px">${esc(msg)}</div>`:''}
    <form id="fLogin"><label class="f">E-mail<input id="lEmail" type="email" autocomplete="username" required></label>
    <label class="f">Senha<input id="lSenha" type="password" autocomplete="current-password" required></label>
