@@ -201,7 +201,7 @@
   const numBR = t => { let x=String(t).trim(); if(/^\*+[,.]?\*+$/.test(x)) return 0; if(x.includes(',')) x=x.replace(/\./g,'').replace(',','.'); const v=parseFloat(x); return isNaN(v)?null:v; };
   function analisarRelatorioVendas(linhas){
     const textos = linhas.map(l => typeof l==='string' ? l : String(l.text||''));
-    if(!textos.some(t=>/RELACAO DE VENDAS/i.test(t))) return null;
+    if(!textos.some(t=>/RELACAO\s+DE\s+VENDAS/i.test(t))) return null;
     const res={ tipo:'vendas_rentabilidade', emitido:null, periodo:{ini:null,fim:null}, filial:null, cupons:null, totalGeral:null, departamentos:[] };
     let dep=null;
     for(const raw of textos){
