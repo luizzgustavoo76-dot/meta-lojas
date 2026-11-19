@@ -128,7 +128,7 @@ async function cardTetoPainel(app, doc){
   const {p,v}=perdaVendaMes(doc, S.cutoff); const acima=doc.setores.filter(s=>v[s.id] && tetos[s.id]!=null && (p[s.id]||0)/v[s.id]*100>tetos[s.id]);
   const box=document.createElement('div'); box.className='card'; box.style.marginTop='12px';
   box.innerHTML=`<details ${acima.length?'open':''}><summary style="cursor:pointer"><h2 style="display:inline;margin:0">🎯 Perda × teto</h2> <span class="small muted">${acima.length?`🔴 ${acima.length} setor(es) acima do teto: ${acima.map(s=>esc(s.nome)).join(', ')}`:'🟢 todos os setores dentro do teto'}</span></summary>
-    <div style="margin-top:10px">${tabelaTeto(doc,tetos,S.cutoff)}</div><p class="small muted" style="margin:6px 0 0">Perda lançada no mês até ${fD(S.cutoff)} (dia a dia + balanços) ÷ venda do setor. Ajuste os tetos em <a href="#metas">Metas do mês</a>. <a href="#perdas">Ver perdas da loja →</a></p></details>`;
+    <div style="margin-top:10px">${tabelaTeto(doc,tetos,S.cutoff)}</div><p class="small muted" style="margin:6px 0 0">Perda lançada no mês até ${fD(S.cutoff)} (dia a dia + balanços) ÷ venda do setor. Ajuste os tetos em <a href="#metas">Painel do administrador → Metas do mês</a>. <a href="#perdas">Ver perdas da loja →</a></p></details>`;
   app.appendChild(box);
 }
 async function cardTetoConfig(app){

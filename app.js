@@ -107,7 +107,7 @@ function render(){
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='lancar') renderLancar(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
-  else if(S.view==='metas' && S.gerente){ renderMetas(app,doc); cardTetoConfig(app); }
+  else if(S.view==='metas' && S.gerente){ renderMetas(app,doc); app.insertAdjacentHTML('afterbegin','<a href="#conta" class="small" style="display:inline-block;margin-bottom:8px">← Painel do administrador</a>'); cardTetoConfig(app); }
   else if(S.view==='diarias' && S.gerente) renderDiarias(app,doc);
   else renderPainel(app,doc);
 }
@@ -888,6 +888,7 @@ async function renderAdmin(box){
   const quando = t => t ? new Date(t).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '<span class="muted">nunca entrou</span>';
   box.innerHTML=`
   <div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1 style="margin:0">⚙️ Painel do administrador</h1><p class="sub" style="margin:0">Só você (gerente) vê esta parte. Encarregados não têm acesso.</p></div></div>
+  <a href="#metas" class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:12px;text-decoration:none;color:inherit;border:2px solid var(--dark)"><span style="font-size:28px">🎯</span><div style="flex:1"><b style="font-size:17px">Metas do mês</b><div class="small muted">Meta da loja e dos setores, meta de cada dia, criar mês, metas por departamento, datas especiais, teto de perda e importar planilhas</div></div><span class="btn p">Abrir</span></a>
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">Usuários</div><div class="v">${us.length}</div><div class="d">${enc.length} encarregado(s) · ${us.length-enc.length} gerente(s)</div></div>
     <div class="kpi"><div class="l">Entraram nos últimos 7 dias</div><div class="v">${ativos.length}</div><div class="d">${nunca.length?`${nunca.length} nunca entrou`:'todos já entraram'}</div></div>
@@ -1105,7 +1106,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['lancar','Lançar vendas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico'],['metas','Metas do mês']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['lancar','Lançar vendas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico']];
 const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);
@@ -1117,11 +1118,11 @@ function montarCabecalho(){
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 function route(){
-  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
+  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta',...(S.gerente?['metas']:[])];
   const antes=S.view; S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
   if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
-  $('#bConta')?.classList.toggle('on', S.view==='conta');
+  $('#bConta')?.classList.toggle('on', S.view==='conta'||S.view==='metas');
   render(); marcarBnav();
   // ao trocar de tela, começa do topo; ao voltar para o painel, volta para onde estava
   if(antes!==S.view){ if(S.view==='painel' && S.voltarPainel && S.painelScroll!=null){ const y=S.painelScroll; requestAnimationFrame(()=>window.scrollTo(0,y)); S.voltarPainel=false; } else window.scrollTo(0,0); }
