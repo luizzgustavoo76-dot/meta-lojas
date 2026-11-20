@@ -241,7 +241,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     try{ busy('Separando os produtos por setor…'); const prod=new Map();
       for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
       // aprende com os relatórios já guardados: produto/subgrupo que já apareceu num setor vai para o mesmo setor
-      try{ const ap=await q(S.sb.rpc('mapa_setor_analises')); for(const x of (ap||[])){ if(x.tipo==='p'){ if(!prod.has(String(x.codigo))) prod.set(String(x.codigo), x.setor_id); }
+      try{ const ap=[]; for(let i=0;;i+=1000){ const pg=await q(S.sb.rpc('mapa_setor_analises').range(i,i+999)); ap.push(...(pg||[])); if(!pg||pg.length<1000) break; } for(const x of ap){ if(x.tipo==='p'){ if(!prod.has(String(x.codigo))) prod.set(String(x.codigo), x.setor_id); }
           else if(!mapa.some(m=>String(m.codigo)===String(x.codigo) && m.nome===x.nome)) mapa.push({codigo:+x.codigo, nome:x.nome, setor_id:x.setor_id}); } }catch(_){ }
       r=dividirPorSetor(r, prod, mapa); r.semMapa=!prod.size;
     }catch(e){ closeModal(); toast('Não consegui separar por setor: '+e.message, 6000); return null; }
