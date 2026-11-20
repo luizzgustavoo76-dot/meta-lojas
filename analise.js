@@ -202,12 +202,12 @@ async function renderAnaliseSetor(box, s){
           <span class="an-dc hm"><span class="l">Margem</span>${d.m!=null?pct(d.m/100):'—'}</span>
         </button>
         ${aberto?`<div class="m-only an-ml">${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<details class="dl an-mp ${S.anaFoco===p.c?'an-foco':''}" id="anpm-${esc(p.c)}"><summary><span class="dl-d"><span class="an-mn">${esc(p.d)}</span><span class="small muted" style="display:block">${qtdTxt(p.q)}${base&&p.qb!=null?` · antes ${qtdTxt(p.qb)} ${varHtml(p.q,p.qb)}`:''}</span><span class="an-mt">${tags(p)}</span></span><b class="dl-v">${p.v?brl0(p.v):'—'}</b><span class="dl-p">${base?varHtml(p.v,p.vb):''}</span></summary>
-            <div class="dl-c"><div><span>Código</span><b>${esc(p.c)}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small> ${varHtml(p.q,p.qb)}`:''}</b></div>
+            <div class="dl-c"><div><span>${p.grupo?'Códigos':'Código'}</span><b>${esc(codProd(p))}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small> ${varHtml(p.q,p.qb)}`:''}</b></div>
             ${base?`<div><span>Venda ${nomeBase}</span><b>${p.vb?brl(p.vb):'—'}</b></div><div><span>Diferença</span><b>${p.vb!=null?`${p.v-p.vb>=0?'+':''}${brl0(p.v-p.vb)}`:'—'}</b></div>`:''}
             <div><span>Preço médio</span><b>${p.q?brl(p.v/p.q):'—'}${base&&p.qb?` <small class="muted">(antes ${brl(p.vb/p.qb)})</small> ${varHtml(p.v/p.q,p.vb/p.qb)}`:''}</b></div><div><span>Participação</span><b>${p.v?pct(p.part):'—'}</b></div><div><span>Margem</span><b>${p.m!=null?pct(p.m/100):'—'}</b></div>
             ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?brl(pb):'—'}</b></div>`:''}</div></details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
         <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th>${base?'<th class="n">Var. qtd</th>':''}<th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var. venda</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
-          ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td>${p.grupo?'':`<span class="small muted">${esc(p.c)}</span>`} ${esc(p.d)} ${tags(p)}</td>
+          ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)} ${tags(p)}</td>
             <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>${base?`<td class="n">${p.qb!=null?varHtml(p.q,p.qb):'<span class="muted">—</span>'}</td>`:''}
             <td class="n"><b>${p.v?brl(p.v):'—'}</b>${p.q?`<div class="small muted">${brl(p.v/p.q)}/${ehKg(p)?'kg':'un'}${base&&p.qb&&p.vb?` (antes ${brl(p.vb/p.qb)})`:''}</div>`:''}</td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
             <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:'—'}</td>`:''}</tr>`; }).join('')}
@@ -456,7 +456,7 @@ async function cardRuptura(el, sid, fim, todos, irProd){
   const tot=r.reduce((a,x)=>a+(+x.perdida||0),0);
   const ult=r[0]?.ultimo_dia;
   const linha=x=>{ const p=porC.get(String(x.c)); const abc=p?.abc;
-    return `<button class="an-oli rup-i" ${p?`data-go="${esc(x.c)}" data-dep="${p.depC}"`:''}><span>${abc?`<span class="an-abc an-${abc}">${abc}</span> `:''}${esc(x.d)}<span class="small" style="display:block">vendia ${nq(x.media_q,x.d)} ${un(x.d)}/dia (${x.dias_venda} de ${x.dias_base} dias) · <b style="color:var(--bad)">sem venda há ${x.dias_sem} dia${x.dias_sem>1?'s':''}</b>${x.ult_venda?` · última ${fD(x.ult_venda)}`:''}</span></span><b style="color:var(--bad)">−${brl0(+x.perdida)}</b></button>`; };
+    return `<button class="an-oli rup-i" ${p?`data-go="${esc(x.c)}" data-dep="${p.depC}"`:''}><span>${abc?`<span class="an-abc an-${abc}">${abc}</span> `:''}${esc(x.d)}${p?.grupo?` <span class="small muted">(${esc(codProd(p))})</span>`:''}<span class="small" style="display:block">vendia ${nq(x.media_q,x.d)} ${un(x.d)}/dia (${x.dias_venda} de ${x.dias_base} dias) · <b style="color:var(--bad)">sem venda há ${x.dias_sem} dia${x.dias_sem>1?'s':''}</b>${x.ult_venda?` · última ${fD(x.ult_venda)}`:''}</span></span><b style="color:var(--bad)">−${brl0(+x.perdida)}</b></button>`; };
   if(!r.length){ el.innerHTML=`<div class="card" style="margin-top:12px"><div class="row"><h2 style="margin:0">🚫 Ruptura de produto</h2><div class="sp"></div><span class="small" style="color:var(--good);font-weight:600">✔ nenhum produto parou de vender</span></div><p class="small muted" style="margin:6px 0 0">Olha os produtos que vendiam quase todo dia e zeraram nos últimos 2 dias. Precisa dos relatórios de venda de cada dia do mês.</p></div>`; return; }
   const nA=r.filter(x=>porC.get(String(x.c))?.abc==='A').length;
   el.innerHTML=`<div class="card" style="margin-top:12px;border-color:#f1b5b5">
@@ -484,7 +484,7 @@ function cardCurvaABC(A, todos){
       <div class="abc-n"><b>${brl0(c.v)}</b> <span class="small muted">${pctBR(c.pv,0)} da venda</span></div>
       <div class="abc-bar"><i style="width:${(c.pv*100).toFixed(1)}%"></i></div></div>`).join('')}</div>
     <div class="small" style="margin:10px 0 4px"><b>${topA.length} produtos</b> fazem 80% da venda do setor. Os 10 maiores:</div>
-    <div class="rup-l">${topA.slice(0,10).map((p,i)=>{ ac+=p.v; return `<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="muted">${i+1}.</span> ${esc(p.d)}<span class="small" style="display:block">${(+p.q).toLocaleString('pt-BR',{maximumFractionDigits:un(p.d)==='kg'?1:0})} ${un(p.d)} · ${pctBR(p.v/tot,1)} da venda · acumulado ${pctBR(ac/tot,0)}</span></span><b>${brl0(p.v)}</b></button>`; }).join('')}</div>
+    <div class="rup-l">${topA.slice(0,10).map((p,i)=>{ ac+=p.v; return `<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="muted">${i+1}.</span> ${esc(p.d)}${p.grupo?` <span class="small muted">(${esc(codProd(p))})</span>`:''}<span class="small" style="display:block">${(+p.q).toLocaleString('pt-BR',{maximumFractionDigits:un(p.d)==='kg'?1:0})} ${un(p.d)} · ${pctBR(p.v/tot,1)} da venda · acumulado ${pctBR(ac/tot,0)}</span></span><b>${brl0(p.v)}</b></button>`; }).join('')}</div>
     <div class="row" style="margin-top:8px"><button class="btn" id="abcVerA">Ver todos os ${topA.length} da curva A</button></div>
   </div>`;
 }
@@ -535,3 +535,5 @@ async function cardGruposProduto(app){
   };
   desenhar();
 }
+
+function codProd(p){ return p&&p.grupo ? p.grupo.map(g=>g.c).join(' - ') : String(p?.c??''); }
