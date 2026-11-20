@@ -111,10 +111,20 @@ function render(){
 }
 
 function cutoffSelect(doc){
-  const opts = diasDoMes(doc.mes).filter(k=>temVenda(doc.dias?.[k])).map(k=>`<option value="${k}" ${k===S.cutoff?'selected':''}>até ${fDateL(k)}</option>`).join('');
-  return `<label class="f" style="min-width:170px">Dados até<select id="selCut">${opts||'<option>sem vendas</option>'}</select></label>`;
+  const ds=diasDoMes(doc.mes), com=ds.filter(k=>temVenda(doc.dias?.[k]));
+  if(!com.length) return `<label class="f" style="min-width:170px">Dados até<input type="date" disabled value=""></label>`;
+  const min=ds[0], max=com[com.length-1], i=com.indexOf(S.cutoff);
+  const ant=i>0?com[i-1]:(i<0?com.filter(k=>k<S.cutoff).pop():null), prox=i>=0?com[i+1]:com.find(k=>k>S.cutoff);
+  return `<div class="f cut-cal"><span>Dados até</span><div class="row" style="gap:4px;flex-wrap:nowrap">
+    <button class="btn cut-nav" data-cut="${ant||''}" ${ant?'':'disabled'} title="Dia anterior" aria-label="Dia anterior">‹</button>
+    <input type="date" id="selCut" min="${min}" max="${max}" value="${S.cutoff||max}" title="Escolha o dia no calendário">
+    <button class="btn cut-nav" data-cut="${prox||''}" ${prox?'':'disabled'} title="Próximo dia" aria-label="Próximo dia">›</button>
+    ${S.cutoff!==max?`<button class="btn cut-nav" data-cut="${max}" title="Último dia lançado">Último</button>`:''}</div></div>`;
 }
-function bindCutoff(){ const s=$('#selCut'); if(s) s.onchange=e=>{S.cutoff=e.target.value; render();}; }
+function bindCutoff(){
+  const s=$('#selCut'); if(s) s.onchange=e=>{ let v=e.target.value; if(!v) return; const mx=s.max, mn=s.min; if(mx&&v>mx){ v=mx; toast(`O último dia lançado é ${fDate(mx)}`); } if(mn&&v<mn) v=mn; S.cutoff=v; render(); };
+  document.querySelectorAll('.cut-nav').forEach(b=>b.onclick=()=>{ if(b.dataset.cut){ S.cutoff=b.dataset.cut; render(); } });
+}
 
 /* ---------- PAINEL ---------- */
 function renderPainel(app, doc){
@@ -763,7 +773,7 @@ async function gravarDoc(nd, old, opts={}){
   for(const [k,ids] of Object.entries(porDia)) await q(S.sb.from('lancamentos').delete().eq('data',k).in('setor_id',ids));
 }
 function saveDoc(nd, msg, opts={}){
-  S._salvouEm=Date.now();
+  S._salvouEm=Date.now(); S._marcaDados=undefined;
   if(S.preview){ toast('Modo visualização: nada é salvo. Saia da visualização para lançar.',4000); return Promise.resolve(false); }
   const old = S.months[nd.mes] ? clone(S.months[nd.mes]) : null;
   S.months[nd.mes]=nd; if(!S.mesList.includes(nd.mes)){ S.mesList.push(nd.mes); S.mesList.sort(); } S._tudo=false; render();
@@ -1213,7 +1223,7 @@ async function iniciarSessao(){
     const cur=todayIso().slice(0,7); S.mes = S.mesList.includes(cur)?cur:(S.mesList[S.mesList.length-1]||null);
     if(S.mes) await carregarMes(S.mes);
     if(S.mes){ const [y,mm]=S.mes.split('-'); await garantirMes(`${+y-1}-${mm}`).catch(()=>{}); carregarAnteriores(S.mes); }
-    S._ultimaCarga=Date.now(); S.loaded=true; document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route(); iniciarInatividade();
+    S._ultimaCarga=Date.now(); S.loaded=true; S._marcaDados=undefined; setTimeout(verificarDadosNovos,1500); document.body.classList.toggle('enc',!S.gerente); montarCabecalho(); route(); iniciarInatividade();
   }catch(e){ console.error(e); $('#app').innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message||e)}</div>`; }
 }
 
@@ -1475,8 +1485,23 @@ setTimeout(verificarVersao, 8000);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden) return;
   verificarVersao();
-  if(S.loaded && Date.now()-(S._ultimaCarga||0)>5*60*1000) atualizarDados(false); // voltou para o site depois de um tempo: busca os números novos
+  if(S.loaded && Date.now()-(S._ultimaCarga||0)>60*1000) verificarDadosNovos(); // voltou para o site: confere se entrou lançamento novo
 });
+/* confere sozinho se alguém lançou vendas/perdas em outro aparelho e recarrega os números */
+async function verificarDadosNovos(){
+  if(!S.loaded || !S.sb || document.hidden || S._checando) return;
+  if($('#modalRoot')?.innerHTML.trim()) return; // não atrapalha quem está lançando
+  const ae=document.activeElement; if(ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.id!=='selCut') return;
+  S._checando=true;
+  try{
+    const r=await q(S.sb.from('lancamentos').select('atualizado_em,data').order('atualizado_em',{ascending:false}).limit(1));
+    const t=r[0]?.atualizado_em||null;
+    if(S._marcaDados===undefined){ S._marcaDados=t; return; }
+    if(t && t!==S._marcaDados){ S._marcaDados=t; const dia=r[0].data; await atualizarDados(false); toast(`Números novos carregados ✔ (lançamento de ${fDate(dia)})`, 4000); }
+  }catch(_){ }
+  finally{ S._checando=false; }
+}
+setInterval(verificarDadosNovos, 60*1000);
 
 
 /* ===================== análise do relatório de balanço ===================== */

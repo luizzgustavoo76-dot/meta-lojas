@@ -309,3 +309,9 @@ div.setor-det{margin:6px 0 12px;background:#f6f4ef;border-radius:12px}
 
 /* celular: sem zoom de toque duplo (o zoom ao tocar em campos é travado pelo maximum-scale do index.html) */
 html,body{touch-action:pan-x pan-y}
+/* calendário "Dados até" */
+.cut-cal{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink2);font-weight:600}
+.cut-cal input[type=date]{border:1px solid var(--line);border-radius:9px;padding:7px 8px;background:#fff;font:inherit;font-weight:600;color:var(--ink);min-width:0;flex:1}
+.cut-nav{padding:6px 11px;font-size:16px;line-height:1}
+.cut-nav[disabled]{opacity:.35}
+@media (max-width:760px){ .cut-cal{flex:1 1 100%} .cut-cal input[type=date]{font-size:16px} }
