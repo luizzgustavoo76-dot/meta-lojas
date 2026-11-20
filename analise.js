@@ -195,7 +195,7 @@ async function renderAnaliseSetor(box, s){
         <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th>${base?'<th class="n">Var. qtd</th>':''}<th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var. venda</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
           ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(p.c)}</span> ${esc(p.d)} ${tags(p)}</td>
             <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>${base?`<td class="n">${p.qb!=null?varHtml(p.q,p.qb):'<span class="muted">—</span>'}</td>`:''}
-            <td class="n"><b>${p.v?brl(p.v):'—'}</b></td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
+            <td class="n"><b>${p.v?brl(p.v):'—'}</b>${p.q?`<div class="small muted">${brl(p.v/p.q)}/${ehKg(p)?'kg':'un'}${base&&p.qb&&p.vb?` (antes ${brl(p.vb/p.qb)})`:''}</div>`:''}</td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
             <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:'—'}</td>`:''}</tr>`; }).join('')}
           ${!ps.length?'<tr><td colspan="9" class="muted">Nenhum produto</td></tr>':''}
         </tbody></table></div>`:''}
