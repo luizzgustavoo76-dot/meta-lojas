@@ -147,7 +147,7 @@ async function renderAnaliseSetor(box, s){
   ${notaDatas(ini, fim, [{rot:'ano passado', ini:ly?pa0:null, fim:pa1},{rot:'mês passado', ini:lm?pm0:null, fim:pm1}])}
   ${base?cardVolumePreco(A, nomeBase):''}
   ${base?(()=>{ const sens=sensibilidade(todos); const fq=v=>`<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'▲':'▼'} ${pct(Math.abs(v),0)}</span>`;
-      const lin=p=>`preço ${fq(p.dp)} · qtd ${fq(p.dq)}`;
+      const lin=p=>`preço <b>${p.dp>=0?'▲':'▼'} ${pct(Math.abs(p.dp),0)}</b> · qtd ${fq(p.dq)}`;
       return `<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">🏷️ Sensibilidade ao preço</h2><div class="sp"></div><span class="small muted">preço médio e quantidade contra o ${nomeBase} · toque no produto para ver</span></div>
       <p class="small muted" style="margin:-2px 0 8px">Só produtos que vendiam pelo menos ${brl0(200)} antes e cujo preço médio mudou 5% ou mais.</p>
       <div class="an-olg">
