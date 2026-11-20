@@ -4,7 +4,7 @@
    01..fim direto, ou acumulado(01..fim) − acumulado(01..dia anterior ao início). */
 
 function botaoBusca(){
-  const old=$('#fabBusca'); if(!S.gerente){ if(old) old.remove(); return; } if(old) return;
+  const old=$('#fabBusca'); if(!S.gerente || ehCelular()){ if(old) old.remove(); return; } if(old) return;
   const b=document.createElement('button'); b.id='fabBusca'; b.className='fab-busca'; b.title='Buscar venda de um produto'; b.setAttribute('aria-label','Buscar venda de um produto'); b.textContent='🔍';
   b.onclick=()=>abrirBusca(); document.body.appendChild(b);
 }
