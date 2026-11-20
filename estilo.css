@@ -335,3 +335,14 @@ body.login-on .fab-busca{display:none}
   .bs-form input{font-size:16px}
 }
 #rvTab.so-pend tbody tr.rv-ok{display:none}
+/* ruptura e curva ABC */
+.rup-l{display:flex;flex-direction:column;gap:4px}
+.rup-l .an-oli{width:100%}
+.abc-g{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.abc-t{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff}
+.abc-h{font-weight:700;margin-bottom:4px}
+.abc-n{margin-top:2px}
+.abc-bar{height:6px;background:var(--line);border-radius:4px;margin-top:6px;overflow:hidden}
+.abc-bar i{display:block;height:100%;background:#2a78d6;border-radius:4px}
+.abc-B .abc-bar i{background:#8fb6e6}.abc-C .abc-bar i{background:#c9d8ea}
+@media (max-width:760px){ .abc-g{grid-template-columns:1fr} }

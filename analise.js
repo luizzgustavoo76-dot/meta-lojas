@@ -145,6 +145,8 @@ async function renderAnaliseSetor(box, s){
     ${bals.length?`<div class="kpi"><div class="l">Perdas dos produtos no balanço</div><div class="v">${brl0(perdaTot)}</div><div class="d">soma das perdas, sem descontar as sobras · resultado do balanço ${brl0(bals.reduce((x,b)=>x+(+b.valor_perda||0),0))} · ${bals.map(b=>`${b.periodo_inicio?fDate(b.periodo_inicio)+' a ':''}${fDate(b.data)}`).join(', ')}</div></div>`:''}
   </div>
   ${notaDatas(ini, fim, [{rot:'ano passado', ini:ly?pa0:null, fim:pa1},{rot:'mês passado', ini:lm?pm0:null, fim:pm1}])}
+  ${ehBdj()?'':'<div id="anRup"></div>'}
+  ${cardCurvaABC(A, todos)}
   ${base?cardVolumePreco(A, nomeBase):''}
   ${base?(()=>{ const sens=sensibilidade(todos); const fq=v=>`<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'▲':'▼'} ${pct(Math.abs(v),0)}</span>`;
       const lin=p=>`preço <b>${p.dp>=0?'▲':'▼'} ${pct(Math.abs(p.dp),0)}</b> · qtd ${fq(p.dq)}`;
@@ -223,7 +225,10 @@ async function renderAnaliseSetor(box, s){
   $('#anFil').querySelector('[data-x="fechar"]').onclick=()=>{ S.anaAbertos.clear(); desenhar(); };
   let tm; $('#anBusca').oninput=e=>{ clearTimeout(tm); tm=setTimeout(()=>{ S.anaBusca=e.target.value; desenhar(); },200); };
   $('#anOrd').onchange=e=>{ S.anaOrd=e.target.value; desenhar(); };
-  box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{ S.anaFil='todos'; S.anaBusca=''; $('#anBusca').value=''; $('#anFil').querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('on',x.dataset.f==='todos')); S.anaAbertos.add(+b.dataset.dep); S.anaFoco=b.dataset.go; desenhar(); });
+  const irProd=b=>{ S.anaFil='todos'; S.anaBusca=''; $('#anBusca').value=''; $('#anFil').querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('on',x.dataset.f==='todos')); S.anaAbertos.add(+b.dataset.dep); S.anaFoco=b.dataset.go; desenhar(); };
+  box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b));
+  const verA=$('#abcVerA'); if(verA) verA.onclick=()=>{ S.anaFil='A'; $('#anFil').querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('on',x.dataset.f==='A')); desenhar(); $('#anFil').scrollIntoView({behavior:'smooth',block:'start'}); };
+  if(!ehBdj()) cardRuptura($('#anRup'), sid, fim, todos, irProd);
   const del=$('#anDel'); if(del) del.onclick=()=>confirmBox(`Apagar o relatório de vendas de ${fD(ini)} a ${fD(fim)} do ${s.nome}?`, async()=>{ try{ await q(S.sb.from(tabAna()).delete().eq('id',sel.id)); delete S.anaSel[sid]; toast('Relatório apagado'); renderAnaliseSetor(box,s); }catch(e){ toast(e.message,5000); } });
   ligarImp();
   if(bals.length && await completarBalancosAntigos(bals) && vivo()) renderAnaliseSetor(box,s);
@@ -430,4 +435,51 @@ async function acumularDia(rows, dia, tabela='analise_vendas'){
   for(const d of rows) if(!base.some(b=>b.setor_id===d.setor_id)) out.push({ ...d, periodo_inicio:ini, periodo_fim:dia }); // setor que não tinha acumulado
   await q(S.sb.from(tabela).upsert(out, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
   S.anaSel={}; return out.length;
+}
+
+/* ===================== Ruptura de produto =====================
+   Produto que vendia quase todo dia (>=70% dos 15 dias anteriores) e não vendeu nada nos últimos 2 dias.
+   Calculado no banco (ruptura_produtos) a partir dos relatórios acumulados de cada dia. */
+async function cardRuptura(el, sid, fim, todos, irProd){
+  if(!el) return;
+  el.innerHTML='<div class="card" style="margin-top:12px"><span class="spin"></span> Procurando produtos em ruptura…</div>';
+  let r; try{ r=await q(S.sb.rpc('ruptura_produtos',{p_setor:sid, p_fim:fim})); }catch(e){ el.innerHTML=''; return; }
+  if(!el.isConnected) return;
+  const porC=new Map(todos.map(p=>[String(p.c),p]));
+  const un=d=>/\bKG\b/.test(d)?'kg':'un';
+  const nq=(q,d)=>(+q).toLocaleString('pt-BR',{maximumFractionDigits:un(d)==='kg'?1:0});
+  const tot=r.reduce((a,x)=>a+(+x.perdida||0),0);
+  const ult=r[0]?.ultimo_dia;
+  const linha=x=>{ const p=porC.get(String(x.c)); const abc=p?.abc;
+    return `<button class="an-oli rup-i" ${p?`data-go="${esc(x.c)}" data-dep="${p.depC}"`:''}><span>${abc?`<span class="an-abc an-${abc}">${abc}</span> `:''}${esc(x.d)}<span class="small" style="display:block">vendia ${nq(x.media_q,x.d)} ${un(x.d)}/dia (${x.dias_venda} de ${x.dias_base} dias) · <b style="color:var(--bad)">sem venda há ${x.dias_sem} dia${x.dias_sem>1?'s':''}</b>${x.ult_venda?` · última ${fD(x.ult_venda)}`:''}</span></span><b style="color:var(--bad)">−${brl0(+x.perdida)}</b></button>`; };
+  if(!r.length){ el.innerHTML=`<div class="card" style="margin-top:12px"><div class="row"><h2 style="margin:0">🚫 Ruptura de produto</h2><div class="sp"></div><span class="small" style="color:var(--good);font-weight:600">✔ nenhum produto parou de vender</span></div><p class="small muted" style="margin:6px 0 0">Olha os produtos que vendiam quase todo dia e zeraram nos últimos 2 dias. Precisa dos relatórios de venda de cada dia do mês.</p></div>`; return; }
+  const nA=r.filter(x=>porC.get(String(x.c))?.abc==='A').length;
+  el.innerHTML=`<div class="card" style="margin-top:12px;border-color:#f1b5b5">
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:4px"><h2 style="margin:0">🚫 Ruptura de produto</h2><span class="badge bad">${r.length}</span>${nA?`<span class="small" style="color:var(--bad);font-weight:700">${nA} da curva A</span>`:''}<div class="sp"></div><span class="small muted">venda perdida estimada <b style="color:var(--bad)">${brl0(tot)}</b></span></div>
+    <p class="small muted" style="margin:0 0 8px">Vendiam quase todo dia e <b>não venderam nada nos últimos 2 dias</b> (até ${fD(ult)}). Confira gôndola e estoque. Toque no produto para ver os números.</p>
+    <div class="rup-l">${r.slice(0,8).map(linha).join('')}</div>
+    ${r.length>8?`<details class="rup-mais"><summary class="small" style="cursor:pointer;margin-top:6px">ver mais ${r.length-8}</summary><div class="rup-l">${r.slice(8).map(linha).join('')}</div></details>`:''}
+    <p class="small muted" style="margin:6px 0 0">Venda perdida = média de venda por dia × dias sem vender. Produto que saiu de linha ou é sazonal também pode aparecer aqui.</p></div>`;
+  el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b));
+}
+
+/* ===================== Curva ABC do setor ===================== */
+function cardCurvaABC(A, todos){
+  const vend=todos.filter(p=>p.v>0); if(!vend.length) return '';
+  const tot=vend.reduce((a,p)=>a+p.v,0);
+  const cls=['A','B','C'].map(k=>{ const ps=vend.filter(p=>p.abc===k); const v=ps.reduce((a,p)=>a+p.v,0); return {k, n:ps.length, v, pv:v/tot, pn:ps.length/vend.length}; });
+  const tit={A:'Curva A',B:'Curva B',C:'Curva C'}, dsc={A:'nunca pode faltar',B:'importantes',C:'cauda longa'};
+  const topA=vend.filter(p=>p.abc==='A').sort((a,b)=>b.v-a.v);
+  const un=d=>/\bKG\b/.test(d)?'kg':'un';
+  let ac=0;
+  return `<div class="card" style="margin-top:12px">
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px"><h2 style="margin:0">⭐ Curva ABC</h2><div class="sp"></div><span class="small muted">pela venda do período · ${vend.length} produtos vendidos</span></div>
+    <div class="abc-g">${cls.map(c=>`<div class="abc-t abc-${c.k}"><div class="abc-h"><span class="an-abc an-${c.k}">${c.k}</span> ${tit[c.k]} <span class="small muted">${dsc[c.k]}</span></div>
+      <div class="abc-n"><b>${c.n}</b> produtos <span class="small muted">(${pctBR(c.pn,0)} do mix)</span></div>
+      <div class="abc-n"><b>${brl0(c.v)}</b> <span class="small muted">${pctBR(c.pv,0)} da venda</span></div>
+      <div class="abc-bar"><i style="width:${(c.pv*100).toFixed(1)}%"></i></div></div>`).join('')}</div>
+    <div class="small" style="margin:10px 0 4px"><b>${topA.length} produtos</b> fazem 80% da venda do setor. Os 10 maiores:</div>
+    <div class="rup-l">${topA.slice(0,10).map((p,i)=>{ ac+=p.v; return `<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="muted">${i+1}.</span> ${esc(p.d)}<span class="small" style="display:block">${(+p.q).toLocaleString('pt-BR',{maximumFractionDigits:un(p.d)==='kg'?1:0})} ${un(p.d)} · ${pctBR(p.v/tot,1)} da venda · acumulado ${pctBR(ac/tot,0)}</span></span><b>${brl0(p.v)}</b></button>`; }).join('')}</div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="abcVerA">Ver todos os ${topA.length} da curva A</button></div>
+  </div>`;
 }
