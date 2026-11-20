@@ -298,6 +298,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));
       if(guardar) await q(S.sb.from(tabAna()).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
+      if(r.periodo.ini===r.periodo.fim){ try{ const n=await acumularDia(rows, r.periodo.fim, tabAna()); if(n) toast(`Análise de vendas atualizada até ${fDate(r.periodo.fim)} ✔ (${n} setores)`, 4000); }catch(e){ toast('Análise acumulada não atualizou: '+(e.message||e), 6000); } }
       closeModal();
       S.anaSel=S.anaSel||{}; for(const x of rows) delete S.anaSel[x.setor_id];
       if(opts.lancar){ resolver({ porSetor:Object.fromEntries(rows.map(x=>[x.setor_id,x.venda])), ini:r.periodo.ini, fim:r.periodo.fim }); return; }
@@ -395,4 +396,30 @@ function sensibilidade(ps){
     else { if(dq>=0.1) r.funcionou.push(x); else if(dq<=0.02) r.naoFunc.push(x); } }
   r.sentiu.sort((a,b)=>a.efVol-b.efVol); r.aguentou.sort((a,b)=>b.v-a.v); r.funcionou.sort((a,b)=>b.efVol-a.efVol); r.naoFunc.sort((a,b)=>b.vb-a.vb);
   return r;
+}
+
+/* Relatório de um dia só: soma no acumulado do mês que já existe (01 até o dia anterior) e grava 01 até o dia.
+   Quantidade e venda somam; margem = média ponderada pela venda; custo/margem-alvo ficam do dia mais recente. */
+function somarDados(base, dia){
+  const deps=JSON.parse(JSON.stringify(base.departamentos||[])); const onde=new Map();
+  deps.forEach(d=>d.produtos.forEach(p=>onde.set(String(p.c),p)));
+  for(const nd of (dia.departamentos||[])){
+    let dep=deps.find(d=>d.codigo===nd.codigo && d.nome===nd.nome);
+    for(const p of nd.produtos){ const x=onde.get(String(p.c));
+      if(x){ const v1=+x.v||0, v2=+p.v||0; const m=(x.m!=null&&p.m!=null&&(v1+v2))? (x.m*v1+p.m*v2)/(v1+v2) : (p.m??x.m);
+        x.q=round2((+x.q||0)+(+p.q||0)); x.v=round2(v1+v2); x.m=m==null?null:Math.round(m*100)/100; x.mt=p.mt??x.mt; x.z=p.z; if(p.d) x.d=p.d; }
+      else { if(!dep){ dep={codigo:nd.codigo, nome:nd.nome, produtos:[]}; deps.push(dep); } const np={...p}; dep.produtos.push(np); onde.set(String(p.c),np); } } }
+  return { ...base, departamentos:deps, emitido:dia.emitido||base.emitido };
+}
+async function acumularDia(rows, dia, tabela='analise_vendas'){
+  const ini=dia.slice(0,8)+'01'; if(dia===ini) return 0;
+  const ant=isoOf(new Date(new Date(dia+'T12:00:00').getTime()-864e5));
+  const base=await q(S.sb.from(tabela).select('setor_id,venda,dados,relatorio_id').eq('periodo_inicio',ini).eq('periodo_fim',ant));
+  if(!base.length) return 0;
+  const porS=Object.fromEntries(rows.map(x=>[x.setor_id,x]));
+  const out=base.map(b=>{ const d=porS[b.setor_id]; return { relatorio_id:b.relatorio_id, setor_id:b.setor_id, periodo_inicio:ini, periodo_fim:dia,
+    venda:round2((+b.venda||0)+(d?+d.venda||0:0)), dados: d? somarDados(b.dados||{}, d.dados||{}) : b.dados }; });
+  for(const d of rows) if(!base.some(b=>b.setor_id===d.setor_id)) out.push({ ...d, periodo_inicio:ini, periodo_fim:dia }); // setor que não tinha acumulado
+  await q(S.sb.from(tabela).upsert(out, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
+  S.anaSel={}; return out.length;
 }
