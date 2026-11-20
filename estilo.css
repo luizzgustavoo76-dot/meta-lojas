@@ -345,4 +345,4 @@ body.login-on .fab-busca{display:none}
 .abc-bar{height:6px;background:var(--line);border-radius:4px;margin-top:6px;overflow:hidden}
 .abc-bar i{display:block;height:100%;background:#2a78d6;border-radius:4px}
 .abc-B .abc-bar i{background:#8fb6e6}.abc-C .abc-bar i{background:#c9d8ea}
-@media (max-width:760px){ .abc-g{grid-template-columns:1fr} }
+@media (max-width:760px){ .abc-g{gap:6px} .abc-t{padding:7px 6px;font-size:12px} .abc-h{font-size:12px} .abc-h .small, .abc-n .small{display:block} .abc-h .small{font-weight:400} }
