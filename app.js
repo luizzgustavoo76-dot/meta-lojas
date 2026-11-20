@@ -1410,7 +1410,7 @@ async function linhasDoArquivo(f){
   if(nome.endsWith('.pdf')){
     if(!window.pdfjsLib) throw new Error('Leitor de PDF não carregou.');
     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; const out=[]; const imgs=[];
-    for(let p=1;p<=Math.min(pdf.numPages,300);p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent();
+    for(let p=1;p<=Math.min(pdf.numPages,5000);p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent();
       const map=new Map(); for(const it of tc.items){ const y=Math.round(it.transform[5]/3); if(!map.has(y)) map.set(y,[]); map.get(y).push({x:it.transform[4],s:it.str}); }
       [...map.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,its])=>out.push({text:its.sort((a,b)=>a.x-b.x).map(i=>i.s).join('  ')}));
       if(!tc.items.length && p>=pdf.numPages-1){ const vp=pg.getViewport({scale:2.2}); const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; imgs.push(c); } }
