@@ -59,14 +59,15 @@ async function importarVarios(files){
   for(const it of itens.filter(x=>x.importar)){
     try{
       let r=null;
+      const antes=S._salvouEm||0;
       if(it.tipo==='vendas'||it.tipo==='vendas_secao'){ const um=it.ini===it.fim; const atual=it.fim.slice(0,7)===todayIso().slice(0,7) || it.fim>=isoOf(new Date(Date.now()-40*864e5));
-        if(atual){ await lancarPorRelatorio(it.r, it.f); await esperaModalFechar(); r=true; } else { S.setorAba='ana'; r=await importarRelatorioVendas(it.f, S.setorSel||'acougue', {pre:it.r}); } }
+        if(atual){ await lancarPorRelatorio(it.r, it.f); await esperaModalFechar(); r=(S._salvouEm||0)>antes; } else { S.setorAba='ana'; r=await importarRelatorioVendas(it.f, S.setorSel||'acougue', {pre:it.r}); } }
       else if(it.tipo==='bandeja'){ const ab=S.setorAba; S.setorAba='bdj'; r=await importarRelatorioVendas(it.f,'acougue',{pre:it.r}); if(!r) S.setorAba=ab; }
       else if(it.tipo==='perdas') r=await importarRelatorioPerdas(it.f, '');
       else if(it.tipo==='acertos') r=await importarRelatorioAcertos(it.f);
       else if(it.tipo==='trocas') r=await importarRelatorioTrocas(it.f);
-      else if(it.tipo==='balanco'){ formBalanco(null); const inp=$('#fbArq'); if(inp){ const dt=new DataTransfer(); dt.items.add(it.f); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); } await esperaModalFechar(); r=true; }
-      else if(it.tipo==='planilha'){ await importFile(it.f); await esperaModalFechar(); r=true; }
+      else if(it.tipo==='balanco'){ formBalanco(null); const inp=$('#fbArq'); if(inp){ const dt=new DataTransfer(); dt.items.add(it.f); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); } await esperaModalFechar(); r=(S._salvouEm||0)>antes; }
+      else if(it.tipo==='planilha'){ await importFile(it.f); await esperaModalFechar(); r=(S._salvouEm||0)>antes; }
       if(r){ feitos.push(it.f.name); try{ await q(S.sb.from('importacoes').upsert({hash:it.hash, tipo:it.tipo, periodo_inicio:it.ini||null, periodo_fim:it.fim||null, arquivo_nome:it.f.name})); }catch(_){} }
     }catch(e){ toast(`${it.f.name}: ${e.message||e}`, 6000); }
   }

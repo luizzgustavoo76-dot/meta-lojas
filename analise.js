@@ -319,15 +319,38 @@ function setorPorRegra(sec, desc){ const d=String(desc||'').toUpperCase();
   if(sec===31 && /ALCOOL.*GEL/.test(d)) return 'limpeza';
   return null; }
 function dividirPorSetor(r, prod, mapa){
-  const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim(); const grupos=[];
+  const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim(); const grupos=[]; const secao = r.nivel==='SECAO';
   for(const d of r.departamentos){
-    const pad=(mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome))||{}).setor_id||Parser.matchSector(d.nome)||null;
+    const pad=(mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome))||{}).setor_id || (secao?null:setorPorNomeParecido(d.nome, mapa)) || setorPorPalavra(d.nome) || Parser.matchSector(d.nome) || null;
     const por=new Map();
-    for(const p of d.produtos){ const s=prod.get(String(p.c)) || setorPorRegra(d.codigo,p.d) || pad || ''; if(!por.has(s)) por.set(s,[]); por.get(s).push(p); }
+    for(const p of d.produtos){ const s=prod.get(String(p.c)) || (secao?setorPorRegra(d.codigo,p.d):null) || (typeof setorPorDescricao==='function'?setorPorDescricao(p.d):null) || pad || ''; if(!por.has(s)) por.set(s,[]); por.get(s).push(p); }
     for(const [s,ps] of por) grupos.push({codigo:d.codigo, nome:d.nome, produtos:ps, _setor:s});
   }
   return {...r, departamentos:grupos, _dividido:true};
 }
+/* subgrupo novo: procura o sub-departamento de nome mais parecido já cadastrado */
+const PAL_IGNORA=new Set(['DE','DA','DO','DAS','DOS','COM','SEM','ATE','ACIMA','ABAIXO','E','EM','KG','ML','UN','G','L','TRADIC','TRADICIONAL','REGULAR','PADRAO','OUTROS','OUTRAS','INDIVIDUAL','FAMILIAR','BASICA','BASICO','ESPECIAL','ESPECIAIS']);
+const tokensNome=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>=3 && !PAL_IGNORA.has(w) && !/^\d+$/.test(w));
+function setorPorNomeParecido(nome, mapa){
+  const a=tokensNome(nome); if(!a.length) return null; let best=null, bs=0;
+  for(const m of mapa){ if(!m.setor_id) continue; const b=tokensNome(m.nome); if(!b.length) continue;
+    const inter=a.filter(w=>b.some(x=>x===w || (w.length>=5 && x.length>=5 && (x.startsWith(w.slice(0,5))||w.startsWith(x.slice(0,5)))))).length;
+    const sc=inter/Math.min(a.length,b.length) + inter*0.01; if(sc>bs){ bs=sc; best=m.setor_id; } }
+  return bs>=0.5 ? best : null;
+}
+function setorPorPalavra(nome){ const n=String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  const R=[[/CERVEJ|CACHAC|VODKA|VINHO|ESPUMANTE|ENERGETIC|SUCO|REFRIG|AGUA |WHISK|\bGIN\b|LICOR|CHOPP|AGUARDENTE|ISOTONIC|CHA PRONTO/,'bebidas'],
+    [/LIMPADOR|REMOVEDOR|\bSODA\b|PURIFICADOR DE AR|LA DE ACO|SECANTE|DESENGORDURANTE|SABAO|ANIL|DESINFETANTE|AMACIANTE|DETERGENTE|ALVEJANTE|CLORO|INSETICIDA|ESPONJA|LUSTRA|CERA |TIRA MANCHA/,'limpeza'],
+    [/SACO PLASTICO|DESCARTAVEL|CADEIRA|CAIXA|PILHA|CELOFANE|PENEIRA|FACA|COLHER|ESCUMADEIRA|MANTA|RODO|VASSOURA|PA DE LIXO|PETISCO|RACAO|SECO ADULTO|SECO FILHOTE|UMIDO|CAES|GATOS|PANELA|COPO|VELA|CARVAO|FOSFORO|USO LOJA/,'bazar'],
+    [/DESODORANTE|LOCAO|REPELENTE|PROTETOR|SHAMPOO|CONDICIONADOR|CREME DENTAL|ESCOVA DENTAL|SABONETE|ABSORVENTE|FRALDA|COLORACAO|BARBEAR|HIDRATANTE/,'perfumaria'],
+    [/SORVETE|MORTADELA|PRESUNTO|BACON|SALSICHA|QUEIJO|REQUEIJAO|CREAM CHEESE|RICOTA|MARGARINA|MANTEIGA|IOGURTE|LEITE FERM|PETIT SUISSE|EMBUTIDO|SALAME|APRESUNTADO|PIZZA|LASANHA|CONGELAD/,'pereciveis'],
+    [/FRANGO|\bAVE\b|PALETA|BOVIN|SUIN|CARNE|COSTELA|PICANHA|ALCATRA|LINGUICA FRESCAL/,'acougue'],
+    [/PAO |PAES|BOLOS? REFRIG|SALGADOS? ASSADO|COMIDAS PRONTAS|TORTA|ROSCA|SONHO/,'padaria'],
+    [/COENTRO|SALSA$|CEBOLINHA|ALFACE|TOMATE|BANANA|MACA|LARANJA|VERDURA|LEGUME|FRUTA|OVOS? (BRANC|VERMELH|TRADIC)/,'hortifruti'],
+    [/BISCOITO|BOMBOM|CANDY|CHOCOLATE|GOIABADA|PACOCA|MISTURAS? (BOLO|MARIA)|CEREAL|ERVA|MEL\b|GELATINA|ADOCANTE|DOCE|BALA|PIPOCA.*DOCE/,'merc_doce'],
+    [/AMENDOIM|CHIPS|SNACK|APERITIVO|MAIONESE|SHOYO|MOLHO|AZEITONA|ATUM|SARDINHA|CONSERVA|KETCHUP|MOSTARDA|PIPOCA|MACARRAO|MAC INST/,'merc_salgada'],
+    [/\bSAL\b|MAISENA|QUINOA|ARROZ|FEIJAO|ACUCAR|FARINHA|OLEO|AZEITE|CAFE|FUBA|AVEIA/,'merc_seca']];
+  for(const [re,s] of R) if(re.test(n)) return s; return null; }
 
 /* aba de embandeijados (açougue e hortifrúti) usa a mesma análise, guardada em outra tabela */
 function ehBdj(){ return S.setorAba==='bdj'; }

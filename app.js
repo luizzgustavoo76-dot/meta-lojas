@@ -763,6 +763,7 @@ async function gravarDoc(nd, old, opts={}){
   for(const [k,ids] of Object.entries(porDia)) await q(S.sb.from('lancamentos').delete().eq('data',k).in('setor_id',ids));
 }
 function saveDoc(nd, msg, opts={}){
+  S._salvouEm=Date.now();
   if(S.preview){ toast('Modo visualização: nada é salvo. Saia da visualização para lançar.',4000); return Promise.resolve(false); }
   const old = S.months[nd.mes] ? clone(S.months[nd.mes]) : null;
   S.months[nd.mes]=nd; if(!S.mesList.includes(nd.mes)){ S.mesList.push(nd.mes); S.mesList.sort(); } S._tudo=false; render();
