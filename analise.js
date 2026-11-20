@@ -269,7 +269,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       ${r.departamentos.map((d,i)=>`<tr><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}${d._setor!==undefined?` <span class="muted">→ ${esc(d._setor?nomeSetor(d._setor):'?')}</span>`:''}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
     </tbody></table></div>
     <div id="rvResumo" class="small" style="margin-top:10px"></div>
-    ${opts.lancar?`<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="rvAna" ${umDia?'':'checked'}> guardar também na Análise de vendas (${umDia?'relatório de um dia só':'acumulado do período'})</label>`:''}
+    ${opts.lancar?`<p class="small muted" style="margin:8px 0 0">📊 A Análise de vendas atualiza junto${umDia?' (o dia é somado no acumulado do mês)':''}.</p>`:''}
     <div id="rvErr" class="note err small hide" style="margin-top:8px"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">${opts.lancar?'Continuar':'Salvar análise'}</button></div>`);
   const resumo=()=>{ const por={}; m.querySelectorAll('select[data-i]').forEach(s=>{ if(!s.value) return; const d=r.departamentos[+s.dataset.i]; por[s.value]=(por[s.value]||0)+d.produtos.reduce((a,p)=>a+p.v,0); });
@@ -281,24 +281,27 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#rvErr',m); e.textContent=t; e.classList.remove('hide'); };
-    const guardar = !opts.lancar || $('#rvAna',m).checked;
+    const umDiaEsc = r.periodo.ini===$('#rvFim',m).value;
     const fimEsc=$('#rvFim',m).value; if(!fimEsc || fimEsc<r.periodo.ini) return err('Escolha até que dia vai a venda do relatório.'); r.periodo.fim=fimEsc;
     const escolhas=[...m.querySelectorAll('select[data-i]')].map(s=>({d:r.departamentos[+s.dataset.i], setor:s.value}));
     if(!escolhas.some(x=>x.setor)) return err('Escolha o setor de pelo menos um departamento.');
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
     try{
       let rel=null;
-      if(guardar){ const path=`${r.periodo.ini}_${r.periodo.fim}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
+      { const path=`${r.periodo.ini}_${r.periodo.fim}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
         const up=await S.sb.storage.from('relatorios').upload(path, f, {upsert:false, contentType:f.type||undefined});
         rel=((await q(S.sb.from('relatorios_venda').insert({ periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name, arquivo_path:up.error?null:path, cupons:r.cupons, total_venda:r.venda }).select('id')))||[])[0]||null; }
       if(!r._dividido && !r._bandeja){ const ps=[]; for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) ps.push({codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()});
         for(let i=0;i<ps.length;i+=500) await q(S.sb.from('produtos_setor').upsert(ps.slice(i,i+500), {onConflict:'codigo'})); }
+      if(r._dividido){ const novos=escolhas.filter(x=>x.setor && !x.d._setor); if(novos.length) await q(S.sb.from('departamentos').upsert(novos.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'})); }
       if(!r._dividido && !r._bandeja) await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
       const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push({codigo:x.d.codigo, nome:x.d.nome, produtos:x.d.produtos}); }
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));
-      if(guardar) await q(S.sb.from(tabAna()).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
-      if(r.periodo.ini===r.periodo.fim){ try{ const n=await acumularDia(rows, r.periodo.fim, tabAna()); if(n) toast(`Análise de vendas atualizada até ${fDate(r.periodo.fim)} ✔ (${n} setores)`, 4000); }catch(e){ toast('Análise acumulada não atualizou: '+(e.message||e), 6000); } }
+      // relatório de um dia: soma no acumulado do mês (01 até o dia); se ainda não houver acumulado, guarda o próprio dia
+      let somou=0; if(umDiaEsc){ try{ somou=await acumularDia(rows, r.periodo.fim, tabAna()); }catch(e){ toast('Análise acumulada não atualizou: '+(e.message||e), 6000); } }
+      if(!somou) await q(S.sb.from(tabAna()).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
+      else toast(`Análise de vendas atualizada até ${fDate(r.periodo.fim)} ✔`, 4000);
       closeModal();
       S.anaSel=S.anaSel||{}; for(const x of rows) delete S.anaSel[x.setor_id];
       if(opts.lancar){ resolver({ porSetor:Object.fromEntries(rows.map(x=>[x.setor_id,x.venda])), ini:r.periodo.ini, fim:r.periodo.fim }); return; }
