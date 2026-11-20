@@ -21,12 +21,12 @@ async function carregarAnalise(sid, ini, fim){
 
 /* monta a árvore departamento → produto com a base de comparação */
 function montarAnalise(cur, base){
-  const mapB=new Map(); if(base) for(const d of base.dados.departamentos) for(const p of d.produtos) mapB.set(p.c,{...p,dep:d.codigo,depNome:d.nome});
+  const mapB=new Map(); if(base) for(const d of base.dados.departamentos) for(const p of d.produtos) mapB.set(p.c,{...p,dep:d.codigo,depNome:d.nome,depSuf:d.suf,depOrig:d.codOrig});
   const vistos=new Set(), deps=[];
   for(const d of cur.dados.departamentos){
-    deps.push({ codigo:d.codigo, nome:d.nome, produtos:d.produtos.map(p=>{ vistos.add(p.c); const o=mapB.get(p.c); return {...p, qb:o?o.q:null, vb:o?o.v:(base?0:null), grupoB:o?.grupo||null}; }) });
+    deps.push({ codigo:d.codigo, nome:d.nome, codOrig:d.codOrig, suf:d.suf, produtos:d.produtos.map(p=>{ vistos.add(p.c); const o=mapB.get(p.c); return {...p, qb:o?o.q:null, vb:o?o.v:(base?0:null), grupoB:o?.grupo||null}; }) });
   }
-  if(base) for(const [c,o] of mapB){ if(vistos.has(c)) continue; let dd=deps.find(x=>x.codigo===o.dep); if(!dd){ dd={codigo:o.dep,nome:o.depNome,produtos:[]}; deps.push(dd); } dd.produtos.push({c, d:o.d, q:0, v:0, m:null, qb:o.q, vb:o.v}); }
+  if(base) for(const [c,o] of mapB){ if(vistos.has(c)) continue; let dd=deps.find(x=>x.codigo===o.dep); if(!dd){ dd={codigo:o.dep,nome:o.depNome,suf:o.depSuf,codOrig:o.depOrig,produtos:[]}; deps.push(dd); } dd.produtos.push({c, d:o.d, q:0, v:0, m:null, qb:o.q, vb:o.v}); }
   const tot=deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0);
   // curva ABC pela venda atual do setor
   const ord=deps.flatMap(d=>d.produtos).filter(p=>p.v>0).sort((a,b)=>b.v-a.v); let ac=0;
@@ -49,7 +49,8 @@ function montarAnalise(cur, base){
     const comM=d.produtos.filter(p=>p.m!=null && p.v>0); const sv=comM.reduce((a,p)=>a+p.v,0); d.m= sv? comM.reduce((a,p)=>a+p.v*p.m,0)/sv : null;
     d.part= tot? d.v/tot : 0; d.alertas=d.produtos.filter(p=>p.flags.some(x=>x!=='alta')).length;
   }
-  deps.sort((a,b)=>b.v-a.v||(b.vb||0)-(a.vb||0));
+  { const tot=new Map(); for(const d of deps){ const k=d.codOrig||d.codigo; tot.set(k,(tot.get(k)||0)+d.v); }
+    deps.sort((a,b)=>{ const ka=a.codOrig||a.codigo, kb=b.codOrig||b.codigo; return ka===kb ? (a.codigo-b.codigo) : (tot.get(kb)-tot.get(ka)) || (b.vb||0)-(a.vb||0); }); }
   const todos=deps.flatMap(d=>d.produtos);
   return { deps, tot, totBase: base? deps.reduce((a,d)=>a+(d.vb||0),0) : null, itens:ord.length, ef:efeitos(todos,!!base), qt:somaQtd(todos) };
 }
@@ -105,9 +106,10 @@ async function renderAnaliseSetor(box, s){
   if(!vivo() || !cur) return;
   if(!ehBdj()){ try{ const gs=(await carregarGrupos()).filter(g=>g.setor_id===sid); if(gs.length){ cur=agruparAnalise(cur,gs); ly=agruparAnalise(ly,gs); lm=agruparAnalise(lm,gs); lyM=agruparAnalise(lyM,gs); } }catch(_){ } if(!vivo()) return; }
   try{ const nm=await carregarNomesDep(); cur=renomearDeps(cur,sid,nm); ly=renomearDeps(ly,sid,nm); lm=renomearDeps(lm,sid,nm); lyM=renomearDeps(lyM,sid,nm); }catch(_){ }
+  if(!ehBdj()){ const mx=depsMistos([cur,ly,lm,lyM]); cur=separarKgPacote(cur,mx); ly=separarKgPacote(ly,mx); lm=separarKgPacote(lm,mx); lyM=separarKgPacote(lyM,mx); }
   if(!S.anaBase || (S.anaBase==='ano'&&!ly&&lm) ) S.anaBase = ly ? 'ano' : (lm ? 'mes' : 'ano');
   const base = S.anaBase==='ano' ? ly : lm;
-  const A=montarAnalise(cur, base); const perdas=perdasBalanco(bals);
+  const A=montarAnalise(cur, base); A.maxDep=Math.max(0,...A.deps.map(d=>d.v||0)); const perdas=perdasBalanco(bals);
   const totLy = ly? ly.dados.departamentos.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0) : null;
   const totLm = lm? lm.dados.departamentos.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0) : null;
   const todos=A.deps.flatMap(d=>d.produtos.map(p=>({...p, dep:d.nome, depC:d.codigo})));
@@ -194,7 +196,7 @@ async function renderAnaliseSetor(box, s){
       const aberto = S.anaAbertos.has(d.codigo) || (filtrando && ps.length);
       return `<div class="an-dep ${aberto?'open':''}">
         <button class="an-dh" data-d="${d.codigo}"><span class="an-chev">${aberto?'▾':'▸'}</span>
-          <span class="an-dn">${(()=>{ const mt=metaDep(d.codigo); if(!mt) return ''; const ma=mt*fatorMeta, p=ma?d.v/ma:null; return `<span class="an-meta" style="color:${p>=1?'var(--good)':p>=0.9?'var(--warn)':'var(--bad)'}">🎯 ${pct(p)} da meta até ${fDate(fim)} (${brl0(ma)} de ${brl0(mt)} no mês)</span>`; })()}<b>${esc(cap1(d.nome))}</b> <span class="small muted">${d.produtos.filter(p=>p.v>0).length} produto(s)${filtrando?` · ${ps.length} no filtro`:''}</span>${d.alertas?` <span class="badge b-warn">${d.alertas} alerta(s)</span>`:''}${base&&d.ef?`<span class="small m-only" style="margin-top:2px">📦 volume ${efHtml(d.ef.vol, d.vb)} · 🏷️ preço ${efHtml(d.ef.preco, d.vb)}</span>`:''}<span class="an-bar"><i style="width:${A.deps[0].v?Math.max(1,d.v/A.deps[0].v*100):0}%"></i></span></span>
+          <span class="an-dn">${(()=>{ const mt=metaDep(d.codOrig||d.codigo); if(!mt) return ''; const ma=mt*fatorMeta, p=ma?d.v/ma:null; return `<span class="an-meta" style="color:${p>=1?'var(--good)':p>=0.9?'var(--warn)':'var(--bad)'}">🎯 ${pct(p)} da meta até ${fDate(fim)} (${brl0(ma)} de ${brl0(mt)} no mês)</span>`; })()}<b>${esc(cap1(d.nome))}${d.suf?` <span class="an-suf">${d.suf}</span>`:''}</b> <span class="small muted">${d.produtos.filter(p=>p.v>0).length} produto(s)${filtrando?` · ${ps.length} no filtro`:''}</span>${d.alertas?` <span class="badge b-warn">${d.alertas} alerta(s)</span>`:''}${base&&d.ef?`<span class="small m-only" style="margin-top:2px">📦 volume ${efHtml(d.ef.vol, d.vb)} · 🏷️ preço ${efHtml(d.ef.preco, d.vb)}</span>`:''}<span class="an-bar"><i style="width:${A.maxDep?Math.max(1,Math.min(100,d.v/A.maxDep*100)):0}%"></i></span></span>
           <span class="an-dc"><span class="l">Venda</span><b>${brl0(d.v)}</b></span>
           <span class="an-dc"><span class="l">${base?nomeBase:'—'}</span>${base?brl0(d.vb):'—'}</span>
           <span class="an-dc"><span class="l">Var.</span>${base?varHtml(d.v,d.vb):'—'}</span>
@@ -556,3 +558,19 @@ function membrosGrupo(p){ const m=new Map();
   for(const g of (p.grupoB||[])){ const x=m.get(String(g.c))||{c:g.c,d:g.d,q:0,v:0}; x.qb=g.q; x.vb=g.v; m.set(String(g.c),x); }
   if(p.qb!=null) for(const x of m.values()){ if(x.qb==null){ x.qb=0; x.vb=0; } }
   return [...m.values()].sort((a,b)=>(b.v||0)-(a.v||0)||(b.vb||0)-(a.vb||0)); }
+
+/* subgrupo que mistura produto a quilo (KG na descrição) com unidade/pacote (1KG, 800G, IQF...) vira duas linhas */
+const ehAQuilo = p => !!p.grupo || /(^|\s)KG(\s|$)/i.test(p.d||'');
+function depsMistos(ans){ const k=new Set(), p=new Set();
+  for(const an of ans){ if(!an||!an.dados) continue; for(const d of an.dados.departamentos) for(const x of d.produtos) (ehAQuilo(x)?k:p).add(d.codigo); }
+  return new Set([...k].filter(c=>p.has(c))); }
+function separarKgPacote(an, mistos){
+  if(!an || !an.dados || !mistos || !mistos.size) return an; const out=[];
+  for(const d of an.dados.departamentos){
+    if(!mistos.has(d.codigo)){ out.push(d); continue; }
+    const kg=d.produtos.filter(ehAQuilo), pc=d.produtos.filter(p=>!ehAQuilo(p));
+    if(kg.length) out.push({...d, codigo:d.codigo*10+1, codOrig:d.codigo, suf:'(a quilo)', produtos:kg});
+    if(pc.length) out.push({...d, codigo:d.codigo*10+2, codOrig:d.codigo, suf:'(unidade/pacote)', produtos:pc});
+  }
+  return {...an, dados:{...an.dados, departamentos:out}};
+}

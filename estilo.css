@@ -354,3 +354,4 @@ tr.an-sub td{background:#fafaf7;font-size:12.5px}
 .an-gm{border-top:1px dashed var(--line);margin-top:6px;padding-top:4px}
 .an-gmi{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
 .an-gmi:first-of-type{border-top:0}
+.an-suf{font-weight:600;color:var(--ink2);font-size:.9em}
