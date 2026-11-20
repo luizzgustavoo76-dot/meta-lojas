@@ -31,6 +31,8 @@ async function importarVarios(files){
     try{ it.hash=await hashArquivo(f); Object.assign(it, await identificarArquivo(f)); }catch(e){ it.erro=e.message; }
     itens.push(it);
   }
+  // lança do período mais antigo para o mais novo (os acumulados dependem dos dias anteriores)
+  itens.sort((a,b)=>String(a.fim||'9').localeCompare(String(b.fim||'9')) || String(a.ini||'').localeCompare(String(b.ini||'')));
   // repetidos: no mesmo lote e já importados antes
   let ja=[]; try{ ja=await q(S.sb.from('importacoes').select('hash,tipo,periodo_inicio,periodo_fim,arquivo_nome,criado_em').in('hash', itens.map(i=>i.hash).filter(Boolean))); }catch(_){}
   const vistos=new Set();
