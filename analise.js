@@ -522,7 +522,7 @@ async function cardGruposProduto(app){
       <div class="grp-novo" style="margin-top:12px"><b>Juntar outros produtos</b>
         <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
           <select id="grpSet" style="border:1px solid var(--line);border-radius:9px;padding:7px">${S.setoresAll.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select>
-          <input id="grpNome" placeholder="Nome (ex.: Alcatra – granel e bandeja)" style="border:1px solid var(--line);border-radius:9px;padding:7px;flex:1;min-width:160px">
+          <input id="grpNome" placeholder="Nome (ex.: Alcatra (granel e bandeja))" style="border:1px solid var(--line);border-radius:9px;padding:7px;flex:1;min-width:160px">
           <input id="grpCods" placeholder="Códigos separados por vírgula (ex.: 1434, 9569)" style="border:1px solid var(--line);border-radius:9px;padding:7px;flex:2;min-width:200px">
           <button class="btn p" id="grpAdd">Juntar</button></div></div></details>`;
     if(S._grpAberto) box.querySelector('details').open=true;
