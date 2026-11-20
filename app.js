@@ -939,7 +939,7 @@ function desenharCascataAdm(){
   const k=S.admAberto; const c=k && $('#admCx_'+k); if(!c){ S._admCont=null; return; }
   S._admCont=c; c.classList.remove('hide'); const doc=curDoc();
   if(k==='lancar'){ if(doc) renderLancar(c,doc); else c.innerHTML='<div class="empty">Nenhum mês cadastrado. Abra Metas do mês para criar.</div>'; }
-  else { renderMetas(c,doc); if(doc){ cardTetoConfig(c); cardLimitesAlertas(c); } }
+  else { renderMetas(c,doc); if(doc){ cardTetoConfig(c); cardLimitesAlertas(c); cardGruposProduto(c); } }
   if(S._admRolar){ S._admRolar=false; setTimeout(()=>c.closest('.adm-cx')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
 }
 function formUsuario(u){

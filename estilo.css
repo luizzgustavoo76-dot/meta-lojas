@@ -346,3 +346,6 @@ body.login-on .fab-busca{display:none}
 .abc-bar i{display:block;height:100%;background:#2a78d6;border-radius:4px}
 .abc-B .abc-bar i{background:#8fb6e6}.abc-C .abc-bar i{background:#c9d8ea}
 @media (max-width:760px){ .abc-g{gap:6px} .abc-t{padding:7px 6px;font-size:12px} .abc-h{font-size:12px} .abc-h .small, .abc-n .small{display:block} .abc-h .small{font-weight:400} }
+.grp-l{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.grp-i{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:#fff}
+.grp-i .btn{padding:4px 10px}
