@@ -1142,7 +1142,7 @@ function montarCabecalho(){
   $('#hctl').classList.remove('hide');
   $('#userBox').innerHTML=`<button id="bAtualizar" title="Buscar os números mais recentes">🔄</button><button id="bConta" title="Minha conta e administração">👤 ${esc((S.perfil.nome||S.user.email).split(' ')[0])}</button>`; $('#userBox').classList.remove('hide');
   $('#bConta').onclick=()=>{ location.hash='#conta'; };
-  montarBnav();
+  montarBnav(); try{ botaoBusca(); }catch(_){ }
   $('#bAtualizar').onclick=()=>atualizarDados(true);
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && S.sb && S.user){ try{ S.sb.auth.startAutoRefresh?.(); tokenValido(false).catch(()=>{}); }catch(_){} } });
@@ -1283,7 +1283,7 @@ async function sair(motivo){
   S._saindo=true;
   clearInterval(S._timerInat); try{ localStorage.removeItem('metas_ultima_atividade'); }catch(_){ }
   S.loaded=false; S.preview=null; S.months={}; S._tudo=false; $('#faixaVis')?.remove(); closeModal();
-  try{ await S.sb.auth.signOut(); }catch(_){ }
+  try{ await S.sb.auth.signOut(); }catch(_){ } $('#fabBusca')?.remove();
   history.replaceState(null,'',location.pathname); telaLogin(motivo); S._saindo=false;
 }
 function iniciarInatividade(){
