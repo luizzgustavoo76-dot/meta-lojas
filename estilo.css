@@ -334,3 +334,4 @@ body.login-on .fab-busca{display:none}
   .bs-form .bs-termo{grid-column:1/-1}
   .bs-form input{font-size:16px}
 }
+#rvTab.so-pend tbody tr.rv-ok{display:none}

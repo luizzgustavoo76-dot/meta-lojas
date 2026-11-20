@@ -240,6 +240,9 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   if(r && r.nivel && r.nivel!=='DEPTO' && r.nivel!=='CLASSE' && !r._dividido){ // relatório por SEÇÃO: separa cada produto no setor certo
     try{ busy('Separando os produtos por setor…'); const prod=new Map();
       for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
+      // aprende com os relatórios já guardados: produto/subgrupo que já apareceu num setor vai para o mesmo setor
+      try{ const ap=await q(S.sb.rpc('mapa_setor_analises')); for(const x of (ap||[])){ if(x.tipo==='p'){ if(!prod.has(String(x.codigo))) prod.set(String(x.codigo), x.setor_id); }
+          else if(!mapa.some(m=>String(m.codigo)===String(x.codigo) && m.nome===x.nome)) mapa.push({codigo:+x.codigo, nome:x.nome, setor_id:x.setor_id}); } }catch(_){ }
       r=dividirPorSetor(r, prod, mapa); r.semMapa=!prod.size;
     }catch(e){ closeModal(); toast('Não consegui separar por setor: '+e.message, 6000); return null; }
   }
@@ -264,9 +267,10 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     </div>
     ${conf===true?'<div class="note small" style="background:var(--good-bg);border-color:#a9d8b8">✔ Conferido: a soma dos produtos bate com o TOTAL GERAL do relatório.</div>':conf===false?`<div class="note err small">A soma dos produtos (${brl(r.venda)}) não bate com o TOTAL GERAL (${brl(r.totalGeral.venda)}). Confira o arquivo.</div>`:''}
     ${r._dividido?`<div class="note small" style="margin:8px 0">Relatório por <b>seção</b>: cada produto foi separado no setor certo pelo cadastro de produtos${r.semMapa?' — <b style="color:var(--warn)">o cadastro ainda está vazio; importe uma vez o relatório por sub-departamento para a separação ficar exata</b>':''}.</div>`:''}
-    <p class="small muted" style="margin:10px 0 6px">Escolha para qual setor do site vai cada departamento do sistema. O site lembra a escolha para os próximos relatórios.</p>
-    <div class="tw" style="max-height:340px;overflow:auto"><table><thead><tr><th>Departamento</th><th class="n">Produtos</th><th class="n">Venda</th><th>Setor do site</th></tr></thead><tbody>
-      ${r.departamentos.map((d,i)=>`<tr><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}${d._setor!==undefined?` <span class="muted">→ ${esc(d._setor?nomeSetor(d._setor):'?')}</span>`:''}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
+    ${r._dividido?(()=>{ const nSem=r.departamentos.filter(d=>!sug(d)).length; return `<p class="small" style="margin:10px 0 6px">${nSem?`<b style="color:var(--warn)">${nSem} grupo(s) sem setor</b> — escolha o setor nas linhas abaixo; o resto o site já separou sozinho.`:'<b style="color:var(--good)">✔ O site separou todos os produtos por setor.</b> Confira o resumo e salve.'} <label style="margin-left:6px;white-space:nowrap"><input type="checkbox" id="rvTodos"> ver todos os ${r.departamentos.length} grupos</label></p>`; })()
+      :'<p class="small muted" style="margin:10px 0 6px">Escolha para qual setor do site vai cada departamento do sistema. O site lembra a escolha para os próximos relatórios.</p>'}
+    <div class="tw" id="rvTab" style="max-height:340px;overflow:auto"><table><thead><tr><th>Departamento</th><th class="n">Produtos</th><th class="n">Venda</th><th>Setor do site</th></tr></thead><tbody>
+      ${r.departamentos.map((d,i)=>`<tr class="${r._dividido&&sug(d)?'rv-ok':''}"><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}${d._setor!==undefined?` <span class="muted">→ ${esc(d._setor?nomeSetor(d._setor):'?')}</span>`:''}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
     </tbody></table></div>
     <div id="rvResumo" class="small" style="margin-top:10px"></div>
     ${opts.lancar?`<p class="small muted" style="margin:8px 0 0">📊 A Análise de vendas atualiza junto${umDia?' (o dia é somado no acumulado do mês)':''}.</p>`:''}
@@ -278,6 +282,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     const subst=Object.keys(por).filter(id=>existentes.some(e=>e.setor_id===id));
     $('#rvResumo',m).innerHTML = Object.keys(por).length ? `Vai salvar: ${Object.entries(por).map(([id,v])=>`<b>${esc(nomeSetor(id))}</b> ${brl0(v)}`).join(' · ')}${sem.length?`<br><span style="color:var(--bad)">⚠ ${sem.length} departamento(s) sem setor (${brl0(vSem)}) — essa venda não entra. Escolha o setor nas linhas em amarelo.</span>`:''}${subst.length?`<br><span style="color:var(--warn)">Já existe relatório desse período para ${subst.map(nomeSetor).join(', ')} — será substituído.</span>`:''}` : '<span style="color:var(--bad)">Nenhum departamento escolhido.</span>'; };
   m.querySelectorAll('select[data-i]').forEach(s=>s.onchange=resumo); resumo();
+  const tab=$('#rvTab',m), tg=$('#rvTodos',m); const aplicaFiltro=()=>{ const so=r._dividido && !(tg&&tg.checked); tab.classList.toggle('so-pend',so); if(so && !tab.querySelector('tr:not(.rv-ok) select')) tab.style.display='none'; else tab.style.display=''; }; if(tg) tg.onchange=aplicaFiltro; aplicaFiltro();
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#rvErr',m); e.textContent=t; e.classList.remove('hide'); };
@@ -343,15 +348,15 @@ function setorPorNomeParecido(nome, mapa){
   return bs>=0.5 ? best : null;
 }
 function setorPorPalavra(nome){ const n=String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
-  const R=[[/CERVEJ|CACHAC|VODKA|VINHO|ESPUMANTE|ENERGETIC|SUCO|REFRIG|AGUA |WHISK|\bGIN\b|LICOR|CHOPP|AGUARDENTE|ISOTONIC|CHA PRONTO/,'bebidas'],
+  const R=[[/TOALHA|LENCOL|EDREDOM|COBERTOR/,'eletro'],[/CERVEJ|CACHAC|VODKA|VINHO|ESPUMANTE|ENERGETIC|SUCO|REFRIG|AGUA |WHISK|\bGIN\b|LICOR|CHOPP|AGUARDENTE|ISOTONIC|CHA PRONTO/,'bebidas'],
     [/LIMPADOR|REMOVEDOR|\bSODA\b|PURIFICADOR DE AR|LA DE ACO|SECANTE|DESENGORDURANTE|SABAO|ANIL|DESINFETANTE|AMACIANTE|DETERGENTE|ALVEJANTE|CLORO|INSETICIDA|ESPONJA|LUSTRA|CERA |TIRA MANCHA/,'limpeza'],
     [/SACO PLASTICO|DESCARTAVEL|CADEIRA|CAIXA|PILHA|CELOFANE|PENEIRA|FACA|COLHER|ESCUMADEIRA|MANTA|RODO|VASSOURA|PA DE LIXO|PETISCO|RACAO|SECO ADULTO|SECO FILHOTE|UMIDO|CAES|GATOS|PANELA|COPO|VELA|CARVAO|FOSFORO|USO LOJA/,'bazar'],
-    [/DESODORANTE|LOCAO|REPELENTE|PROTETOR|SHAMPOO|CONDICIONADOR|CREME DENTAL|ESCOVA DENTAL|SABONETE|ABSORVENTE|FRALDA|COLORACAO|BARBEAR|HIDRATANTE/,'perfumaria'],
+    [/DESODORANTE|COM ABAS|COB SUAVE|ABSORV|LOCAO|REPELENTE|PROTETOR|SHAMPOO|CONDICIONADOR|CREME DENTAL|ESCOVA DENTAL|SABONETE|ABSORVENTE|FRALDA|COLORACAO|BARBEAR|HIDRATANTE/,'perfumaria'],
     [/SORVETE|MORTADELA|PRESUNTO|BACON|SALSICHA|QUEIJO|REQUEIJAO|CREAM CHEESE|RICOTA|MARGARINA|MANTEIGA|IOGURTE|LEITE FERM|PETIT SUISSE|EMBUTIDO|SALAME|APRESUNTADO|PIZZA|LASANHA|CONGELAD/,'pereciveis'],
     [/FRANGO|\bAVE\b|PALETA|BOVIN|SUIN|CARNE|COSTELA|PICANHA|ALCATRA|LINGUICA FRESCAL/,'acougue'],
     [/PAO |PAES|BOLOS? REFRIG|SALGADOS? ASSADO|COMIDAS PRONTAS|TORTA|ROSCA|SONHO/,'padaria'],
-    [/COENTRO|SALSA$|CEBOLINHA|ALFACE|TOMATE|BANANA|MACA|LARANJA|VERDURA|LEGUME|FRUTA|OVOS? (BRANC|VERMELH|TRADIC)/,'hortifruti'],
-    [/BISCOITO|BOMBOM|CANDY|CHOCOLATE|GOIABADA|PACOCA|MISTURAS? (BOLO|MARIA)|CEREAL|ERVA|MEL\b|GELATINA|ADOCANTE|DOCE|BALA|PIPOCA.*DOCE/,'merc_doce'],
+    [/COENTRO|QUIABO|SALSA$|CEBOLINHA|ALFACE|TOMATE|BANANA|MACA|LARANJA|VERDURA|LEGUME|FRUTA|OVOS? (BRANC|VERMELH|TRADIC)/,'hortifruti'],
+    [/BISCOITO|RAPADURA|PIRULITO|BOMBOM|CANDY|CHOCOLATE|GOIABADA|PACOCA|MISTURAS? (BOLO|MARIA)|CEREAL|ERVA|MEL\b|GELATINA|ADOCANTE|DOCE|BALA|PIPOCA.*DOCE/,'merc_doce'],
     [/AMENDOIM|CHIPS|SNACK|APERITIVO|MAIONESE|SHOYO|MOLHO|AZEITONA|ATUM|SARDINHA|CONSERVA|KETCHUP|MOSTARDA|PIPOCA|MACARRAO|MAC INST/,'merc_salgada'],
     [/\bSAL\b|MAISENA|QUINOA|ARROZ|FEIJAO|ACUCAR|FARINHA|OLEO|AZEITE|CAFE|FUBA|AVEIA/,'merc_seca']];
   for(const [re,s] of R) if(re.test(n)) return s; return null; }
