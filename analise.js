@@ -24,7 +24,7 @@ function montarAnalise(cur, base){
   const mapB=new Map(); if(base) for(const d of base.dados.departamentos) for(const p of d.produtos) mapB.set(p.c,{...p,dep:d.codigo,depNome:d.nome});
   const vistos=new Set(), deps=[];
   for(const d of cur.dados.departamentos){
-    deps.push({ codigo:d.codigo, nome:d.nome, produtos:d.produtos.map(p=>{ vistos.add(p.c); const o=mapB.get(p.c); return {...p, qb:o?o.q:null, vb:o?o.v:(base?0:null)}; }) });
+    deps.push({ codigo:d.codigo, nome:d.nome, produtos:d.produtos.map(p=>{ vistos.add(p.c); const o=mapB.get(p.c); return {...p, qb:o?o.q:null, vb:o?o.v:(base?0:null), grupoB:o?.grupo||null}; }) });
   }
   if(base) for(const [c,o] of mapB){ if(vistos.has(c)) continue; let dd=deps.find(x=>x.codigo===o.dep); if(!dd){ dd={codigo:o.dep,nome:o.depNome,produtos:[]}; deps.push(dd); } dd.produtos.push({c, d:o.d, q:0, v:0, m:null, qb:o.q, vb:o.v}); }
   const tot=deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0);
@@ -206,16 +206,20 @@ async function renderAnaliseSetor(box, s){
             <div class="dl-c"><div><span>${p.grupo?'Códigos':'Código'}</span><b>${esc(codProd(p))}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small> ${varHtml(p.q,p.qb)}`:''}</b></div>
             ${base?`<div><span>Venda ${nomeBase}</span><b>${p.vb?brl(p.vb):'—'}</b></div><div><span>Diferença</span><b>${p.vb!=null?`${p.v-p.vb>=0?'+':''}${brl0(p.v-p.vb)}`:'—'}</b></div>`:''}
             <div><span>Preço médio</span><b>${p.q?brl(p.v/p.q):'—'}${base&&p.qb?` <small class="muted">(antes ${brl(p.vb/p.qb)})</small> ${varHtml(p.v/p.q,p.vb/p.qb)}`:''}</b></div><div><span>Participação</span><b>${p.v?pct(p.part):'—'}</b></div><div><span>Margem</span><b>${p.m!=null?pct(p.m/100):'—'}</b></div>
-            ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?brl(pb):'—'}</b></div>`:''}</div></details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
+            ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?brl(pb):'—'}</b></div>`:''}</div>${p.grupo?`<div class="an-gm"><div class="small" style="font-weight:700;margin:6px 0 2px">Por código</div>${membrosGrupo(p).map(m=>`<div class="an-gmi"><div><span class="small muted">${esc(m.c)}</span> ${esc(m.d)}<div class="small muted">${qtdTxt(m.q)}${base&&m.qb!=null?` · antes ${qtdTxt(m.qb)} ${m.qb?varHtml(m.q,m.qb):''}`:''}</div></div><div class="n"><b>${m.v?brl0(m.v):'—'}</b><div class="small">${base?(m.vb?varHtml(m.v,m.vb):(m.v?'novo':'parou')):''}</div></div></div>`).join('')}</div>`:''}</details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
         <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th>${base?'<th class="n">Var. qtd</th>':''}<th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var. venda</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
-          ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)} ${tags(p)}</td>
+          ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)} ${tags(p)}${p.grupo?` <button class="an-gx" data-gx="${esc(p.c)}">${S.anaGrp?.has(p.c)?'▾ esconder códigos':'▸ ver códigos'}</button>`:''}</td>
             <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>${base?`<td class="n">${p.qb!=null?varHtml(p.q,p.qb):'<span class="muted">—</span>'}</td>`:''}
             <td class="n"><b>${p.v?brl(p.v):'—'}</b>${p.q?`<div class="small muted">${brl(p.v/p.q)}/${ehKg(p)?'kg':'un'}${base&&p.qb&&p.vb?` (antes ${brl(p.vb/p.qb)})`:''}</div>`:''}</td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
-            <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:'—'}</td>`:''}</tr>`; }).join('')}
+            <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:'—'}</td>`:''}</tr>${p.grupo&&S.anaGrp?.has(p.c)?membrosGrupo(p).map(m=>`<tr class="an-sub"><td>↳ <span class="small muted">${esc(m.c)}</span> ${esc(m.d)}</td>
+            <td class="n">${qtdTxt(m.q)}${base&&m.qb!=null?`<div class="small muted">antes ${qtdTxt(m.qb)}</div>`:''}</td>${base?`<td class="n">${m.qb?varHtml(m.q,m.qb):(m.q?'<span class="badge b-good">novo</span>':'<span class="muted">—</span>')}</td>`:''}
+            <td class="n"><b>${m.v?brl(m.v):'—'}</b>${m.q?`<div class="small muted">${brl(m.v/m.q)}/kg${base&&m.qb&&m.vb?` (antes ${brl(m.vb/m.qb)})`:''}</div>`:''}</td>${base?`<td class="n">${m.vb?brl(m.vb):'—'}</td><td class="n">${m.vb?varHtml(m.v,m.vb):(m.v?'<span class="badge b-good">novo</span>':'<span class="badge b-bad">parou</span>')}</td>`:''}
+            <td class="n">${m.v&&p.v?`${pct(m.v/p.v,0)}<div class="small muted">do grupo</div>`:'—'}</td><td class="n"></td>${perdas.size?'<td></td>':''}</tr>`).join(''):''}`; }).join('')}
           ${!ps.length?'<tr><td colspan="9" class="muted">Nenhum produto</td></tr>':''}
         </tbody></table></div>`:''}
       </div>`; }).join('');
     $('#anCasc').innerHTML = html || '<div class="empty">Nenhum produto com esse filtro.</div>';
+    $('#anCasc').querySelectorAll('[data-gx]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); S.anaGrp=S.anaGrp||new Set(); const c=b.dataset.gx; if(S.anaGrp.has(c)) S.anaGrp.delete(c); else S.anaGrp.add(c); desenhar(); });
     $('#anCasc').querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{ const c=+b.dataset.d; if(S.anaAbertos.has(c)) S.anaAbertos.delete(c); else S.anaAbertos.add(c); desenhar(); });
     if(S.anaFoco){ const el=document.getElementById((ehCelular()?'anpm-':'anp-')+S.anaFoco); if(el && el.tagName==='DETAILS') el.open=true; if(el) el.scrollIntoView({block:'center',behavior:'smooth'}); setTimeout(()=>{ S.anaFoco=null; el?.classList.remove('an-foco'); }, 2500); }
   };
@@ -373,7 +377,7 @@ function ehBdj(){ return S.setorAba==='bdj'; }
 function tabAna(){ return ehBdj() ? 'analise_bandeja' : 'analise_vendas'; }
 
 /* venda = volume × preço: separa quanto da variação veio da quantidade e quanto do preço */
-const ehKg = p => /\bKG\b/i.test(p.d||'');
+const ehKg = p => !!p.grupo || /\bKG\b/i.test(p.d||'');
 function efeitos(ps, temBase){
   if(!temBase) return null; let vol=0, preco=0, novos=0, parados=0, vbComum=0;
   for(const p of ps){ const vb=p.vb||0;
@@ -452,7 +456,7 @@ async function cardRuptura(el, sid, fim, todos, irProd){
   let r; try{ r=await q(S.sb.rpc('ruptura_produtos',{p_setor:sid, p_fim:fim})); }catch(e){ el.innerHTML=''; return; }
   if(!el.isConnected) return;
   const porC=new Map(todos.map(p=>[String(p.c),p]));
-  const un=d=>/\bKG\b/.test(d)?'kg':'un';
+  const un=d=>(/\bKG\b/.test(d)||(S._grupos||[]).some(g=>g.nome===d))?'kg':'un';
   const nq=(q,d)=>(+q).toLocaleString('pt-BR',{maximumFractionDigits:un(d)==='kg'?1:0});
   const tot=r.reduce((a,x)=>a+(+x.perdida||0),0);
   const ult=r[0]?.ultimo_dia;
@@ -476,7 +480,7 @@ function cardCurvaABC(A, todos){
   const cls=['A','B','C'].map(k=>{ const ps=vend.filter(p=>p.abc===k); const v=ps.reduce((a,p)=>a+p.v,0); return {k, n:ps.length, v, pv:v/tot, pn:ps.length/vend.length}; });
   const tit={A:'Curva A',B:'Curva B',C:'Curva C'}, dsc={A:'nunca pode faltar',B:'importantes',C:'cauda longa'};
   const topA=vend.filter(p=>p.abc==='A').sort((a,b)=>b.v-a.v);
-  const un=d=>/\bKG\b/.test(d)?'kg':'un';
+  const un=d=>(/\bKG\b/.test(d)||(S._grupos||[]).some(g=>g.nome===d))?'kg':'un';
   let ac=0;
   return `<div class="card" style="margin-top:12px">
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px"><h2 style="margin:0">⭐ Curva ABC</h2><div class="sp"></div><span class="small muted">pela venda do período · ${vend.length} produtos vendidos</span></div>
@@ -545,3 +549,10 @@ async function carregarNomesDep(){ if(S._nomesDep && Date.now()-S._nomesDepEm<5*
 function renomearDeps(an, sid, nm){ if(!an||!an.dados||!nm||!Object.keys(nm).length) return an;
   const norm=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
   return {...an, dados:{...an.dados, departamentos:an.dados.departamentos.map(d=>{ const k=`${sid}|${d.codigo}|${norm(d.nome)}`; return nm[k]? {...d, nome:nm[k], nomeSistema:d.nome} : d; })}}; }
+
+/* códigos de um grupo, com a base de comparação de cada um */
+function membrosGrupo(p){ const m=new Map();
+  for(const g of (p.grupo||[])) m.set(String(g.c),{c:g.c,d:g.d,q:g.q,v:g.v,qb:null,vb:null});
+  for(const g of (p.grupoB||[])){ const x=m.get(String(g.c))||{c:g.c,d:g.d,q:0,v:0}; x.qb=g.q; x.vb=g.v; m.set(String(g.c),x); }
+  if(p.qb!=null) for(const x of m.values()){ if(x.qb==null){ x.qb=0; x.vb=0; } }
+  return [...m.values()].sort((a,b)=>(b.v||0)-(a.v||0)||(b.vb||0)-(a.vb||0)); }

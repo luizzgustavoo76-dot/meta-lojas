@@ -349,3 +349,8 @@ body.login-on .fab-busca{display:none}
 .grp-l{display:flex;flex-direction:column;gap:4px;margin-top:4px}
 .grp-i{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:#fff}
 .grp-i .btn{padding:4px 10px}
+.an-gx{border:1px solid var(--line);background:#fff;border-radius:8px;padding:1px 7px;font-size:11px;cursor:pointer;margin-left:4px}
+tr.an-sub td{background:#fafaf7;font-size:12.5px}
+.an-gm{border-top:1px dashed var(--line);margin-top:6px;padding-top:4px}
+.an-gmi{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
+.an-gmi:first-of-type{border-top:0}
