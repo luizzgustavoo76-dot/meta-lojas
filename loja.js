@@ -104,7 +104,7 @@ async function cardChecklist(app){
     [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
     [st(d.ab?.periodo_fim>=isoOf(new Date(Date.now()-8*864e5)), !!d.ab), 'Embandeijados (semanal)', ate(d.ab), 'Vendas por classe'],
     [st(d.avLy===2 && d.apLy===2 && d.abLy===2, d.avLy||d.apLy||d.abLy), 'Base do ano passado', [['vendas',d.avLy,d.av],['perdas',d.apLy,d.ap],['embandeijados',d.abLy,d.ab]].map(([n,v,x])=>`${n} ${v===2?'✔':v===1?`● (falta ${x?fD(addAnos(x.periodo_inicio,-1))+' a '+fD(addAnos(x.periodo_fim,-1)):''})`:'✗'}`).join(' · '), 'para comparar: mesmo período do ano passado'],
-    [st(d.cf && !d.cf.erros.length && (d.cf.periodoV||d.cf.periodoP), d.cf && d.cf.erros.length && d.cf.erros.every(x=>Math.abs(x.dif)<=Math.max(50,x.relatorio*0.005))), 'Conferência site × relatórios', d.cf? (d.cf.erros.length? d.cf.erros.slice(0,3).map(x=>`${nomeSetor(x.setor)} ${x.tipo} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')+(d.cf.erros.length>3?` +${d.cf.erros.length-3}`:'') : (d.cf.periodoV||d.cf.periodoP?'tudo bate ✔':'sem relatório no mês')) : '—', 'toque em Conferir para ver setor por setor'],
+    [st(d.cf && !d.cf.erros.length && (d.cf.periodoV||d.cf.periodoP), d.cf && d.cf.erros.length && d.cf.erros.every(x=>Math.abs(x.dif)<=Math.max(50,x.relatorio*0.005))), 'Conferência site × relatórios', d.cf? (d.cf.recomendar&&d.cf.recomendar.length? `tirar o relatório só do dia ${d.cf.recomendar.map(k=>fD(k).slice(0,5)).join(', ')} e importar` : d.cf.erros.length? d.cf.erros.slice(0,3).map(x=>`${nomeSetor(x.setor)} ${x.tipo} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')+(d.cf.erros.length>3?` +${d.cf.erros.length-3}`:'') : (d.cf.periodoV||d.cf.periodoP?'tudo bate ✔':'sem relatório no mês')) : '—', 'toque em Conferir para ver setor por setor'],
     [st(!!d.aa, true), 'Acertos de balanço (opcional)', ate(d.aa), 'Resumo de acertos/perdas por produto'],
   ];
   const pend=linhas.filter(l=>!l[0].includes('✔')).length;
@@ -290,6 +290,25 @@ async function conferencia(mes){
     const l={}; for(const x of L) l[x.setor_id]=(l[x.setor_id]||0)+(+x.perda||0);
     for(const r of R){ const d=(l[r.setor_id]||0)-(+r.valor||0); out.linhas.push({tipo:'perda', setor:r.setor_id, lancado:l[r.setor_id]||0, relatorio:+r.valor||0, dif:d}); } }
   out.erros=out.linhas.filter(x=>Math.abs(x.dif)>=1);
+  // venda com diferença: procura o dia. Venda do dia pelo relatório = acumulado até o dia − acumulado até o dia anterior
+  out.dias=[]; out.recomendar=[]; out.semRel=[];
+  if(pv && out.erros.some(x=>x.tipo==='venda')){ try{
+    const A=await q(S.sb.from('analise_vendas').select('setor_id,periodo_fim,venda,emit:dados->>emitido').eq('periodo_inicio',pv.periodo_inicio).lte('periodo_fim',pv.periodo_fim));
+    const acc={}, emit={}; for(const x of A){ (acc[x.periodo_fim]=acc[x.periodo_fim]||{})[x.setor_id]=+x.venda||0; if(x.emit && (!emit[x.periodo_fim]||x.emit<emit[x.periodo_fim])) emit[x.periodo_fim]=x.emit; }
+    const L=await todasLinhas(()=>S.sb.from('lancamentos').select('data,setor_id,venda').gte('data',pv.periodo_inicio).lte('data',pv.periodo_fim));
+    const ld={}; for(const x of L) (ld[x.data]=ld[x.data]||{})[x.setor_id]=(+x.venda||0);
+    const antes=k=>isoOf(new Date(new Date(k+'T12:00:00').getTime()-864e5));
+    for(const k of diasDoMes(mes).filter(k=>k>=pv.periodo_inicio && k<=pv.periodo_fim)){
+      const a=acc[k], b= k===pv.periodo_inicio ? {} : acc[antes(k)];
+      if(!a || !b){ out.semRel.push(k); continue; }
+      const sets=new Set([...Object.keys(a),...Object.keys(ld[k]||{})]); const difs=[];
+      for(const sid of sets){ const rel=(a[sid]||0)-(b[sid]||0), lan=(ld[k]||{})[sid]||0, d=lan-rel; if(Math.abs(d)>=1) difs.push({setor:sid, dif:d}); }
+      if(difs.length) out.dias.push({dia:k, dif:difs.reduce((x,y)=>x+y.dif,0), setores:difs.sort((x,y)=>Math.abs(y.dif)-Math.abs(x.dif)), emit:emit[k], emitAnt:emit[antes(k)]});
+    }
+    const R=new Set(); for(const d of out.dias){ R.add(d.dia); const a0=antes(d.dia); if(d.dia!==pv.periodo_inicio && d.emitAnt && d.emit && d.emitAnt<d.emit) R.add(a0); }
+    if(!out.dias.length) out.semRel.forEach(k=>R.add(k));
+    out.recomendar=[...R].sort();
+  }catch(_){ } }
   return out;
 }
 function htmlConferencia(c){
@@ -298,7 +317,13 @@ function htmlConferencia(c){
     return `<h3 style="margin:10px 0 4px">${tipo==='venda'?'💰 Venda':'🗑️ Perda'} · ${fD(per.periodo_inicio)} a ${fD(per.periodo_fim)} ${err.length?`<span class="small" style="color:var(--bad)">· ${err.length} diferença(s)</span>`:'<span class="small" style="color:var(--good)">· ✔ tudo bate</span>'}</h3>
     <div class="tw"><table><thead><tr><th>Setor</th><th class="n m-hide">Lançado no site</th><th class="n m-hide">Relatório</th><th class="n">Diferença</th></tr></thead><tbody>
     ${ls.sort((a,b)=>Math.abs(b.dif)-Math.abs(a.dif)).map(x=>`<tr><td><b>${esc(nomeSetor(x.setor))}</b><div class="small muted m-only">site ${brl(x.lancado)} · relatório ${brl(x.relatorio)}</div></td><td class="n m-hide">${brl(x.lancado)}</td><td class="n m-hide">${brl(x.relatorio)}</td><td class="n" style="color:${Math.abs(x.dif)<1?'var(--good)':'var(--bad)'};font-weight:600">${Math.abs(x.dif)<1?'✔':(x.dif>0?'+':'')+brl(x.dif)}</td></tr>`).join('')}</tbody></table></div>`; };
-  return tab('venda',c.periodoV||{})+tab('perda',c.periodoP||{})+`<p class="small muted" style="margin-top:8px">Diferença = lançado no site − relatório do sistema, no mesmo período. Diferença de venda costuma ser dia lançado pela divisão antiga ou venda de hoje incluída; de perda, balanço lançado que o relatório de perdas não traz.</p>`;
+  const dm=k=>fD(k).slice(0,5);
+  const fazer = c.recomendar&&c.recomendar.length ? `<div class="note" style="background:#fff6dc;border-color:#ecd28a;margin:6px 0 4px">
+      <b>👉 O que fazer:</b> tire no sistema o relatório de vendas <b>só do dia</b> de <b>${c.recomendar.map(dm).join(', ')}</b> e importe pelo <b>📥 Importar relatórios</b> (pode selecionar todos de uma vez). Depois toque em <b>Conferir</b> de novo.
+      ${c.dias&&c.dias.length?`<div class="small" style="margin-top:6px">${c.dias.map(d=>`<div>• <b>${dm(d.dia)}</b>: lançado ${d.dif>0?'+':''}${brl0(d.dif)} vs. relatório — ${d.setores.slice(0,3).map(x=>`${esc(nomeSetor(x.setor))} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')}${d.emit&&d.emitAnt&&d.emit!==d.emitAnt?` <span class="muted">(relatórios tirados em ${fD(d.emitAnt).slice(0,5)} e ${fD(d.emit).slice(0,5)}: o sistema pode ter mudado entre um e outro)</span>`:''}</div>`).join('')}</div>`:''}
+      ${c.semRel&&c.semRel.length&&!(c.dias&&c.dias.length)?`<div class="small muted" style="margin-top:4px">Esses dias não têm relatório do dia guardado, então o site não consegue saber qual está diferente.</div>`:''}
+    </div>` : '';
+  return fazer+tab('venda',c.periodoV||{})+tab('perda',c.periodoP||{})+`<p class="small muted" style="margin-top:8px">Diferença = lançado no site − relatório do sistema, no mesmo período. Diferença de venda costuma ser dia lançado pela divisão antiga ou venda de hoje incluída; de perda, balanço lançado que o relatório de perdas não traz.</p>`;
 }
 async function mostrarConferencia(silencioso){
   let c; try{ c=await conferencia(); }catch(e){ if(!silencioso) toast('Não consegui conferir: '+e.message,5000); return; }

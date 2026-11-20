@@ -311,7 +311,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       // relatório de um dia: soma no acumulado do mês (01 até o dia); se ainda não houver acumulado, guarda o próprio dia
       let somou=0; if(umDiaEsc){ try{ somou=await acumularDia(rows, r.periodo.fim, tabAna()); }catch(e){ toast('Análise acumulada não atualizou: '+(e.message||e), 6000); } }
       if(!somou) await q(S.sb.from(tabAna()).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
-      else toast(`Análise de vendas atualizada até ${fDate(r.periodo.fim)} ✔`, 4000);
+      else toast(somou<0?`Análise de vendas: mantido o relatório do mês até ${fDate(r.periodo.fim)} (é mais novo)`:`Análise de vendas atualizada até ${fDate(r.periodo.fim)} ✔`, 4500);
       closeModal();
       S.anaSel=S.anaSel||{}; for(const x of rows) delete S.anaSel[x.setor_id];
       if(opts.lancar){ resolver({ porSetor:Object.fromEntries(rows.map(x=>[x.setor_id,x.venda])), ini:r.periodo.ini, fim:r.periodo.fim }); return; }
@@ -429,10 +429,14 @@ async function acumularDia(rows, dia, tabela='analise_vendas'){
   const ant=isoOf(new Date(new Date(dia+'T12:00:00').getTime()-864e5));
   const base=await q(S.sb.from(tabela).select('setor_id,venda,dados,relatorio_id').eq('periodo_inicio',ini).eq('periodo_fim',ant));
   if(!base.length) return 0;
+  // já existe um relatório de verdade (não somado) desse mesmo período, tirado no mesmo dia ou depois: ele vale mais que a soma — mantém
+  const emitNovo=(rows.find(x=>x.dados?.emitido)||{}).dados?.emitido||null;
+  try{ const ex=await q(S.sb.from(tabela).select('setor_id,dados->>emitido,dados->>somado').eq('periodo_inicio',ini).eq('periodo_fim',dia));
+    if(ex.length && ex.every(x=>x.somado!=='true') && ex.some(x=>x.emitido && (!emitNovo || x.emitido>=emitNovo))) return -1; }catch(_){ }
   const porS=Object.fromEntries(rows.map(x=>[x.setor_id,x]));
   const out=base.map(b=>{ const d=porS[b.setor_id]; return { relatorio_id:b.relatorio_id, setor_id:b.setor_id, periodo_inicio:ini, periodo_fim:dia,
-    venda:round2((+b.venda||0)+(d?+d.venda||0:0)), dados: d? somarDados(b.dados||{}, d.dados||{}) : b.dados }; });
-  for(const d of rows) if(!base.some(b=>b.setor_id===d.setor_id)) out.push({ ...d, periodo_inicio:ini, periodo_fim:dia }); // setor que não tinha acumulado
+    venda:round2((+b.venda||0)+(d?+d.venda||0:0)), dados: {...(d? somarDados(b.dados||{}, d.dados||{}) : b.dados), somado:true} }; });
+  for(const d of rows) if(!base.some(b=>b.setor_id===d.setor_id)) out.push({ ...d, dados:{...d.dados, somado:true}, periodo_inicio:ini, periodo_fim:dia }); // setor que não tinha acumulado
   await q(S.sb.from(tabela).upsert(out, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
   S.anaSel={}; return out.length;
 }
