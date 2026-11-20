@@ -104,6 +104,7 @@ async function renderAnaliseSetor(box, s){
       partB={ g:await g(ini,fim), gl:await g(pa0,pa1) }; }catch(_){} }
   if(!vivo() || !cur) return;
   if(!ehBdj()){ try{ const gs=(await carregarGrupos()).filter(g=>g.setor_id===sid); if(gs.length){ cur=agruparAnalise(cur,gs); ly=agruparAnalise(ly,gs); lm=agruparAnalise(lm,gs); lyM=agruparAnalise(lyM,gs); } }catch(_){ } if(!vivo()) return; }
+  try{ const nm=await carregarNomesDep(); cur=renomearDeps(cur,sid,nm); ly=renomearDeps(ly,sid,nm); lm=renomearDeps(lm,sid,nm); lyM=renomearDeps(lyM,sid,nm); }catch(_){ }
   if(!S.anaBase || (S.anaBase==='ano'&&!ly&&lm) ) S.anaBase = ly ? 'ano' : (lm ? 'mes' : 'ano');
   const base = S.anaBase==='ano' ? ly : lm;
   const A=montarAnalise(cur, base); const perdas=perdasBalanco(bals);
@@ -537,3 +538,10 @@ async function cardGruposProduto(app){
 }
 
 function codProd(p){ return p&&p.grupo ? p.grupo.map(g=>g.c).join(' - ') : String(p?.c??''); }
+
+/* nome do subgrupo como aparece no site (o nome no sistema não muda) */
+async function carregarNomesDep(){ if(S._nomesDep && Date.now()-S._nomesDepEm<5*60*1000) return S._nomesDep;
+  const r=await q(S.sb.from('configuracoes').select('valor').eq('chave','nomes_departamento')); S._nomesDep=(r[0]&&r[0].valor)||{}; S._nomesDepEm=Date.now(); return S._nomesDep; }
+function renomearDeps(an, sid, nm){ if(!an||!an.dados||!nm||!Object.keys(nm).length) return an;
+  const norm=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
+  return {...an, dados:{...an.dados, departamentos:an.dados.departamentos.map(d=>{ const k=`${sid}|${d.codigo}|${norm(d.nome)}`; return nm[k]? {...d, nome:nm[k], nomeSistema:d.nome} : d; })}}; }
