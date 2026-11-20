@@ -39,15 +39,19 @@ function montarAnalise(cur, base){
       else if(base && !p.vb && p.v>0) f.push('novo');
       else if(v!=null && v<=-0.2 && p.vb-p.v>=100) f.push('queda');
       else if(v!=null && v>=0.2 && p.v-p.vb>=100) f.push('alta');
+      if(base && p.q>0 && p.qb>0 && p.vb>0){ const vq=p.q/p.qb-1, vv=p.v/p.vb-1;
+        if(vv<=-0.1 && vq>=-0.02 && p.vb-p.v>=50) f.push('precoCaiu'); else if(vv>=0.1 && vq<=-0.05 && p.v-p.vb>=50) f.push('soPreco'); }
       if(p.z) f.push('custo'); else if(p.mt>0 && p.m!=null && p.m<p.mt-5) f.push('margem');
       p.flags=f; p.part= tot? p.v/tot : 0;
     }
     d.v=d.produtos.reduce((a,p)=>a+p.v,0); d.vb= base? d.produtos.reduce((a,p)=>a+(p.vb||0),0) : null;
+    d.ef=efeitos(d.produtos, !!base); d.qt=somaQtd(d.produtos);
     const comM=d.produtos.filter(p=>p.m!=null && p.v>0); const sv=comM.reduce((a,p)=>a+p.v,0); d.m= sv? comM.reduce((a,p)=>a+p.v*p.m,0)/sv : null;
     d.part= tot? d.v/tot : 0; d.alertas=d.produtos.filter(p=>p.flags.some(x=>x!=='alta')).length;
   }
   deps.sort((a,b)=>b.v-a.v||(b.vb||0)-(a.vb||0));
-  return { deps, tot, totBase: base? deps.reduce((a,d)=>a+(d.vb||0),0) : null, itens:ord.length };
+  const todos=deps.flatMap(d=>d.produtos);
+  return { deps, tot, totBase: base? deps.reduce((a,d)=>a+(d.vb||0),0) : null, itens:ord.length, ef:efeitos(todos,!!base), qt:somaQtd(todos) };
 }
 
 /* perdas de balanço por código de produto, dos balanços do setor que cruzam o período */
@@ -140,6 +144,7 @@ async function renderAnaliseSetor(box, s){
     ${bals.length?`<div class="kpi"><div class="l">Perdas dos produtos no balanço</div><div class="v">${brl0(perdaTot)}</div><div class="d">soma das perdas, sem descontar as sobras · resultado do balanço ${brl0(bals.reduce((x,b)=>x+(+b.valor_perda||0),0))} · ${bals.map(b=>`${b.periodo_inicio?fDate(b.periodo_inicio)+' a ':''}${fDate(b.data)}`).join(', ')}</div></div>`:''}
   </div>
   ${notaDatas(ini, fim, [{rot:'ano passado', ini:ly?pa0:null, fim:pa1},{rot:'mês passado', ini:lm?pm0:null, fim:pm1}])}
+  ${base?cardVolumePreco(A, nomeBase):''}
   ${base?`<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">🎯 Onde olhar primeiro</h2><div class="sp"></div><span class="small muted">comparado com o ${nomeBase} · toque no produto para ver</span></div>
     <div class="an-olg">
       ${lst('Maiores quedas','📉',quedas,dif)}
@@ -152,12 +157,12 @@ async function renderAnaliseSetor(box, s){
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <h2 style="margin:0">Departamentos e produtos</h2><div class="sp"></div>
       <input id="anBusca" class="an-busca" placeholder="Buscar produto…" value="${esc(S.anaBusca||'')}" style="border:1px solid var(--line);border-radius:9px;padding:7px 10px;min-width:200px">
-      <select id="anOrd" style="border:1px solid var(--line);border-radius:9px;padding:7px 10px"><option value="v">Ordenar: maior venda</option><option value="var">Ordenar: maior queda</option><option value="alta">Ordenar: maior alta</option><option value="m">Ordenar: menor margem</option></select>
+      <select id="anOrd" style="border:1px solid var(--line);border-radius:9px;padding:7px 10px"><option value="v">Ordenar: maior venda</option><option value="var">Ordenar: maior queda</option><option value="qtd">Ordenar: maior queda em quantidade</option><option value="alta">Ordenar: maior alta</option><option value="m">Ordenar: menor margem</option></select>
     </div>
     <div class="tabs2" id="anFil">${[['todos','Todos'],['alertas','⚠ Alertas'],['queda','📉 Quedas'],['alta','📈 Altas'],['A','⭐ Curva A'],['parado','⛔ Pararam'],['novo','🆕 Novos']].map(([k,t])=>`<button data-f="${k}" class="${(S.anaFil||'todos')===k?'on':''}">${t}</button>`).join('')}
       <span class="sp"></span><button data-x="abrir">Abrir todos</button><button data-x="fechar">Fechar todos</button></div>
     <div id="anCasc"></div>
-    <div class="small muted" style="margin-top:10px">Var. = venda contra o ${nomeBase} no mesmo período${base?` (${fD(S.anaBase==='ano'?pa0:pm0)} a ${fD(S.anaBase==='ano'?pa1:pm1)})`:''}. Part. = participação na venda do setor. Curva A = produtos que somam 80% da venda. ${bals.length?'Perda bal. = perda do produto no balanço que cruza o período (sem descontar sobras).':''}</div>
+    <div class="small muted" style="margin-top:10px">Var. = variação contra o ${nomeBase} no mesmo período (em quantidade e em R$). Volume = quanto a venda mudou só pela quantidade, ao preço de antes; Preço = quanto mudou só pelo preço${base?` (${fD(S.anaBase==='ano'?pa0:pm0)} a ${fD(S.anaBase==='ano'?pa1:pm1)})`:''}. Part. = participação na venda do setor. Curva A = produtos que somam 80% da venda. ${bals.length?'Perda bal. = perda do produto no balanço que cruza o período (sem descontar sobras).':''}</div>
   </div>`;
   if(S.anaOrd) $('#anOrd').value=S.anaOrd;
   S.anaAbertos=S.anaAbertos||new Set();
@@ -165,8 +170,8 @@ async function renderAnaliseSetor(box, s){
     if(t && !p.d.toLowerCase().includes(t) && !String(p.c).startsWith(t)) return false;
     if(f==='todos') return true; if(f==='alertas') return p.flags.some(x=>x!=='alta'&&x!=='novo'); if(f==='A') return p.abc==='A'; return p.flags.includes(f); };
   const ordenar=ps=>{ const o=S.anaOrd||'v'; const r=[...ps];
-    if(o==='var') r.sort((a,b)=>((a.v-(a.vb||0))-(b.v-(b.vb||0)))); else if(o==='alta') r.sort((a,b)=>((b.v-(b.vb||0))-(a.v-(a.vb||0)))); else if(o==='m') r.sort((a,b)=>(a.m??999)-(b.m??999)); else r.sort((a,b)=>b.v-a.v||(b.vb||0)-(a.vb||0)); return r; };
-  const TAG={queda:['b-bad','caiu'],alta:['b-good','subiu'],parado:['b-bad','parou de vender'],novo:['b-good','novo'],margem:['b-warn','margem abaixo do alvo'],custo:['b-warn','custo zerado no cadastro']};
+    if(o==='qtd') r.sort((a,b)=>((a.qb?a.q/a.qb-1:9)-(b.qb?b.q/b.qb-1:9))); else if(o==='var') r.sort((a,b)=>((a.v-(a.vb||0))-(b.v-(b.vb||0)))); else if(o==='alta') r.sort((a,b)=>((b.v-(b.vb||0))-(a.v-(a.vb||0)))); else if(o==='m') r.sort((a,b)=>(a.m??999)-(b.m??999)); else r.sort((a,b)=>b.v-a.v||(b.vb||0)-(a.vb||0)); return r; };
+  const TAG={precoCaiu:['b-warn','caiu pelo preço — volume manteve'],soPreco:['b-warn','subiu só pelo preço — volume caiu'],queda:['b-bad','caiu'],alta:['b-good','subiu'],parado:['b-bad','parou de vender'],novo:['b-good','novo'],margem:['b-warn','margem abaixo do alvo'],custo:['b-warn','custo zerado no cadastro']};
   const tags=p=>`${p.abc?`<span class="an-abc an-${p.abc}">${p.abc}</span>`:''}${p.flags.map(f=>{ const [c,t]=TAG[f]; const x=(f==='queda'||f==='alta')?` ${pct(Math.abs(varPct(p.v,p.vb)),0)}`:''; return ` <span class="badge ${c}">${t}${x}</span>`; }).join('')}`;
   const desenhar=()=>{
     const filtrando = (S.anaFil&&S.anaFil!=='todos') || (S.anaBusca||'').trim();
@@ -178,17 +183,18 @@ async function renderAnaliseSetor(box, s){
           <span class="an-dc"><span class="l">Venda</span><b>${brl0(d.v)}</b></span>
           <span class="an-dc"><span class="l">${base?nomeBase:'—'}</span>${base?brl0(d.vb):'—'}</span>
           <span class="an-dc"><span class="l">Var.</span>${base?varHtml(d.v,d.vb):'—'}</span>
+          ${base&&d.ef?`<span class="an-dc hm"><span class="l">Volume</span>${efHtml(d.ef.vol, d.vb)}</span><span class="an-dc hm"><span class="l">Preço</span>${efHtml(d.ef.preco, d.vb)}</span>`:''}
           <span class="an-dc hm"><span class="l">Part.</span>${pct(d.part)}</span>
           <span class="an-dc hm"><span class="l">Margem</span>${d.m!=null?pct(d.m/100):'—'}</span>
         </button>
         ${aberto?`<div class="m-only an-ml">${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<details class="dl an-mp ${S.anaFoco===p.c?'an-foco':''}" id="anpm-${esc(p.c)}"><summary><span class="dl-d"><span class="an-mn">${esc(p.d)}</span><span class="an-mt">${tags(p)}</span></span><b class="dl-v">${p.v?brl0(p.v):'—'}</b><span class="dl-p">${base?varHtml(p.v,p.vb):''}</span></summary>
-            <div class="dl-c"><div><span>Código</span><b>${esc(p.c)}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small>`:''}</b></div>
+            <div class="dl-c"><div><span>Código</span><b>${esc(p.c)}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small> ${varHtml(p.q,p.qb)}`:''}</b></div>
             ${base?`<div><span>Venda ${nomeBase}</span><b>${p.vb?brl(p.vb):'—'}</b></div><div><span>Diferença</span><b>${p.vb!=null?`${p.v-p.vb>=0?'+':''}${brl0(p.v-p.vb)}`:'—'}</b></div>`:''}
             <div><span>Participação</span><b>${p.v?pct(p.part):'—'}</b></div><div><span>Margem</span><b>${p.m!=null?pct(p.m/100):'—'}</b></div>
             ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?brl(pb):'—'}</b></div>`:''}</div></details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
-        <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var.</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
+        <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th>${base?'<th class="n">Var. qtd</th>':''}<th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var. venda</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
           ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(p.c)}</span> ${esc(p.d)} ${tags(p)}</td>
-            <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>
+            <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>${base?`<td class="n">${p.qb!=null?varHtml(p.q,p.qb):'<span class="muted">—</span>'}</td>`:''}
             <td class="n"><b>${p.v?brl(p.v):'—'}</b></td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
             <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:'—'}</td>`:''}</tr>`; }).join('')}
           ${!ps.length?'<tr><td colspan="9" class="muted">Nenhum produto</td></tr>':''}
@@ -315,3 +321,32 @@ function dividirPorSetor(r, prod, mapa){
 /* aba de embandeijados (açougue e hortifrúti) usa a mesma análise, guardada em outra tabela */
 function ehBdj(){ return S.setorAba==='bdj'; }
 function tabAna(){ return ehBdj() ? 'analise_bandeja' : 'analise_vendas'; }
+
+/* venda = volume × preço: separa quanto da variação veio da quantidade e quanto do preço */
+const ehKg = p => /\bKG\b/i.test(p.d||'');
+function efeitos(ps, temBase){
+  if(!temBase) return null; let vol=0, preco=0, novos=0, parados=0, vbComum=0;
+  for(const p of ps){ const vb=p.vb||0;
+    if(p.q>0 && p.qb>0 && vb>0){ const p0=vb/p.qb, p1=p.v/p.q; vol+=(p.q-p.qb)*p0; preco+=(p1-p0)*p.q; vbComum+=vb; }
+    else if(!vb && p.v>0) novos+=p.v; else if(vb>0 && !p.v) parados-=vb;
+    else if(vb>0 || p.v>0){ vol+=p.v-vb; vbComum+=vb; } }
+  return { vol, preco, novos, parados, vbComum };
+}
+function somaQtd(ps){ const r={kg:0,kgb:0,un:0,unb:0}; for(const p of ps){ if(ehKg(p)){ r.kg+=+p.q||0; r.kgb+=+p.qb||0; } else { r.un+=+p.q||0; r.unb+=+p.qb||0; } } return r; }
+function cardVolumePreco(A, nomeBase){
+  const e=A.ef; if(!e) return '';
+  const base=A.totBase||0, dif=A.tot-base, pc=v=>base? (v>=0?'+':'')+pctBR(v/base,1):'';
+  const linha=(t,v,expl)=>`<div style="display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${t}<div class="small muted">${expl}</div></span><b style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'+':''}${brl0(v)}</b><span class="small muted" style="width:62px;text-align:right">${pc(v)}</span></div>`;
+  const q=A.qt, vq=(a,b)=>b? `${a>=b?'▲':'▼'} ${pctBR(Math.abs(a/b-1),1)}`:'';
+  return `<div class="card" style="margin-top:12px"><h2>⚖️ Volume × preço <span class="small muted" style="font-weight:400">contra o ${esc(nomeBase)}</span></h2>
+    <p class="small muted" style="margin:-4px 0 6px">A venda variou <b style="color:${dif>=0?'var(--good)':'var(--bad)'}">${dif>=0?'+':''}${brl0(dif)}</b> (${pc(dif)}). Veja de onde veio:</p>
+    ${linha('📦 Volume (quantidade vendida)', e.vol, 'mais ou menos quilos/unidades dos mesmos produtos, ao preço de antes')}
+    ${linha('🏷️ Preço', e.preco, 'diferença de preço nos mesmos produtos')}
+    ${linha('🆕 Produtos novos', e.novos, 'venda de produtos que não vendiam antes')}
+    ${linha('⛔ Produtos que pararam', e.parados, 'venda que deixou de existir')}
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px">
+      ${q.kg||q.kgb?`<div class="kpi"><div class="l">Quilos vendidos</div><div class="v" style="font-size:20px">${qtBR(q.kg)} kg</div><div class="d">antes ${qtBR(q.kgb)} kg · ${vq(q.kg,q.kgb)}</div></div>`:''}
+      ${q.un||q.unb?`<div class="kpi"><div class="l">Unidades vendidas</div><div class="v" style="font-size:20px">${qtBR(q.un)} un</div><div class="d">antes ${qtBR(q.unb)} un · ${vq(q.un,q.unb)}</div></div>`:''}
+    </div></div>`;
+}
+function efHtml(v, b){ if(!b) return v? `<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'+':''}${brl0(v)}</span>`:'<span class="muted">—</span>'; const x=v/b; return `<span style="color:${x>=0?'var(--good)':'var(--bad)'};font-weight:600">${x>=0?'▲':'▼'} ${pctBR(Math.abs(x),1)}</span>`; }
