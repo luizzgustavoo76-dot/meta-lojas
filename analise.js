@@ -507,7 +507,7 @@ function agruparAnalise(an, grupos){
       mt: Math.max(0,...ps.map(p=>+p.mt||0)), z: ps.some(p=>p.z), grupo: ps.map(p=>({c:p.c, d:p.d, q:+p.q||0, v:+p.v||0})) }); }
   return {...an, dados:{...an.dados, departamentos:deps.filter(d=>d.produtos.length)}};
 }
-function nomeGrupo(n){ return String(n||'')+' KG (junto)'; }
+function nomeGrupo(n){ return String(n||''); }
 
 /* tela do gerente: ver, criar e apagar grupos */
 async function cardGruposProduto(app){
@@ -522,13 +522,13 @@ async function cardGruposProduto(app){
       <div class="grp-novo" style="margin-top:12px"><b>Juntar outros produtos</b>
         <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
           <select id="grpSet" style="border:1px solid var(--line);border-radius:9px;padding:7px">${S.setoresAll.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select>
-          <input id="grpNome" placeholder="Nome (ex.: BOV ALCATRA)" style="border:1px solid var(--line);border-radius:9px;padding:7px;flex:1;min-width:160px">
+          <input id="grpNome" placeholder="Nome (ex.: Alcatra – granel e bandeja)" style="border:1px solid var(--line);border-radius:9px;padding:7px;flex:1;min-width:160px">
           <input id="grpCods" placeholder="Códigos separados por vírgula (ex.: 1434, 9569)" style="border:1px solid var(--line);border-radius:9px;padding:7px;flex:2;min-width:200px">
           <button class="btn p" id="grpAdd">Juntar</button></div></div></details>`;
     if(S._grpAberto) box.querySelector('details').open=true;
     box.querySelector('details').ontoggle=e=>{ S._grpAberto=e.target.open; };
     box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmBox('Separar esse grupo? Os códigos voltam a ser analisados um por um.', async()=>{ try{ await q(S.sb.from('grupos_produto').delete().eq('id',+b.dataset.del)); toast('Grupo separado'); desenhar(); }catch(e){ toast(e.message,5000); } }));
-    $('#grpAdd',box).onclick=async()=>{ const setor=$('#grpSet',box).value, nome=$('#grpNome',box).value.trim().toUpperCase(), cods=[...new Set($('#grpCods',box).value.split(/[^0-9]+/).filter(Boolean))];
+    $('#grpAdd',box).onclick=async()=>{ const setor=$('#grpSet',box).value, nome=$('#grpNome',box).value.trim(), cods=[...new Set($('#grpCods',box).value.split(/[^0-9]+/).filter(Boolean))];
       if(!nome || cods.length<2) return toast('Digite um nome e pelo menos 2 códigos',4000);
       const descr=[]; for(const c of cods){ let d=c; try{ const r=await q(S.sb.rpc('buscar_produto',{termo:c, lim:5})); const x=(r||[]).find(y=>String(y.c)===c); if(x) d=x.d; }catch(_){ } descr.push(d); }
       try{ await q(S.sb.from('grupos_produto').insert({setor_id:setor, nome, codigos:cods, descricoes:descr})); toast('Produtos juntados ✔'); S._grpAberto=true; desenhar(); }catch(e){ toast('Não foi possível juntar: '+e.message,5000); } };
