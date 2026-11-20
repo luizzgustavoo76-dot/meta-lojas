@@ -106,7 +106,7 @@ async function renderAnaliseSetor(box, s){
   if(!vivo() || !cur) return;
   if(!ehBdj()){ try{ const gs=(await carregarGrupos()).filter(g=>g.setor_id===sid); if(gs.length){ cur=agruparAnalise(cur,gs); ly=agruparAnalise(ly,gs); lm=agruparAnalise(lm,gs); lyM=agruparAnalise(lyM,gs); } }catch(_){ } if(!vivo()) return; }
   try{ const nm=await carregarNomesDep(); cur=renomearDeps(cur,sid,nm); ly=renomearDeps(ly,sid,nm); lm=renomearDeps(lm,sid,nm); lyM=renomearDeps(lyM,sid,nm); }catch(_){ }
-  if(!ehBdj()){ const mx=depsMistos([cur,ly,lm,lyM]); cur=separarKgPacote(cur,mx); ly=separarKgPacote(ly,mx); lm=separarKgPacote(lm,mx); lyM=separarKgPacote(lyM,mx); }
+  if(!ehBdj()){ const mx=depsMistos([cur,ly,lm,lyM]), rot=SETORES_PESO.has(sid); cur=separarKgPacote(cur,mx,rot); ly=separarKgPacote(ly,mx,rot); lm=separarKgPacote(lm,mx,rot); lyM=separarKgPacote(lyM,mx,rot); }
   if(!S.anaBase || (S.anaBase==='ano'&&!ly&&lm) ) S.anaBase = ly ? 'ano' : (lm ? 'mes' : 'ano');
   const base = S.anaBase==='ano' ? ly : lm;
   const A=montarAnalise(cur, base); A.maxDep=Math.max(0,...A.deps.map(d=>d.v||0)); const perdas=perdasBalanco(bals);
@@ -564,10 +564,11 @@ const ehAQuilo = p => !!p.grupo || /(^|\s)KG(\s|$)/i.test(p.d||'');
 function depsMistos(ans){ const k=new Set(), p=new Set();
   for(const an of ans){ if(!an||!an.dados) continue; for(const d of an.dados.departamentos) for(const x of d.produtos) (ehAQuilo(x)?k:p).add(d.codigo); }
   return new Set([...k].filter(c=>p.has(c))); }
-function separarKgPacote(an, mistos){
-  if(!an || !an.dados || !mistos || !mistos.size) return an; const out=[];
+const SETORES_PESO=new Set(['acougue','hortifruti','pereciveis','padaria','panif_terc']);
+function separarKgPacote(an, mistos, rotularTodos){
+  if(!an || !an.dados || ((!mistos || !mistos.size) && !rotularTodos)) return an; const out=[];
   for(const d of an.dados.departamentos){
-    if(!mistos.has(d.codigo)){ out.push(d); continue; }
+    if(!mistos || !mistos.has(d.codigo)){ if(rotularTodos && d.produtos.length){ const tk=d.produtos.every(ehAQuilo), tp=d.produtos.every(p=>!ehAQuilo(p)); out.push(tk?{...d, suf:'(a quilo)'}:tp?{...d, suf:'(unidade/pacote)'}:d); } else out.push(d); continue; }
     const kg=d.produtos.filter(ehAQuilo), pc=d.produtos.filter(p=>!ehAQuilo(p));
     if(kg.length) out.push({...d, codigo:d.codigo*10+1, codOrig:d.codigo, suf:'(a quilo)', produtos:kg});
     if(pc.length) out.push({...d, codigo:d.codigo*10+2, codOrig:d.codigo, suf:'(unidade/pacote)', produtos:pc});
