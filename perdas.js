@@ -77,7 +77,7 @@ async function importarRelatorioPerdas(f, setorAtual){
           dia.perdas[x.setor_id]=novo; ajustes.push(`${nomeSetor(x.setor_id)} ${d>=0?'+':''}${brl(d)}`); }
         if(ajustes.length){ await saveDoc(nd, 'Perda acertada pelo relatório'); msg+=` · perda do dia ${fD(fim)} acertada: ${ajustes.join(' · ')}`; }
       }
-      S._alertas=null; closeModal(); toast(msg, 7000);
+      S._alertas=null; closeModal(); toast(msg, 7000); if(acertar) setTimeout(()=>mostrarConferencia(true), 1500);
       if(S.view==='setor'){ if(!por[S.setorSel]) S.setorSel=Object.keys(por)[0]; S.setorAba='per'; render(); }
       resolver(true);
     }catch(e){ err('Não foi possível concluir: '+(e.message||e)); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar perdas'; }

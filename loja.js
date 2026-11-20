@@ -72,6 +72,7 @@ async function importarVarios(files){
   }
   if(feitos.length) toast(`Importação concluída: ${feitos.length} arquivo(s)`, 4000);
   S._ck=null; S._alertas=null; render(); atualizarSino(true);
+  if(feitos.length) setTimeout(()=>mostrarConferencia(true), 800);
 }
 function botaoImportarVarios(id='bVarios'){ return `<button class="btn p" id="${id}">📥 Importar relatórios</button><input type="file" id="${id}Arq" multiple accept=".pdf,.txt,.xlsx,.xls,.xlsm,.csv" class="hide">`; }
 function ligarImportarVarios(id='bVarios'){ const b=$('#'+id); if(!b) return; const i=$('#'+id+'Arq'); b.onclick=()=>i.click(); i.onchange=()=>{ const fs=[...i.files]; i.value=''; if(fs.length) importarVarios(fs); }; }
@@ -89,6 +90,7 @@ async function cardChecklist(app){
     const [lv, av, ap, ab, aa] = await Promise.all([ q(S.sb.from('lancamentos').select('data').not('venda','is',null).order('data',{ascending:false}).limit(1)), ult('analise_vendas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_perdas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_bandeja',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_acertos',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')) ]);
     d={ lv:lv[0]?.data||null, av, ap, ab, aa };
     [d.avLy, d.apLy, d.abLy] = await Promise.all([ temLy('analise_vendas',av), temLy('analise_perdas',ap), temLy('analise_bandeja',ab) ]);
+    try{ d.cf=await conferencia(); }catch(_){ d.cf=null; }
   }catch(e){ box.innerHTML=''; return; }
   if(!box.isConnected) return;
   const st=(ok,meio)=> ok?'<span style="color:var(--good);font-weight:700">✔</span>':meio?'<span style="color:var(--warn);font-weight:700">●</span>':'<span style="color:var(--bad);font-weight:700">✗</span>';
@@ -99,14 +101,15 @@ async function cardChecklist(app){
     [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
     [st(d.ab?.periodo_fim>=isoOf(new Date(Date.now()-8*864e5)), !!d.ab), 'Embandeijados (semanal)', ate(d.ab), 'Vendas por classe'],
     [st(d.avLy===2 && d.apLy===2 && d.abLy===2, d.avLy||d.apLy||d.abLy), 'Base do ano passado', [['vendas',d.avLy,d.av],['perdas',d.apLy,d.ap],['embandeijados',d.abLy,d.ab]].map(([n,v,x])=>`${n} ${v===2?'✔':v===1?`● (falta ${x?fD(addAnos(x.periodo_inicio,-1))+' a '+fD(addAnos(x.periodo_fim,-1)):''})`:'✗'}`).join(' · '), 'para comparar: mesmo período do ano passado'],
+    [st(d.cf && !d.cf.erros.length && (d.cf.periodoV||d.cf.periodoP), d.cf && d.cf.erros.length && d.cf.erros.every(x=>Math.abs(x.dif)<=Math.max(50,x.relatorio*0.005))), 'Conferência site × relatórios', d.cf? (d.cf.erros.length? d.cf.erros.slice(0,3).map(x=>`${nomeSetor(x.setor)} ${x.tipo} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')+(d.cf.erros.length>3?` +${d.cf.erros.length-3}`:'') : (d.cf.periodoV||d.cf.periodoP?'tudo bate ✔':'sem relatório no mês')) : '—', 'toque em Conferir para ver setor por setor'],
     [st(!!d.aa, true), 'Acertos de balanço (opcional)', ate(d.aa), 'Resumo de acertos/perdas por produto'],
   ];
   const pend=linhas.filter(l=>!l[0].includes('✔')).length;
   box.innerHTML=`<div class="card" style="margin-bottom:12px">
-    <div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📋 Importações de hoje</h2><span class="small muted">${pend?`${pend} item(ns) para olhar`:'tudo em dia ✔'}</span><div class="sp"></div>${botaoImportarVarios('bCk')}</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📋 Importações de hoje</h2><span class="small muted">${pend?`${pend} item(ns) para olhar`:'tudo em dia ✔'}</span><div class="sp"></div><button class="btn" id="bConf">🔎 Conferir</button>${botaoImportarVarios('bCk')}</div>
     <div class="tw" style="margin-top:8px"><table><tbody>${linhas.map(l=>`<tr><td style="width:24px">${l[0]}</td><td><b>${l[1]}</b><div class="small muted m-only">${esc(l[2])}</div></td><td class="small m-hide">${esc(l[2])}</td><td class="small muted m-hide">${esc(l[3])}</td></tr>`).join('')}</tbody></table></div>
     <p class="small muted" style="margin:6px 0 0">Pode selecionar todos os PDFs de uma vez: o site reconhece cada relatório, avisa se algum é repetido ou está com o período errado, e abre a conferência de um por um.</p></div>`;
-  ligarImportarVarios('bCk');
+  ligarImportarVarios('bCk'); const bc=$('#bConf'); if(bc) bc.onclick=()=>mostrarConferencia(false);
 }
 
 /* ---------- teto de perda por setor ---------- */
@@ -269,4 +272,34 @@ async function renderTrocasLoja(app, doc){
     $('#tlBody').innerHTML=prods.map((p,k)=>({p,k})).filter(({p})=>(!st||p.setor===st)&&(!t||normN2(p.d).includes(t)||String(p.c)===t)).slice(0,500).map(({p,k})=>{ const o=lyP.get(String(p.c)); return `<tr><td><span class="muted small">${k+1}º · ${esc(p.c)}</span> ${esc(cap1(p.d))}<div class="small muted m-only">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></td><td class="small m-hide">${esc(nomeSetor(p.setor))}</td><td class="n m-hide">${qtBR(p.q)}</td><td class="n m-hide">${brl(p.cu)}</td><td class="n"><b>${brl(p.tc)}</b></td>${TL.length?`<td class="n m-hide">${o?brl(o.tc):'—'}</td>`:''}<td class="n" style="min-width:64px">${pctBR(p.tc/tot,1)}${barraPct(p.tc/prods[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="7" class="muted">Nada encontrado.</td></tr>'; };
   $('#tlBusca').oninput=desenha; $('#tlSet').onchange=desenha; desenha();
   box.querySelectorAll('[data-trset]').forEach(d=>d.onclick=()=>{ const det=box.querySelector(`[data-det="${d.dataset.trset}"]`); const ab=det.classList.toggle('hide'); d.querySelector('.tl-seta').textContent=ab?'▸':'▾'; });
+}
+
+/* ---------- Conferência automática: lançado no site × relatórios do sistema ---------- */
+async function conferencia(mes){
+  mes=mes||S.mes; const ini=mes+'-01', fim=fimDoMes(mes); const out={periodoV:null, periodoP:null, linhas:[]};
+  const ult=async t=>{ const r=await q(S.sb.from(t).select('periodo_inicio,periodo_fim').gte('periodo_fim',ini).lte('periodo_fim',fim).eq('periodo_inicio',ini).order('periodo_fim',{ascending:false}).limit(1)); return r[0]||null; };
+  const [pv,pp]=await Promise.all([ult('analise_vendas'), ult('analise_perdas')]);
+  const lanc = async (a,b)=> todasLinhas(()=>S.sb.from('lancamentos').select('setor_id,venda,perda').gte('data',a).lte('data',b));
+  if(pv){ out.periodoV=pv; const [R,L]=await Promise.all([ q(S.sb.from('analise_vendas').select('setor_id,venda').eq('periodo_inicio',pv.periodo_inicio).eq('periodo_fim',pv.periodo_fim)), lanc(pv.periodo_inicio,pv.periodo_fim) ]);
+    const l={}; for(const x of L) l[x.setor_id]=(l[x.setor_id]||0)+(+x.venda||0);
+    for(const r of R){ const d=(l[r.setor_id]||0)-(+r.venda||0); out.linhas.push({tipo:'venda', setor:r.setor_id, lancado:l[r.setor_id]||0, relatorio:+r.venda||0, dif:d}); } }
+  if(pp){ out.periodoP=pp; const [R,L]=await Promise.all([ q(S.sb.from('analise_perdas').select('setor_id,valor').eq('periodo_inicio',pp.periodo_inicio).eq('periodo_fim',pp.periodo_fim)), lanc(pp.periodo_inicio,pp.periodo_fim) ]);
+    const l={}; for(const x of L) l[x.setor_id]=(l[x.setor_id]||0)+(+x.perda||0);
+    for(const r of R){ const d=(l[r.setor_id]||0)-(+r.valor||0); out.linhas.push({tipo:'perda', setor:r.setor_id, lancado:l[r.setor_id]||0, relatorio:+r.valor||0, dif:d}); } }
+  out.erros=out.linhas.filter(x=>Math.abs(x.dif)>=1);
+  return out;
+}
+function htmlConferencia(c){
+  if(!c.periodoV && !c.periodoP) return '<p class="small muted">Ainda não há relatório do mês para conferir.</p>';
+  const tab=(tipo,per)=>{ const ls=c.linhas.filter(x=>x.tipo===tipo); if(!ls.length) return ''; const err=ls.filter(x=>Math.abs(x.dif)>=1);
+    return `<h3 style="margin:10px 0 4px">${tipo==='venda'?'💰 Venda':'🗑️ Perda'} · ${fD(per.periodo_inicio)} a ${fD(per.periodo_fim)} ${err.length?`<span class="small" style="color:var(--bad)">· ${err.length} diferença(s)</span>`:'<span class="small" style="color:var(--good)">· ✔ tudo bate</span>'}</h3>
+    <div class="tw"><table><thead><tr><th>Setor</th><th class="n m-hide">Lançado no site</th><th class="n m-hide">Relatório</th><th class="n">Diferença</th></tr></thead><tbody>
+    ${ls.sort((a,b)=>Math.abs(b.dif)-Math.abs(a.dif)).map(x=>`<tr><td><b>${esc(nomeSetor(x.setor))}</b><div class="small muted m-only">site ${brl(x.lancado)} · relatório ${brl(x.relatorio)}</div></td><td class="n m-hide">${brl(x.lancado)}</td><td class="n m-hide">${brl(x.relatorio)}</td><td class="n" style="color:${Math.abs(x.dif)<1?'var(--good)':'var(--bad)'};font-weight:600">${Math.abs(x.dif)<1?'✔':(x.dif>0?'+':'')+brl(x.dif)}</td></tr>`).join('')}</tbody></table></div>`; };
+  return tab('venda',c.periodoV||{})+tab('perda',c.periodoP||{})+`<p class="small muted" style="margin-top:8px">Diferença = lançado no site − relatório do sistema, no mesmo período. Diferença de venda costuma ser dia lançado pela divisão antiga ou venda de hoje incluída; de perda, balanço lançado que o relatório de perdas não traz.</p>`;
+}
+async function mostrarConferencia(silencioso){
+  let c; try{ c=await conferencia(); }catch(e){ if(!silencioso) toast('Não consegui conferir: '+e.message,5000); return; }
+  if(silencioso && !c.erros.length){ toast('✔ Conferido: o lançado no site bate com os relatórios',4000); return; }
+  const m=modal(`<h2>🔎 Conferência: site × relatórios</h2>${htmlConferencia(c)}<div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn p" id="mN">Ok</button></div>`);
+  $('#mN',m).onclick=closeModal;
 }

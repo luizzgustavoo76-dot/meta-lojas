@@ -121,6 +121,7 @@ async function renderAnaliseSetor(box, s){
   const metaDep=c=>{ const x=(S._metasDep||[]).find(m=>m.dep_codigo===c); return x&&+x.meta? +x.meta : null; };
   const faltaRel = (p0,p1)=> S.gerente ? `importe o relatório de ${fD(p0)} a ${fD(p1)}` : `sem o relatório de ${fD(p0)} a ${fD(p1)}`;
   const cartao=(rot, tot, p0, p1)=> `<div class="kpi"><div class="l">${rot}</div>${tot!=null?`<div class="v">${brl0(tot)}</div><div class="d">${fD(p0)} até ${fD(p1)} · ${varHtml(A.tot,tot)} (${A.tot-tot>=0?'+':''}${brl0(A.tot-tot)})</div>`:`<div class="v muted" style="font-size:20px">—</div><div class="d">${faltaRel(p0,p1)}</div>`}</div>`;
+  const lstS=(tit, ico, itens, fn, sub)=> `<div class="an-ol"><div class="an-olt">${ico} ${tit} <span class="small muted" style="font-weight:400">(${itens.length})</span></div><div class="small muted" style="margin:-2px 0 4px">${sub}</div>${itens.length?itens.slice(0,6).map(p=>`<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span>${esc(p.d)}<span class="small" style="display:block">${fn(p)}</span></span><b>${(p.efVol>=0?'+':'')+brl0(p.efVol)}</b></button>`).join(''):'<div class="small muted" style="padding:4px 0">nada por aqui</div>'}</div>`;
   const lst=(tit, ico, itens, fn)=> `<div class="an-ol"><div class="an-olt">${ico} ${tit}</div>${itens.length?itens.slice(0,5).map(p=>`<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span>${esc(p.d)}</span><b>${fn(p)}</b></button>`).join(''):'<div class="small muted" style="padding:4px 0">nada por aqui</div>'}</div>`;
   const quedas=todos.filter(p=>p.vb>0&&p.v>0&&p.v<p.vb).sort((a,b)=>(a.v-a.vb)-(b.v-b.vb));
   const altas=todos.filter(p=>p.vb>0&&p.v>p.vb).sort((a,b)=>(b.v-b.vb)-(a.v-a.vb));
@@ -145,6 +146,16 @@ async function renderAnaliseSetor(box, s){
   </div>
   ${notaDatas(ini, fim, [{rot:'ano passado', ini:ly?pa0:null, fim:pa1},{rot:'mês passado', ini:lm?pm0:null, fim:pm1}])}
   ${base?cardVolumePreco(A, nomeBase):''}
+  ${base?(()=>{ const sens=sensibilidade(todos); const fq=v=>`<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'▲':'▼'} ${pct(Math.abs(v),0)}</span>`;
+      const lin=p=>`preço ${fq(p.dp)} · qtd ${fq(p.dq)}`;
+      return `<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">🏷️ Sensibilidade ao preço</h2><div class="sp"></div><span class="small muted">preço médio e quantidade contra o ${nomeBase} · toque no produto para ver</span></div>
+      <p class="small muted" style="margin:-2px 0 8px">Só produtos que vendiam pelo menos ${brl0(200)} antes e cujo preço médio mudou 5% ou mais.</p>
+      <div class="an-olg">
+        ${lstS('Cliente sentiu o aumento','⚠️',sens.sentiu,lin,'preço subiu e a quantidade caiu 10% ou mais')}
+        ${lstS('Aguentou o aumento','💪',sens.aguentou,lin,'preço subiu e a quantidade se manteve')}
+        ${lstS('Baixou o preço e vendeu mais','🚀',sens.funcionou,lin,'quantidade subiu 10% ou mais')}
+        ${lstS('Baixou o preço e não vendeu mais','🤔',sens.naoFunc,lin,'a margem caiu sem ganho de volume')}
+      </div></div>`; })():''}
   ${base?`<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">🎯 Onde olhar primeiro</h2><div class="sp"></div><span class="small muted">comparado com o ${nomeBase} · toque no produto para ver</span></div>
     <div class="an-olg">
       ${lst('Maiores quedas','📉',quedas,dif)}
@@ -350,3 +361,15 @@ function cardVolumePreco(A, nomeBase){
     </div></div>`;
 }
 function efHtml(v, b){ if(!b) return v? `<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'+':''}${brl0(v)}</span>`:'<span class="muted">—</span>'; const x=v/b; return `<span style="color:${x>=0?'var(--good)':'var(--bad)'};font-weight:600">${x>=0?'▲':'▼'} ${pctBR(Math.abs(x),1)}</span>`; }
+
+/* sensibilidade ao preço: quanto a quantidade reagiu à mudança do preço médio de cada produto */
+function sensibilidade(ps){
+  const r={sentiu:[],aguentou:[],funcionou:[],naoFunc:[]};
+  for(const p of ps){ if(!(p.q>0 && p.qb>0 && p.vb>=200 && p.v>0)) continue;
+    const p0=p.vb/p.qb, p1=p.v/p.q, dp=p1/p0-1, dq=p.q/p.qb-1; if(Math.abs(dp)<0.05) continue;
+    const x={...p, dp, dq, efVol:(p.q-p.qb)*p0};
+    if(dp>0){ if(dq<=-0.1) r.sentiu.push(x); else if(dq>=-0.02) r.aguentou.push(x); }
+    else { if(dq>=0.1) r.funcionou.push(x); else if(dq<=0.02) r.naoFunc.push(x); } }
+  r.sentiu.sort((a,b)=>a.efVol-b.efVol); r.aguentou.sort((a,b)=>b.v-a.v); r.funcionou.sort((a,b)=>b.efVol-a.efVol); r.naoFunc.sort((a,b)=>b.vb-a.vb);
+  return r;
+}
