@@ -296,32 +296,39 @@ async function cardPerdaComparar(el, sid, reg, itens, gruposS){
   desenhar();
 }
 
-/* ---------- folha do encarregado (imprimir) ---------- */
-async function imprimirFolhaPerdas(s, reg, itens, LY, lyMap, venda){
+/* ---------- folha do encarregado (imprimir / PDF no celular) ---------- */
+async function dadosFolhaPerdas(s, reg, itens, LY, lyMap, venda){
   const sid=s.id, doc=curDoc(); let tetos={}, A=[];
   try{ [tetos, A]=await Promise.all([carregarTetos(), carregarAcoes(sid)]); }catch(_){ }
   const O = doc? orcamentoPerda(doc, tetos, sid).ls[0] : null;
-  const tot=itens.reduce((a,i)=>a+(+i.val||0),0), com=itens.filter(i=>i.q>0).sort((a,b)=>b.val-a.val), top=com.slice(0,12);
+  const tot=itens.reduce((a,i)=>a+(+i.val||0),0), com=itens.filter(i=>i.q>0).sort((a,b)=>b.val-a.val);
   const saida=i=>i.v+i.q>0? i.q/(i.v+i.q) : 0;
   let ac=0,n80=0; for(const i of com){ ac+=i.val; n80++; if(ac>=tot*0.8) break; }
-  const abertas=A.filter(a=>a.status==='aberta'), hoje=todayIso();
-  const dica=i=>{ const sd=saida(i); return sd>=0.3? 'pedir menos / rebaixar antes' : sd>=0.15? 'rebaixar mais cedo' : i.e>0&&i.q/i.e>=0.1? 'conferir validade na entrada' : ''; };
+  const hoje=todayIso();
+  const dica=i=>{ const sd=saida(i); return sd>=0.3? 'pedir menos e rebaixar' : sd>=0.15? 'rebaixar mais cedo' : i.e>0&&i.q/i.e>=0.1? 'conferir validade' : ''; };
+  return { setor:s.nome, sid, periodo:`${fD(reg.periodo_inicio)} a ${fD(reg.periodo_fim)}`, hoje, tot, venda, LY, O, n80, temLy:!!LY,
+    kpis:[ ['Perda no período', brl0(tot), LY?`ano passado ${brl0(+LY.valor)}`:''],
+           ['% da venda', venda?pctBR(tot/venda,2):'—', O?`teto ${O.teto.toLocaleString('pt-BR')}%`:''],
+           [O&&O.falta<0?'Passou do teto':'Ainda pode perder no mês', O?brl0(Math.abs(O.falta)):'—', O&&O.falta>=0&&O.porDia!=null?`cerca de ${brl0(O.porDia)} por dia`:''],
+           ['Concentração', `${n80} produto(s)`, 'fazem 80% da perda'] ],
+    prods: com.slice(0,12).map((i,k)=>{ const o=lyMap&&lyMap.get(String(i.c)); return { n:k+1, d:cap1(i.d), c:i.grupo?i.grupo.map(g=>g.c).join(' - '):String(i.c), e:qtBR(i.e), q:qtBR(i.q), val:brl0(i.val), sai:pctBR(saida(i),0), ly:o?brl0(o.val):'—', dica:dica(i) }; }),
+    acoes: A.filter(a=>a.status==='aberta').map(a=>({ d:cap1(a.descricao||a.codigo), acao:a.acao, quem:a.responsavel||'', ate:a.prazo? fD(a.prazo)+(a.prazo<hoje?' (atrasada)':'') : '' })) };
+}
+function usarPdfFolha(){ return matchMedia('(max-width:760px)').matches || matchMedia('(pointer:coarse)').matches || !!navigator.standalone; }
+async function imprimirFolhaPerdas(s, reg, itens, LY, lyMap, venda){
+  if(usarPdfFolha()) return pdfFolhaPerdas(s, reg, itens, LY, lyMap, venda);
+  const F=await dadosFolhaPerdas(s, reg, itens, LY, lyMap, venda);
   const html=`<div class="fi">
-    <div class="fi-h"><div><div class="fi-loja">Bom Dia São Luiz · Araruna</div><h1>Folha de perdas — ${esc(s.nome)}</h1><div class="fi-sub">Período ${fD(reg.periodo_inicio)} a ${fD(reg.periodo_fim)} · impresso em ${fD(hoje)}</div></div><img src="logo.png" alt=""></div>
-    <div class="fi-k">
-      <div><span>Perda no período</span><b>${brl0(tot)}</b><small>${LY?`ano passado ${brl0(+LY.valor)}`:'&nbsp;'}</small></div>
-      <div><span>% da venda</span><b>${venda?pctBR(tot/venda,2):'—'}</b><small>${O?`teto ${O.teto.toLocaleString('pt-BR')}%`:'&nbsp;'}</small></div>
-      <div><span>${O&&O.falta<0?'Passou do teto':'Ainda pode perder no mês'}</span><b>${O?brl0(Math.abs(O.falta)):'—'}</b><small>${O&&O.falta>=0&&O.porDia!=null?`≈ ${brl0(O.porDia)} por dia`:'&nbsp;'}</small></div>
-      <div><span>Concentração</span><b>${n80} produto(s)</b><small>fazem 80% da perda</small></div>
-    </div>
+    <div class="fi-h"><div><div class="fi-loja">Bom Dia São Luiz · Araruna</div><h1>Folha de perdas — ${esc(F.setor)}</h1><div class="fi-sub">Período ${F.periodo} · impresso em ${fD(F.hoje)}</div></div><img src="logo.png" alt=""></div>
+    <div class="fi-k">${F.kpis.map(k=>`<div><span>${esc(k[0])}</span><b>${esc(k[1])}</b><small>${esc(k[2])||'&nbsp;'}</small></div>`).join('')}</div>
     <h2>Produtos que mais perdem</h2>
-    <table><thead><tr><th>#</th><th>Produto</th><th class="n">Entrou</th><th class="n">Perdeu</th><th class="n">R$</th><th class="n">% do que sai</th>${LY?'<th class="n">Ano pass.</th>':''}<th>O que fazer</th></tr></thead><tbody>
-      ${top.map((i,k)=>{ const o=lyMap&&lyMap.get(String(i.c)); return `<tr><td>${k+1}</td><td>${esc(cap1(i.d))} <small>${esc(i.grupo?i.grupo.map(g=>g.c).join(' - '):String(i.c))}</small></td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.q)}</td><td class="n"><b>${brl0(i.val)}</b></td><td class="n">${pctBR(saida(i),0)}</td>${LY?`<td class="n">${o?brl0(o.val):'—'}</td>`:''}<td>${dica(i)}</td></tr>`; }).join('')}
+    <table><thead><tr><th>#</th><th>Produto</th><th class="n">Entrou</th><th class="n">Perdeu</th><th class="n">R$</th><th class="n">% do que sai</th>${F.temLy?'<th class="n">Ano pass.</th>':''}<th>O que fazer</th></tr></thead><tbody>
+      ${F.prods.map(p=>`<tr><td>${p.n}</td><td>${esc(p.d)} <small>${esc(p.c)}</small></td><td class="n">${p.e}</td><td class="n">${p.q}</td><td class="n"><b>${p.val}</b></td><td class="n">${p.sai}</td>${F.temLy?`<td class="n">${p.ly}</td>`:''}<td>${esc(p.dica)}</td></tr>`).join('')}
     </tbody></table>
     <h2>Plano de ação em aberto</h2>
-    ${abertas.length? `<table><thead><tr><th>Produto</th><th>O que vai ser feito</th><th>Quem</th><th>Até</th><th>Feito?</th></tr></thead><tbody>${abertas.map(a=>`<tr><td>${esc(cap1(a.descricao||a.codigo))}</td><td>${esc(a.acao)}</td><td>${esc(a.responsavel||'')}</td><td>${a.prazo?fD(a.prazo)+(a.prazo<hoje?' (atrasada)':''):''}</td><td class="fi-box">☐</td></tr>`).join('')}</tbody></table>` : '<p class="fi-vazio">Nenhuma ação em aberto. Anote abaixo o que vai ser feito nos produtos da lista.</p>'}
+    ${F.acoes.length? `<table><thead><tr><th>Produto</th><th>O que vai ser feito</th><th>Quem</th><th>Até</th><th>Feito?</th></tr></thead><tbody>${F.acoes.map(a=>`<tr><td>${esc(a.d)}</td><td>${esc(a.acao)}</td><td>${esc(a.quem)}</td><td>${esc(a.ate)}</td><td class="fi-box">☐</td></tr>`).join('')}</tbody></table>` : '<p class="fi-vazio">Nenhuma ação em aberto. Anote abaixo o que vai ser feito nos produtos da lista.</p>'}
     <h2>Anotações</h2>
-    <div class="fi-lin">${'<div></div>'.repeat(abertas.length>3?3:5)}</div>
+    <div class="fi-lin">${'<div></div>'.repeat(F.acoes.length>3?3:5)}</div>
     <div class="fi-ass"><div>Encarregado</div><div>Gerente</div></div>
   </div>`;
   let el=document.getElementById('folhaImp'); if(!el){ el=document.createElement('div'); el.id='folhaImp'; document.body.appendChild(el); }
@@ -330,4 +337,74 @@ async function imprimirFolhaPerdas(s, reg, itens, LY, lyMap, venda){
   window.addEventListener('afterprint', fim);
   const img=el.querySelector('img'); const vai=()=>setTimeout(()=>window.print(), 50);
   if(img && !img.complete){ img.onload=vai; img.onerror=vai; } else vai();
+}
+function carregarPdfLib(){
+  if(window.PDFLib) return Promise.resolve();
+  return new Promise((ok,erro)=>{ const sc=document.createElement('script'); sc.src='vendor/pdf-lib.min.js?v=1'; sc.onload=()=>ok(); sc.onerror=()=>erro(new Error('não consegui carregar o gerador de PDF')); document.head.appendChild(sc); });
+}
+async function gerarPdfFolha(F){
+  const {PDFDocument, StandardFonts, rgb}=window.PDFLib;
+  const pdf=await PDFDocument.create(); const pg=pdf.addPage([595.28, 841.89]);
+  const R=await pdf.embedFont(StandardFonts.Helvetica), B=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const W=595.28, M=32, cinza=rgb(.33,.33,.33), linha=rgb(.8,.8,.8), preto=rgb(.07,.07,.07), verm=rgb(.84,.12,.15);
+  const safe=(t,f)=>{ let o=''; for(const ch of String(t??'').replace(/≈/g,'~').replace(/→/g,'->').replace(/[   ]/g,' ')){ try{ f.widthOfTextAtSize(ch,10); o+=ch; }catch(_){ o+='?'; } } return o; };
+  const fit=(t,f,z,w)=>{ t=safe(t,f); if(f.widthOfTextAtSize(t,z)<=w) return t; while(t.length>1 && f.widthOfTextAtSize(t+'…',z)>w) t=t.slice(0,-1); return t+'…'; };
+  const txt=(t,x,y,{f=R,z=10,c=preto,w=null,dir='l'}={})=>{ let s=w? fit(t,f,z,w) : safe(t,f); const tw=f.widthOfTextAtSize(s,z); pg.drawText(s,{x: dir==='r'? x-tw : x, y, size:z, font:f, color:c}); };
+  const hl=(y,x1=M,x2=W-M,t=.6,c=linha)=>pg.drawLine({start:{x:x1,y},end:{x:x2,y},thickness:t,color:c});
+  let y=841.89-M;
+  // cabeçalho
+  try{ const png=await (await fetch('logo.png')).arrayBuffer(); const img=await pdf.embedPng(png); const h=46, w=img.width/img.height*h; pg.drawImage(img,{x:W-M-w, y:y-h, width:w, height:h}); }catch(_){ }
+  txt('Bom Dia São Luiz · Araruna', M, y-9, {z:9, c:cinza});
+  txt(`Folha de perdas — ${F.setor}`, M, y-29, {f:B, z:18});
+  txt(`Período ${F.periodo} · impresso em ${fD(F.hoje)}`, M, y-43, {z:9, c:cinza});
+  y-=54; hl(y, M, W-M, 2.5, verm); y-=8;
+  // kpis
+  const kw=(W-2*M-18)/4;
+  F.kpis.forEach((k,i)=>{ const x=M+i*(kw+6); pg.drawRectangle({x, y:y-46, width:kw, height:46, borderColor:rgb(.7,.7,.7), borderWidth:.8}); txt(k[0], x+6, y-12, {z:8, c:cinza, w:kw-12}); txt(k[1], x+6, y-29, {f:B, z:14, w:kw-12}); if(k[2]) txt(k[2], x+6, y-40, {z:8, c:cinza, w:kw-12}); });
+  y-=62;
+  // produtos
+  txt('Produtos que mais perdem', M, y, {f:B, z:12}); y-=14;
+  const cols = F.temLy
+    ? [['#',14,'l'],['Produto',150,'l'],['Entrou',42,'r'],['Perdeu',40,'r'],['R$',48,'r'],['% sai',30,'r'],['Ano pass.',46,'r'],['O que fazer',0,'l']]
+    : [['#',16,'l'],['Produto',200,'l'],['Entrou',50,'r'],['Perdeu',48,'r'],['R$',58,'r'],['% sai',40,'r'],['O que fazer',0,'l']];
+  const xs=[]; let cx=M; cols.forEach(c=>{ xs.push(cx); cx+=c[1]+6; }); const ultW=W-M-xs[xs.length-1];
+  const cel=(i,t,yy,o={})=>{ const c=cols[i], w=c[1]||ultW; txt(t, c[2]==='r'? xs[i]+w : xs[i], yy, {...o, w, dir:c[2]}); };
+  cols.forEach((c,i)=>cel(i,c[0],y,{f:B,z:8,c:cinza})); y-=4; hl(y,M,W-M,1.2,rgb(.2,.2,.2)); y-=12;
+  for(const p of F.prods){ const vals=[p.n, `${p.d}  ${p.c}`, p.e, p.q, p.val, p.sai].concat(F.temLy?[p.ly]:[]).concat([p.dica]);
+    vals.forEach((v,i)=>cel(i, v, y, {z:9, f: cols[i][0]==='R$'?B:R})); y-=5; hl(y); y-=12; }
+  y-=8;
+  // ações
+  txt('Plano de ação em aberto', M, y, {f:B, z:12}); y-=14;
+  if(F.acoes.length){
+    const ac=[['Produto',115],['O que vai ser feito',200],['Quem',62],['Até',98],['Feito?',0]]; const ax=[]; let x=M; ac.forEach(c=>{ ax.push(x); x+=c[1]+6; });
+    ac.forEach((c,i)=>txt(c[0], ax[i], y, {f:B, z:8, c:cinza})); y-=4; hl(y,M,W-M,1.2,rgb(.2,.2,.2)); y-=12;
+    for(const a of F.acoes.slice(0,6)){ [a.d,a.acao,a.quem,a.ate].forEach((v,i)=>txt(v, ax[i], y, {z:9, w:ac[i][1]})); pg.drawRectangle({x:ax[4]+6, y:y-2, width:10, height:10, borderColor:rgb(.2,.2,.2), borderWidth:.8}); y-=5; hl(y); y-=12; }
+  } else { txt('Nenhuma ação em aberto. Anote abaixo o que vai ser feito nos produtos da lista.', M, y, {z:9, c:cinza}); y-=14; }
+  y-=8;
+  txt('Anotações', M, y, {f:B, z:12}); y-=6;
+  const nLin=Math.max(2, Math.min(6, Math.floor((y-M-50)/20))); for(let i=0;i<nLin;i++){ y-=20; hl(y,M,W-M,.6,rgb(.65,.65,.65)); }
+  y=Math.min(y-34, M+40); const half=(W-2*M-40)/2;
+  hl(y, M, M+half, .8, rgb(.2,.2,.2)); hl(y, W-M-half, W-M, .8, rgb(.2,.2,.2));
+  txt('Encarregado', M+half/2-R.widthOfTextAtSize('Encarregado',9)/2, y-11, {z:9}); txt('Gerente', W-M-half/2-R.widthOfTextAtSize('Gerente',9)/2, y-11, {z:9});
+  return await pdf.save();
+}
+async function pdfFolhaPerdas(s, reg, itens, LY, lyMap, venda){
+  busy('Montando a folha em PDF…');
+  let file;
+  try{ const [F]=await Promise.all([dadosFolhaPerdas(s, reg, itens, LY, lyMap, venda), carregarPdfLib()]);
+    const bytes=await gerarPdfFolha(F);
+    const nome=`folha-perdas-${normN2(s.nome).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${reg.periodo_fim}.pdf`;
+    file=new File([bytes], nome, {type:'application/pdf'}); }
+  catch(e){ closeModal(); toast('Não consegui montar o PDF: '+(e.message||e), 6000); return; }
+  closeModal();
+  const url=URL.createObjectURL(file);
+  const podeComp = navigator.canShare && navigator.canShare({files:[file]});
+  const m=modal(`<h2>🖨️ Folha do encarregado</h2><p class="small" style="margin:0 0 10px">A folha de <b>${esc(s.nome)}</b> está pronta em PDF (uma página A4).</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${podeComp?`<button class="btn p" id="fpShare">📤 Imprimir ou enviar</button><p class="small muted" style="margin:-2px 0 2px">Abre o menu do celular: escolha <b>Imprimir</b>, ou mande pelo WhatsApp para o encarregado.</p>`:''}
+      <a class="btn ${podeComp?'':'p'}" id="fpAbrir" href="${url}" target="_blank" rel="noopener" download="${esc(file.name)}" style="text-align:center;text-decoration:none">📄 Abrir / baixar o PDF</a>
+    </div>
+    <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>`);
+  $('#mN',m).onclick=()=>{ closeModal(); setTimeout(()=>URL.revokeObjectURL(url), 60000); };
+  const sh=$('#fpShare',m); if(sh) sh.onclick=async()=>{ try{ await navigator.share({files:[file], title:`Folha de perdas — ${s.nome}`}); }catch(e){ if(e.name!=='AbortError') toast('Não deu para compartilhar: '+e.message, 5000); } };
 }
