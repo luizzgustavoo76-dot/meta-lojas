@@ -79,19 +79,75 @@ async function cardPerdaDiaSemana(box, sid){
   const fim=S.cutoff||todayIso(), ini=isoOf(new Date(new Date(fim+'T12:00:00').getTime()-55*864e5));
   let L; try{ L=await todasLinhas(()=>{ let b=S.sb.from('lancamentos').select('data,setor_id,venda,perda').gte('data',ini).lte('data',fim); if(sid) b=b.eq('setor_id',sid); return b; }); }catch(_){ return; }
   if(!box.isConnected) return;
-  const porDia={}; for(const x of L){ const d=porDia[x.data]=porDia[x.data]||{p:0,v:0}; d.p+=+x.perda||0; d.v+=+x.venda||0; }
-  const ds=Object.entries(porDia).filter(([,x])=>x.v>0); if(ds.length<14) return;
-  const W=[0,1,2,3,4,5,6].map(w=>({w, n:0, p:0, v:0}));
-  for(const [k,x] of ds){ const w=new Date(k+'T12:00:00').getDay(); W[w].n++; W[w].p+=x.p; W[w].v+=x.v; }
-  const nomes=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const porDia={}; for(const x of L){ const d=porDia[x.data]=porDia[x.data]||{data:x.data,p:0,v:0,set:[]}; d.p+=+x.perda||0; d.v+=+x.venda||0; if(+x.perda) d.set.push(x); }
+  const ds=Object.values(porDia).filter(x=>x.v>0); if(ds.length<14) return;
+  const W=[0,1,2,3,4,5,6].map(w=>({w, n:0, p:0, v:0, dias:[]}));
+  for(const x of ds){ const w=new Date(x.data+'T12:00:00').getDay(); W[w].n++; W[w].p+=x.p; W[w].v+=x.v; W[w].dias.push(x); }
+  const nomes=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'], plural=['Domingos','Segundas','Terças','Quartas','Quintas','Sextas','Sábados'];
   const ws=W.filter(x=>x.n).map(x=>({...x, media:x.p/x.n, pc:x.v? x.p/x.v : 0}));
   const mediaGeral=ws.reduce((a,x)=>a+x.p,0)/ws.reduce((a,x)=>a+x.n,0); const max=Math.max(...ws.map(x=>x.media))||1;
   const pior=[...ws].sort((a,b)=>b.media-a.media)[0];
   const el=document.createElement('div'); el.className='card'; el.style.marginTop='12px';
   el.innerHTML=`<div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">📅 Perda por dia da semana</h2><div class="sp"></div><span class="small muted">média das últimas 8 semanas (${fD(ini)} a ${fD(fim)}) · sem balanços</span></div>
-    <div class="dsm">${ws.map(x=>`<div class="dsm-i ${x===pior?'dsm-pior':''}"><div class="dsm-n">${nomes[x.w].slice(0,3)}</div><div class="dsm-bar"><i style="height:${Math.max(4,x.media/max*100)}%"></i></div><div class="dsm-v">${brl0(x.media)}</div><div class="small muted">${pctBR(x.pc,1)} da venda</div></div>`).join('')}</div>
+    <div class="dsm">${ws.map(x=>`<button type="button" class="dsm-i ${x===pior?'dsm-pior':''}" data-w="${x.w}" aria-expanded="false" title="Ver dia a dia"><div class="dsm-n">${nomes[x.w].slice(0,3)}</div><div class="dsm-bar"><i style="height:${Math.max(4,x.media/max*100)}%"></i></div><div class="dsm-v">${brl0(x.media)}</div><div class="small muted">${pctBR(x.pc,1)} da venda</div></button>`).join('')}</div>
+    <p class="small muted" style="margin:6px 0 0">👆 Toque num dia para ver cada data e o que foi perdido.</p>
+    <div class="dsm-det hide"></div>
     ${pior&&mediaGeral?`<p class="small" style="margin:8px 0 0"><b>${nomes[pior.w]}</b> é o dia que mais perde: ${brl0(pior.media)} em média, ${(pior.media/mediaGeral).toLocaleString('pt-BR',{maximumFractionDigits:1})}× a média dos outros dias. Vale olhar o pedido e a exposição da véspera.</p>`:''}`;
   box.appendChild(el);
+  const det=$('.dsm-det',el);
+  el.querySelectorAll('.dsm-i').forEach(bt=>bt.onclick=()=>{
+    const aberto=bt.classList.contains('dsm-sel');
+    el.querySelectorAll('.dsm-i').forEach(b=>{ b.classList.remove('dsm-sel'); b.setAttribute('aria-expanded','false'); });
+    if(aberto){ det.classList.add('hide'); det.innerHTML=''; return; }
+    bt.classList.add('dsm-sel'); bt.setAttribute('aria-expanded','true');
+    const x=ws.find(y=>y.w===+bt.dataset.w); det.innerHTML=htmlDiasDaSemana(x, plural[x.w], sid); det.classList.remove('hide');
+    det.querySelectorAll('details[data-dia]').forEach(d=>d.addEventListener('toggle',()=>{ if(d.open && !d.dataset.ok){ d.dataset.ok=1; abrirDiaPerda($('.dsm-dd',d), x.dias.find(y=>y.data===d.dataset.dia), sid); } }));
+  });
+}
+function htmlDiasDaSemana(x, nome, sid){
+  const dias=[...x.dias].sort((a,b)=>b.data.localeCompare(a.data));
+  const vals=dias.map(d=>d.p).sort((a,b)=>a-b), med=vals.length%2? vals[(vals.length-1)/2] : (vals[vals.length/2-1]+vals[vals.length/2])/2;
+  const mx=Math.max(...dias.map(d=>d.p))||1, fora=d=> d.p>0 && d.p>=Math.max(2*med, x.media*1.5) && d.p-med>=100;
+  const outl=dias.filter(fora), semF=dias.filter(d=>!fora(d)), mediaSem=semF.length? semF.reduce((a,d)=>a+d.p,0)/semF.length : 0;
+  const dow=['dom','seg','ter','qua','qui','sex','sáb']; const zeros=dias.filter(d=>!(d.p>0)).length;
+  return `<div class="dsm-h"><b>${nome}</b> · ${dias.length} dia(s) · média ${brl0(x.media)} · no meio (mediana) ${brl0(med)}</div>
+    ${outl.length?`<div class="note warn small" style="margin:6px 0">⚠️ ${outl.length===1?`O dia <b>${fD(outl[0].data)}</b> puxou a média para cima`:`<b>${outl.map(d=>fD(d.data)).join(', ')}</b> puxaram a média para cima`}. Sem ${outl.length===1?'ele':'eles'}, a média de ${nome.toLowerCase()} seria <b>${brl0(mediaSem)}</b>.${zeros>=2?` Em <b>${zeros} de ${dias.length}</b> ${nome.toLowerCase()} não teve perda lançada: a perda pode estar sendo lançada junta, de vários dias, numa data só.`:''}</div>`:''}
+    <div class="dsm-dl">${dias.map(d=>`<details class="dsm-d ${fora(d)?'dsm-fora':''}" data-dia="${d.data}"><summary>
+      <span class="dsm-dt">${fD(d.data)} <span class="muted">${dow[new Date(d.data+'T12:00:00').getDay()]}</span></span>
+      <span class="dsm-db"><i style="width:${Math.max(d.p?2:0,d.p/mx*100)}%"></i></span>
+      <span class="dsm-dv"><b>${brl0(d.p)}</b><span class="small muted">${d.v?pctBR(d.p/d.v,1):'—'} de ${brl0(d.v)}</span></span>
+      ${fora(d)?'<span class="dsm-tag">fora do normal</span>':''}</summary><div class="dsm-dd small muted">carregando…</div></details>`).join('')}</div>`;
+}
+async function abrirDiaPerda(box, d, sid){
+  if(!d){ box.textContent=''; return; }
+  if(!(d.p>0)){ box.textContent='Nenhuma perda lançada nesse dia.'; return; }
+  if(!sid){ // loja: por setor
+    const ls=[...d.set].sort((a,b)=>b.perda-a.perda);
+    box.innerHTML= ls.length? `<div class="dsm-pl">${ls.map(x=>`<div><span>${esc(nomeSetor(x.setor_id))}</span><span class="muted">${x.venda?pctBR(x.perda/x.venda,1):''}</span><b>${brl0(+x.perda)}</b></div>`).join('')}</div>` : 'Nenhuma perda lançada nesse dia.';
+    box.classList.remove('muted'); return; }
+  const it=await itensPerdaDoDia(sid, d.data).catch(()=>null);
+  if(!box.isConnected) return;
+  if(!it){ box.innerHTML=`Os produtos desse dia não estão no site. Para ver o que foi perdido, importe na aba Perdas o relatório de perdas <b>só do dia ${fD(d.data)}</b> (de ${fD(d.data)} a ${fD(d.data)}).`; return; }
+  const ls=it.filter(i=>i.val>0.009).sort((a,b)=>b.val-a.val), tot=ls.reduce((a,i)=>a+i.val,0);
+  if(!ls.length){ box.textContent='Nenhum produto com perda nesse dia.'; return; }
+  const top=ls.slice(0,12);
+  box.classList.remove('muted');
+  box.innerHTML=`<div class="dsm-pl">${top.map(i=>`<div><span>${esc(cap1(i.d))} <span class="muted">${esc(String(i.c))}</span></span><span class="muted">${qtBR(i.q)} ${/(^|\s)KG(\s|$)/i.test(i.d||'')?'kg':'un'}</span><b>${brl(i.val)}</b></div>`).join('')}</div>
+    <div class="muted" style="margin-top:4px">${ls.length} produto(s) · ${brl(tot)}${ls.length>top.length?` · mostrando os ${top.length} maiores`:''}${top[0]&&tot?` · <b>${esc(cap1(top[0].d))}</b> foi ${pctBR(top[0].val/tot,0)} da perda do dia`:''}</div>`;
+}
+const _itDia={};
+async function itensPerdaDoDia(sid, dia){
+  const k=sid+'|'+dia; if(k in _itDia) return _itDia[k];
+  const ini=dia.slice(0,8)+'01', ant=isoOf(new Date(new Date(dia+'T12:00:00').getTime()-864e5));
+  const R=await q(S.sb.from('analise_perdas').select('periodo_inicio,periodo_fim,dados').eq('setor_id',sid).in('periodo_fim',[dia,ant]).in('periodo_inicio',[dia,ini]));
+  const itens=r=>(r?.dados?.secoes||[]).flatMap(s=>s.itens||[]);
+  const so=R.find(r=>r.periodo_inicio===dia && r.periodo_fim===dia);
+  let out=null;
+  if(so) out=itens(so).map(i=>({...i, val:+i.val||0, q:+i.q||0}));
+  else { const a=R.find(r=>r.periodo_inicio===ini && r.periodo_fim===dia), b=R.find(r=>r.periodo_inicio===ini && r.periodo_fim===ant);
+    if(a && b){ const m=new Map(itens(b).map(i=>[String(i.c),i]));
+      out=itens(a).map(i=>{ const o=m.get(String(i.c)); return {...i, val:round2((+i.val||0)-(+o?.val||0)), q:round2((+i.q||0)-(+o?.q||0))}; }); } }
+  return _itDia[k]=out;
 }
 
 /* ---------- perda × ruptura ---------- */
