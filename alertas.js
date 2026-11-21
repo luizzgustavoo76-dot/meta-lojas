@@ -62,6 +62,15 @@ async function calcularAlertas(forcar){
   for(const r of P){ if(!S.cutoff || r.periodo_fim>=S.cutoff) continue; const a=diaSeg(r.periodo_fim);
     add('medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: falta o relatório de perdas ${a===S.cutoff?'de '+fD(a):`de ${fD(a)} a ${fD(S.cutoff)}`}`,`o último relatório importado vai até ${fD(r.periodo_fim)} e a venda já está lançada até ${fD(S.cutoff)}. Importe o relatório só do dia: o site soma no mês e mostra os produtos de cada dia.`,'per'); }
 
+  // 1d) falta o relatório de trocas dos últimos dias
+  if(S.cutoff){ const tUlt=Object.fromEntries(T.map(r=>[r.setor_id,r.periodo_fim])), lista=[];
+    for(const sid of (typeof SETORES_TROCA!=='undefined'? SETORES_TROCA : [])){ if(!pode(sid) || !doc.setores.some(x=>x.id===sid)) continue; const f=tUlt[sid]; if(f && f>=S.cutoff) continue; lista.push({sid, de: f? diaSeg(f) : ini}); }
+    const per=x=>x.de===S.cutoff? 'de '+fD(S.cutoff) : `de ${fD(x.de)} a ${fD(S.cutoff)}`;
+    if(lista.length>1 && S.gerente){ const mesmo=lista.every(x=>x.de===lista[0].de);
+      add('medio','troca',lista[0].sid,`Falta o relatório de trocas ${mesmo? per(lista[0]) : 'dos últimos dias'}`,`${lista.length} setor(es) sem trocas importadas até ${fD(S.cutoff)}, dia em que a venda já está lançada. Importe o relatório de trocas (pode ser só do dia): o site soma no mês.`,'trc', mesmo? [lista.map(x=>nomeSetor(x.sid)).join(', ')] : lista.map(x=>`${nomeSetor(x.sid)}: ${per(x)}`)); }
+    else for(const x of lista) add('medio','troca',x.sid,`${nomeSetor(x.sid)}: falta o relatório de trocas ${per(x)}`,`a venda já está lançada até ${fD(S.cutoff)}. Importe o relatório de trocas (pode ser só do dia): o site soma no mês.`,'trc');
+  }
+
   // 2) perdas por produto
   for(const r of P){ const its=r.dados.secoes.flatMap(x=>x.itens).filter(i=>i.q>0); const tot=+r.valor||0; if(!tot) continue; const per=`${fD(r.periodo_inicio)} a ${fD(r.periodo_fim)}`;
     const ly=lyDe(PL,r); if(ly){ const b=+ly.valor||0; if(b>=200){ const d=tot/b-1; if(d*100>L.perdaSubiu) add(d>0.5?'alto':'medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: perda subiu ${pctBR(d,0)} contra o ano passado`,`${brl0(tot)} em ${per} · ano passado ${brl0(b)}`,'per'); }
