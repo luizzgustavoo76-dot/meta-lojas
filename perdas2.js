@@ -240,3 +240,94 @@ async function cardPlanoAcao(el, sid, itens, dias, periodo, redesenhar){
   el.querySelectorAll('[data-acs]').forEach(s=>s.onchange=async()=>{ try{ await q(S.sb.from('acoes_perda').update({status:s.value, atualizado_em:new Date().toISOString()}).eq('id',+s.dataset.acs)); toast('Ação atualizada ✔'); redesenhar(); }catch(e){ toast(e.message,5000); } });
   el.querySelectorAll('[data-acd]').forEach(b=>b.onclick=()=>confirmBox('Apagar essa ação?', async()=>{ try{ await q(S.sb.from('acoes_perda').delete().eq('id',+b.dataset.acd)); redesenhar(); }catch(e){ toast(e.message,5000); } }));
 }
+
+/* ---------- preço × quantidade e o que melhorou ---------- */
+function mesesAtras(k, n){ const [y,m,d]=k.split('-').map(Number); const t=new Date(y, m-1-n, 1); const ult=new Date(t.getFullYear(), t.getMonth()+1, 0).getDate(); return isoOf(new Date(t.getFullYear(), t.getMonth(), Math.min(d, ult), 12)); }
+function decomporPerda(itens, base){
+  const bm=new Map(base.map(i=>[String(i.c),i])), vistos=new Set(), ls=[];
+  for(const i of itens){ const o=bm.get(String(i.c)); vistos.add(String(i.c));
+    const v1=+i.val||0, q1=+i.q||0, v0=o?+o.val||0:0, q0=o?+o.q||0:0; if(!v1&&!v0) continue;
+    let dq, dp;
+    if(!o || q0<=0 || q1<=0){ dq=v1-v0; dp=0; }
+    else { const c0=v0/q0, c1=v1/q1; dq=(q1-q0)*c0; dp=(c1-c0)*q1; }
+    ls.push({c:i.c, d:i.d, v1, v0, q1, q0, dq, dp, dt:v1-v0, novo:!o||!v0}); }
+  for(const o of base){ if(vistos.has(String(o.c)) || !(+o.val>0)) continue; ls.push({c:o.c, d:o.d, v1:0, v0:+o.val, q1:0, q0:+o.q||0, dq:-(+o.val), dp:0, dt:-(+o.val), sumiu:true}); }
+  const Q=ls.reduce((a,x)=>a+x.dq,0), P=ls.reduce((a,x)=>a+x.dp,0);
+  return { ls, Q, P, T:Q+P };
+}
+async function cardPerdaComparar(el, sid, reg, itens, gruposS){
+  const per=[ {k:'mp', t:'mês passado', ini:mesesAtras(reg.periodo_inicio,1), fim:mesesAtras(reg.periodo_fim,1)}, {k:'ap', t:'ano passado', ini:addAnos(reg.periodo_inicio,-1), fim:addAnos(reg.periodo_fim,-1)} ];
+  let bases=[];
+  try{ for(const p of per){ const r=(await q(S.sb.from('analise_perdas').select('valor,dados').eq('setor_id',sid).eq('periodo_inicio',p.ini).eq('periodo_fim',p.fim).limit(1)))[0]; if(r) bases.push({...p, itens:agruparItensPerda(r.dados.secoes.flatMap(x=>x.itens.map(i=>({...i, sec:x.nome}))), gruposS)}); } }catch(_){ }
+  let acoes=new Set(); try{ acoes=new Set((await carregarAcoes(sid)).map(a=>String(a.codigo))); }catch(_){ }
+  if(!el.isConnected) return;
+  if(!bases.length){ el.innerHTML=`<div class="card" style="margin-top:12px"><h2 style="margin:0">⚖️ Preço ou quantidade? · ✅ O que melhorou</h2><p class="small muted" style="margin:6px 0 0">Para comparar, importe o relatório de perdas do mesmo período do mês passado (${fD(per[0].ini)} a ${fD(per[0].fim)}) ou do ano passado (${fD(per[1].ini)} a ${fD(per[1].fim)}).</p></div>`; return; }
+  S.perBase=S.perBase||{}; let b=bases.find(x=>x.k===S.perBase[sid])||bases[0];
+  const desenhar=()=>{
+    const D=decomporPerda(itens, b.itens), cor=v=>Math.abs(v)<1?'var(--muted)':v>0?'var(--bad)':'var(--good)', sg=v=>Math.abs(v)<1?'R$ 0':(v>0?'+':'−')+brl0(Math.abs(v));
+    const sel=bases.length>1? `<div class="dsm-ms" role="group" aria-label="Comparar com">${bases.map(x=>`<button type="button" class="dsm-m ${x===b?'on':''}" data-b="${x.k}">${x.t[0].toUpperCase()+x.t.slice(1)}</button>`).join('')}</div>` : `<span class="small muted">contra o ${b.t}</span>`;
+    const tot0=b.itens.reduce((a,i)=>a+(+i.val||0),0), tot1=itens.reduce((a,i)=>a+(+i.val||0),0);
+    const mx=Math.max(Math.abs(D.Q),Math.abs(D.P),1);
+    const barra=(v,t,sub)=>`<div class="pq-l"><div class="pq-t"><b>${t}</b><span class="small muted">${sub}</span></div><div class="pq-b"><i style="width:${Math.abs(v)/mx*100}%;background:${cor(v)}"></i></div><b style="color:${cor(v)}">${sg(v)}</b></div>`;
+    let frase;
+    if(Math.abs(D.T)<1) frase='A perda ficou praticamente igual.';
+    else if(D.T>0) frase = D.P>0 && D.P>=D.Q ? `A perda subiu mais pelo <b>custo mais alto</b> dos produtos do que por perder mais. A quantidade perdida ${D.Q>=1?'também subiu, mas menos':D.Q<=-1?'até caiu':'ficou igual'}.` : `A perda subiu principalmente porque <b>se perdeu mais quantidade</b>${D.P>0?'; o custo mais alto também ajudou a subir':'; o custo até ajudou a segurar'}.`;
+    else frase = D.Q<0 && D.Q<=D.P ? `A perda caiu porque <b>se perdeu menos quantidade</b>${D.P>0?', mesmo com o custo mais alto':''}. Melhora de verdade.` : `A perda caiu mais por <b>custo mais baixo</b> dos produtos do que por perder menos.`;
+    const topQ=[...D.ls].filter(x=>x.dq>0).sort((a,b)=>b.dq-a.dq).slice(0,5), topP=[...D.ls].filter(x=>x.dp>0).sort((a,b)=>b.dp-a.dp).slice(0,5);
+    const lista=(ls,f)=>ls.length? `<div class="dsm-pl small">${ls.map(x=>`<div><span>${esc(cap1(x.d))}${x.novo?' <span class="an-novo">nova</span>':''}</span><span class="muted">${f(x)}</span><b style="color:var(--bad)">+${brl0(f===fq?x.dq:x.dp)}</b></div>`).join('')}</div>` : '<div class="small muted">nenhum</div>';
+    const fq=x=>x.novo? `${qtBR(x.q1)} perdidos (não tinha)` : `${qtBR(x.q0)} → ${qtBR(x.q1)}`;
+    const fp=x=>`${brl(x.v0/x.q0)} → ${brl(x.v1/x.q1)}`;
+    // o que melhorou
+    const mel=[...D.ls].filter(x=>x.dt<-0.5).sort((a,b)=>a.dt-b.dt), somaMel=mel.reduce((a,x)=>a+x.dt,0);
+    const melQ=mel.filter(x=>x.dq<0 && x.dq<=x.dp);
+    el.innerHTML=`<div class="card" style="margin-top:12px"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">⚖️ Preço ou quantidade?</h2><div class="sp"></div>${sel}</div>
+      <div class="small muted" style="margin-top:4px">${b.t[0].toUpperCase()+b.t.slice(1)} (${fD(b.ini)} a ${fD(b.fim)}): ${brl0(tot0)} → agora: ${brl0(tot1)} · <b style="color:${cor(D.T)}">${sg(D.T)}</b></div>
+      <div class="pq" style="margin-top:8px">${barra(D.Q,'Quantidade','perdeu mais ou menos quilos/unidades')}${barra(D.P,'Preço','custo dos produtos mais alto ou mais baixo')}</div>
+      <p class="small" style="margin:8px 0 0">${frase}</p>
+      <div class="pq-2"><div><div class="small" style="font-weight:700;margin:8px 0 4px">Mais subiram por quantidade</div>${lista(topQ,fq)}</div>
+        <div><div class="small" style="font-weight:700;margin:8px 0 4px">Mais subiram por preço (custo do kg/un)</div>${lista(topP,fp)}</div></div></div>
+    <div class="card" style="margin-top:12px"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">✅ O que melhorou</h2><div class="sp"></div><span class="small muted">contra o ${b.t}</span></div>
+      ${mel.length? `<p class="small" style="margin:6px 0 8px"><b>${mel.length} produto(s)</b> perderam menos, somando <b style="color:var(--good)">${brl0(-somaMel)} a menos</b>. ${melQ.length} deles por perder menos quantidade.</p>
+      <div class="dsm-pl small">${mel.slice(0,10).map(x=>{ const qtd=x.sumiu? 'não teve perda agora' : x.q0? `qtd ${qtBR(x.q0)} → ${qtBR(x.q1)}` : ''; const porQ=x.dq<0 && x.dq<=x.dp;
+        return `<div><span>${esc(cap1(x.d))}${acoes.has(String(x.c))?' <span class="badge" title="tem plano de ação">📝 ação</span>':''}<span class="muted" style="display:block;font-size:11.5px">${brl0(x.v0)} → ${brl0(x.v1)} · ${qtd}${porQ?'':' · <span title="caiu mais pelo custo do que pela quantidade">mais pelo preço</span>'}</span></span><span class="muted">${x.v0?'▼ '+pctBR(-x.dt/x.v0,0):''}</span><b style="color:var(--good)">−${brl0(-x.dt)}</b></div>`; }).join('')}</div>`
+      : '<p class="small muted" style="margin:6px 0 0">Nenhum produto perdeu menos do que no período de comparação.</p>'}</div>`;
+    el.querySelectorAll('[data-b]').forEach(x=>x.onclick=()=>{ b=bases.find(y=>y.k===x.dataset.b); S.perBase[sid]=b.k; desenhar(); });
+  };
+  desenhar();
+}
+
+/* ---------- folha do encarregado (imprimir) ---------- */
+async function imprimirFolhaPerdas(s, reg, itens, LY, lyMap, venda){
+  const sid=s.id, doc=curDoc(); let tetos={}, A=[];
+  try{ [tetos, A]=await Promise.all([carregarTetos(), carregarAcoes(sid)]); }catch(_){ }
+  const O = doc? orcamentoPerda(doc, tetos, sid).ls[0] : null;
+  const tot=itens.reduce((a,i)=>a+(+i.val||0),0), com=itens.filter(i=>i.q>0).sort((a,b)=>b.val-a.val), top=com.slice(0,12);
+  const saida=i=>i.v+i.q>0? i.q/(i.v+i.q) : 0;
+  let ac=0,n80=0; for(const i of com){ ac+=i.val; n80++; if(ac>=tot*0.8) break; }
+  const abertas=A.filter(a=>a.status==='aberta'), hoje=todayIso();
+  const dica=i=>{ const sd=saida(i); return sd>=0.3? 'pedir menos / rebaixar antes' : sd>=0.15? 'rebaixar mais cedo' : i.e>0&&i.q/i.e>=0.1? 'conferir validade na entrada' : ''; };
+  const html=`<div class="fi">
+    <div class="fi-h"><div><div class="fi-loja">Bom Dia São Luiz · Araruna</div><h1>Folha de perdas — ${esc(s.nome)}</h1><div class="fi-sub">Período ${fD(reg.periodo_inicio)} a ${fD(reg.periodo_fim)} · impresso em ${fD(hoje)}</div></div><img src="logo.png" alt=""></div>
+    <div class="fi-k">
+      <div><span>Perda no período</span><b>${brl0(tot)}</b><small>${LY?`ano passado ${brl0(+LY.valor)}`:'&nbsp;'}</small></div>
+      <div><span>% da venda</span><b>${venda?pctBR(tot/venda,2):'—'}</b><small>${O?`teto ${O.teto.toLocaleString('pt-BR')}%`:'&nbsp;'}</small></div>
+      <div><span>${O&&O.falta<0?'Passou do teto':'Ainda pode perder no mês'}</span><b>${O?brl0(Math.abs(O.falta)):'—'}</b><small>${O&&O.falta>=0&&O.porDia!=null?`≈ ${brl0(O.porDia)} por dia`:'&nbsp;'}</small></div>
+      <div><span>Concentração</span><b>${n80} produto(s)</b><small>fazem 80% da perda</small></div>
+    </div>
+    <h2>Produtos que mais perdem</h2>
+    <table><thead><tr><th>#</th><th>Produto</th><th class="n">Entrou</th><th class="n">Perdeu</th><th class="n">R$</th><th class="n">% do que sai</th>${LY?'<th class="n">Ano pass.</th>':''}<th>O que fazer</th></tr></thead><tbody>
+      ${top.map((i,k)=>{ const o=lyMap&&lyMap.get(String(i.c)); return `<tr><td>${k+1}</td><td>${esc(cap1(i.d))} <small>${esc(i.grupo?i.grupo.map(g=>g.c).join(' - '):String(i.c))}</small></td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.q)}</td><td class="n"><b>${brl0(i.val)}</b></td><td class="n">${pctBR(saida(i),0)}</td>${LY?`<td class="n">${o?brl0(o.val):'—'}</td>`:''}<td>${dica(i)}</td></tr>`; }).join('')}
+    </tbody></table>
+    <h2>Plano de ação em aberto</h2>
+    ${abertas.length? `<table><thead><tr><th>Produto</th><th>O que vai ser feito</th><th>Quem</th><th>Até</th><th>Feito?</th></tr></thead><tbody>${abertas.map(a=>`<tr><td>${esc(cap1(a.descricao||a.codigo))}</td><td>${esc(a.acao)}</td><td>${esc(a.responsavel||'')}</td><td>${a.prazo?fD(a.prazo)+(a.prazo<hoje?' (atrasada)':''):''}</td><td class="fi-box">☐</td></tr>`).join('')}</tbody></table>` : '<p class="fi-vazio">Nenhuma ação em aberto. Anote abaixo o que vai ser feito nos produtos da lista.</p>'}
+    <h2>Anotações</h2>
+    <div class="fi-lin">${'<div></div>'.repeat(abertas.length>3?3:5)}</div>
+    <div class="fi-ass"><div>Encarregado</div><div>Gerente</div></div>
+  </div>`;
+  let el=document.getElementById('folhaImp'); if(!el){ el=document.createElement('div'); el.id='folhaImp'; document.body.appendChild(el); }
+  el.innerHTML=html; document.body.classList.add('imprimindo');
+  const fim=()=>{ document.body.classList.remove('imprimindo'); window.removeEventListener('afterprint', fim); };
+  window.addEventListener('afterprint', fim);
+  const img=el.querySelector('img'); const vai=()=>setTimeout(()=>window.print(), 50);
+  if(img && !img.complete){ img.onload=vai; img.onerror=vai; } else vai();
+}

@@ -121,7 +121,7 @@ async function renderPerdasSetor(box, s){
   box.innerHTML=`
     <div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap">
       <label class="f" style="margin:0">Período<select id="pdSel">${lista.map(x=>`<option value="${x.id}" ${x.id===reg.id?'selected':''}>${fD(x.periodo_inicio)} a ${fD(x.periodo_fim)} · ${brl0(x.valor)}</option>`).join('')}</select></label>
-      <div class="sp"></div>${btnImp}
+      <div class="sp"></div><button class="btn" id="pdFolha" title="Imprimir a folha do encarregado">🖨️ <span class="d-inl">Folha do encarregado</span><span class="m-inl">Imprimir</span></button>${btnImp}
     </div>
     <div class="grid kpis">
       <div class="kpi hero"><div class="l">Perda de ${fD(reg.periodo_inicio)} até ${fD(reg.periodo_fim)}</div><div class="v">${brl0(tot)}</div><div class="d">${comPerda.length} produtos com perda · ${qtBR(qt)} perdidos</div></div>
@@ -140,6 +140,7 @@ async function renderPerdasSetor(box, s){
         return `${piores.length?`<li>Mais subiram contra o ano passado: ${piores.map(x=>`<b>${esc(cap1(x.i.d))}</b> +${brl0(x.d)}`).join(' · ')}</li>`:''}${melhores.length?`<li>Mais caíram: ${melhores.map(x=>`<b>${esc(cap1(x.o.d))}</b> ${brl0(x.d)}`).join(' · ')}</li>`:''}`; })():''}
       ${ant?`<li>Período anterior importado (${fD(ant.periodo_inicio)} a ${fD(ant.periodo_fim)}): ${brl0(ant.valor)}.</li>`:''}
     </ul></div>
+    <div id="pdComp"></div>
     <div id="pdPlano"></div>
     <div class="card" style="margin-top:12px">
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Produtos</h2><div class="sp"></div>
@@ -156,7 +157,8 @@ async function renderPerdasSetor(box, s){
   cardAlertas(box, sid, box.querySelector('.row'));
   cardTendencia(box, sid); cardSugestaoPedido(box, sid, reg);
   cardPlanoAcao($('#pdPlano'), sid, itens, nDias, perTxt, ()=>renderPerdasSetor(box,s));
-  cardOrcamentoPerda($('#pdOrc'), sid); cardPerdaDiaSemana(box, sid); cardPerdaRuptura(box, sid, comPerda, reg.periodo_fim);
+  cardOrcamentoPerda($('#pdOrc'), sid); cardPerdaComparar($('#pdComp'), sid, reg, itens, gruposS); cardPerdaDiaSemana(box, sid); cardPerdaRuptura(box, sid, comPerda, reg.periodo_fim);
+  $('#pdFolha').onclick=()=>imprimirFolhaPerdas(s, reg, itens, LY, lyMap, venda);
   $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; $('#pdTipo').onchange=desenha; desenha();
   $('#pdSel').onchange=e=>{ S.perSel[sid]=+e.target.value; renderPerdasSetor(box,s); };
   ligar();
