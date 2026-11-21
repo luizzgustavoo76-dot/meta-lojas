@@ -58,7 +58,7 @@ function htmlLyPerda(ly, d, k){
 }
 
 /* ---------- vendas dia a dia (aba Dia a dia do setor) ---------- */
-function montarCalVendas(box, s, doc){
+function montarCalVendas(box, s, doc, opts={}){
   if(!box) return;
   const fim=S.cutoff||todayIso(), por=Object.fromEntries(s.daily.map(d=>[d.k,d]));
   const cor=p=>({good:'cal-good',warn:'cal-warn',bad:'cal-bad'})[status(p)]||'';
@@ -71,7 +71,7 @@ function montarCalVendas(box, s, doc){
     return `<button type="button" class="cal-c ${cor(p)}" data-dia="${k}" aria-expanded="false" title="${fD(k)}: vendeu ${brl0(d.real)}${p!=null?` (${pctBR(p,0)} da meta)`:''}"><span class="cal-n">${dd}</span><span class="cal-v"><span class="d-inl">${curtoBR(d.real)}</span><span class="m-inl">${kBR(d.real)}</span></span><span class="cal-p">${p!=null?pctBR(p,0):''}</span></button>`; };
   const rod=W.map((x,w)=>x.n? {on:pior&&pior.w===w, html:`<span>média</span><b><span class="d-inl">${curtoBR(x.r/x.n)}</span><span class="m-inl">${kBR(x.r/x.n)}</span></b><span>${x.m?pctBR(x.r/x.m,0)+' da meta':''}</span>`} : null);
   const nomes=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
-  box.innerHTML=`<div class="card" style="margin-top:12px"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">📅 Vendas dia a dia</h2><div class="sp"></div><span class="small muted">${mesLabel(doc.mes)} · até ${fD(fim)}</span></div>
+  box.innerHTML=`<div class="card" style="margin-top:12px"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">${opts.titulo||'📅 Vendas dia a dia'}</h2><div class="sp"></div><span class="small muted">${mesLabel(doc.mes)} · até ${fD(fim)}</span></div>
     ${calGrid(doc.mes, cel, rod)}
     <p class="small muted" style="margin:6px 0 0">Valores em R$ e % da meta do dia · <span class="cal-lg cal-good"></span> bateu a meta · <span class="cal-lg cal-warn"></span> de 90% a 99% · <span class="cal-lg cal-bad"></span> abaixo de 90% · 👆 toque num dia para ver os detalhes.</p>
     <div class="cal-det hide"></div>
@@ -79,11 +79,19 @@ function montarCalVendas(box, s, doc){
   ligarCal(box, async(k, cd)=>{
     const d=por[k], p=d.meta? d.real/d.meta : null, w=new Date(k+'T12:00:00').getDay();
     cd.innerHTML=`<div class="dsm-h"><b>${cap1(DOW_NOME[w])}, ${fD(k)}</b> · vendeu <b>${brl0(d.real)}</b> de meta ${brl0(d.meta)}${p!=null?` (${pctBR(p,0)})`:''} · ${d.real>=d.meta?'sobrou':'faltou'} <b style="color:${d.real>=d.meta?'var(--good)':'var(--bad)'}">${brl0(Math.abs(d.real-d.meta))}</b></div>
-      <div class="small" style="margin-top:4px">Perda do dia: <b>${brl0(d.perda||0)}</b>${d.perda&&d.real?` · ${pctBR(d.perda/d.real,1)} da venda`:''}</div><div class="small muted cal-lyv">carregando o ano passado…</div>`;
+      <div class="small" style="margin-top:4px">Perda do dia: <b>${brl0(d.perda||0)}</b>${d.perda&&d.real?` · ${pctBR(d.perda/d.real,1)} da venda`:''}</div><div class="small muted cal-lyv">carregando o ano passado…</div>${opts.setores? htmlSetoresDia(opts.setores, k) : ''}`;
     const ly=await lyMesmoDia(s.id, k); const e=$('.cal-lyv',cd); if(!e) return;
     e.classList.remove('muted');
     e.innerHTML = !ly? '' : ly.vazio? `📆 ${DOW_FEM(w)} ${DOW_NOME[w]} do ano passado (${fD(ly.data)}): sem lançamento.` : `📆 ${DOW_FEM(w)} ${DOW_NOME[w]} do ano passado (${fD(ly.data)}): vendeu <b>${brl0(ly.v)}</b> → este ano${setaVar(d.real, ly.v, false)}`;
   });
+}
+
+function htmlSetoresDia(setores, k){
+  const ls=setores.map(s=>{ const d=s.daily.find(x=>x.k===k); return d&&d.meta? {nome:s.nome, real:d.real, meta:d.meta, p:d.real/d.meta} : null; }).filter(Boolean).sort((a,b)=>a.p-b.p);
+  if(!ls.length) return '';
+  const bat=ls.filter(x=>x.p>=1).length, cor=p=>({good:'var(--good)',warn:'var(--warn)',bad:'var(--bad)'})[status(p)];
+  return `<div class="small" style="margin:8px 0 4px"><b>${bat} de ${ls.length}</b> setores bateram a meta do dia</div>
+    <div class="dsm-pl small">${ls.map(x=>`<div><span>${esc(x.nome)}</span><span class="muted">${brl0(x.real)} de ${brl0(x.meta)}</span><b style="color:${cor(x.p)}">${pctBR(x.p,0)}</b></div>`).join('')}</div>`;
 }
 
 /* ---------- trocas dia a dia ---------- */

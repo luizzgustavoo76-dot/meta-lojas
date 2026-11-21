@@ -107,6 +107,8 @@ function render(){
   else if(S.view==='setor') renderSetor(app,doc);
   else if(S.view==='historico') renderHistoricoAsync(app);
   else if(S.view==='diarias' && S.gerente) renderDiarias(app,doc);
+  else if(S.view==='hoje') renderHoje(app,doc);
+  else if(S.view==='fechamento' && S.gerente) renderFechamento(app,doc);
   else renderPainel(app,doc);
 }
 
@@ -143,6 +145,7 @@ function renderPainel(app, doc){
     ${S.gerente?'<button class="btn d-only" id="btnXlsx">⬇ Baixar Excel</button>':''}
     ${S.gerente?'<a class="btn p" href="#lancar">＋ Lançar vendas</a>':''}
   </div>
+  ${bannerFechamento(doc)}
   ${metaWarn?`<div class="note" style="margin-bottom:12px">A soma das metas diárias (${brl0(loja.metaDiasSum)}) é diferente da meta do mês (${brl0(loja.metaMes)}). Ajuste em <a href="#metas">Metas do mês</a>.</div>`:''}
   <div class="grid kpis">
     <div class="kpi hero"><div class="l">% da meta até a data</div><div class="v">${pct(loja.pAte)}</div><div class="d">${STXT[status(loja.pAte)]} · ${loja.real>=loja.metaAte?'+':''}${brl0(loja.real-loja.metaAte)} vs. meta</div></div>
@@ -171,6 +174,7 @@ function renderPainel(app, doc){
     </div>
   </div>
 
+  <div id="calLoja"></div>
   <div class="card m-dobra" data-dobra="painel-setores" data-aberto="1" style="margin-top:12px">
     <div class="row m-dobra-h" style="margin-bottom:10px"><h2 style="margin:0">Setores — detalhado</h2><div class="sp"></div><span class="small muted d-only">Clique em um setor para abrir o detalhe aqui mesmo</span></div>
     ${diffSet?`<div class="note small" style="margin-bottom:10px">O realizado da loja (${brl0(loja.real)}) usa o total do caixa quando ele foi lançado; a soma dos setores é ${brl0(loja.totSetores)}.</div>`:''}
@@ -198,6 +202,7 @@ function renderPainel(app, doc){
   aplicarCelular(app);
   drawLojaChart(loja);
   drawRank(setores);
+  montarCalVendas($('#calLoja'), {id:null, daily:loja.daily}, doc, {titulo:S.gerente?'📅 Vendas da loja dia a dia':'📅 Vendas dia a dia', setores: setores.length>1? setores : null});
 }
 
 function renderDiariasCard(doc){
@@ -955,9 +960,11 @@ function formUsuario(u){
   </div>
   <div id="uSetBox" style="margin-top:12px"><div class="small" style="font-weight:600;color:var(--ink2);margin-bottom:6px">Setores que pode ver</div>
     <div class="chk">${S.setoresAll.map(x=>`<label><input type="checkbox" value="${x.id}" ${sel.has(x.id)?'checked':''}>${esc(x.nome)}</label>`).join('')}</div></div>
+  ${novo?'':`<label class="chk1" id="uResBox" style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" id="uRes" checked disabled> <span>Recebe o <b>resumo semanal de perdas</b> por e-mail toda segunda (só dos setores dele)</span></label>`}
   <div id="uErr" class="note err small hide" style="margin-top:10px"></div>
   <div class="row" style="margin-top:14px">${novo||u.id===S.user.id?'':'<button class="btn" id="uDel" style="color:var(--bad)">Excluir</button>'}<div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">${novo?'Criar usuário':'Salvar'}</button></div>`);
-  const tog=()=>$('#uSetBox',m).classList.toggle('hide',$('#uPapel',m).value==='gerente'); $('#uPapel',m).onchange=tog; tog();
+  const tog=()=>{ $('#uSetBox',m).classList.toggle('hide',$('#uPapel',m).value==='gerente'); $('#uResBox',m)?.classList.toggle('hide',$('#uPapel',m).value==='gerente'); }; $('#uPapel',m).onchange=tog; tog();
+  let resAntes=null; if(!novo) q(S.sb.from('perfis').select('recebe_resumo').eq('id',u.id)).then(r=>{ const c=$('#uRes',m); if(c&&r[0]){ resAntes=r[0].recebe_resumo!==false; c.checked=resAntes; c.disabled=false; } }).catch(()=>{});
   $('#mN',m).onclick=closeModal;
   const err=t=>{ const e=$('#uErr',m); e.textContent=t; e.classList.remove('hide'); };
   $('#mY',m).onclick=async()=>{
@@ -965,7 +972,9 @@ function formUsuario(u){
       setores:[...m.querySelectorAll('.chk input:checked')].map(i=>i.value) };
     const senha=$('#uSenha',m).value.trim(); if(senha) body.senha=senha;
     $('#mY',m).disabled=true;
-    try{ await chamarUsuarios(body); closeModal();
+    try{ await chamarUsuarios(body);
+      const cr=$('#uRes',m); if(cr && resAntes!=null && cr.checked!==resAntes){ const {error}=await S.sb.rpc('definir_recebe_resumo',{p_id:u.id, p_on:cr.checked}); if(error) throw error; }
+      closeModal();
       if(novo) mostrarAcesso(body.nome, body.email, senha); else toast('Usuário salvo ✔');
       if(S.view==='conta') renderConta($('#app')); }
     catch(e){ err(e.message); $('#mY',m).disabled=false; }
@@ -1136,8 +1145,8 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico']];
-const VIEWS_E=[['setor','Meu setor'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico'],['fechamento','Fechamento']];
+const VIEWS_E=[['hoje','Hoje'],['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);
   $('#nav').innerHTML=v.map(([k,t])=>`<a href="#${k}" data-v="${k}">${t}</a>`).join(''); $('#nav').classList.remove('hide');
@@ -1151,7 +1160,7 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 ['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false})); // iPhone: bloqueia o zoom de pinça
 function route(){
   const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
-  const antes=S.view; if(S.gerente && (h==='lancar'||h==='metas')){ S.admAberto=h; S._admRolar=true; S.view='conta'; history.replaceState(null,'','#conta'); } else S.view=v.includes(h)?h:(S.gerente?'painel':'setor');
+  const antes=S.view; if(S.gerente && (h==='lancar'||h==='metas')){ S.admAberto=h; S._admRolar=true; S.view='conta'; history.replaceState(null,'','#conta'); } else S.view=v.includes(h)?h:(S.gerente?'painel':'hoje');
   if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   $('#bConta')?.classList.toggle('on', S.view==='conta'||S.view==='metas');
@@ -1390,7 +1399,7 @@ function alertasPainel(doc, loja, setores, soSetor){
   const abaixo=setores.filter(s=>s.pAte!=null && s.pAte<0.9).map(s=>`<b>${esc(s.nome)}</b> ${pct(s.pAte)}`);
   if(abaixo.length) itens.push({t:'warn', h:'Abaixo de 90% da meta acumulada', d:abaixo.join(' · ')});
   if(!itens.length) return soSetor ? `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: sem queda seguida, perda dentro do normal e acima de 90% da meta acumulada.</div>` : `<div class="note ok small" style="margin-top:12px">✔ Nenhum alerta: ${S.gerente?'todos os dias lançados e ':''}nenhum setor com queda seguida ou perda fora do normal.</div>`;
-  setTimeout(()=>document.querySelectorAll('[data-dia]').forEach(a=>a.onclick=()=>{ S.lancData=a.dataset.dia; }),0);
+  setTimeout(()=>document.querySelectorAll('a[data-dia]').forEach(a=>a.onclick=()=>{ S.lancData=a.dataset.dia; }),0);
   return `<div class="card m-dobra" data-dobra="alertas" style="margin-top:12px;border-color:#f1d98a"><h2 class="m-dobra-h" style="margin:0 0 8px">⚠ Alertas <span class="badge b-warn">${itens.length}</span></h2>${itens.map(i=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="small" style="font-weight:700;color:${i.t==='bad'?'var(--bad)':'var(--warn)'}">${i.t==='bad'?'▼':'▲'} ${i.h}</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px">${i.d}</div></div>`).join('')}</div>`;
 }
 
