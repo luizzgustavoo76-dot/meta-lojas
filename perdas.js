@@ -168,7 +168,7 @@ const normN2=t=>String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCas
 /* ===== Acertos de balanço: "RESUMO DE ACERTOS/PERDAS POR PRODUTO" (vem sem seção: separa pelo cadastro de produtos e pela descrição) ===== */
 function setorPorDescricao(d){ d=String(d||'').toUpperCase().trim();
   if(/^[FV] /.test(d)) return 'hortifruti';
-  if(/^(ZZ)?(LING|BACON|QJO|QUEIJO|PRESUNTO|MORTADELA|SALAME|APRESUNTADO|PEITO PERU|EMBUTIDO|PIZZA|SALSICHA|BLANQUET|REQUEIJAO|IOGURTE|MANTEIGA|MARGARINA|NUGGETS|HAMBURGUER|LASANHA)/.test(d)) return 'pereciveis';
+  if(/^(ZZ)?(LING|BACON|QJO|QUEIJO|PRESUNTO|MORTADELA|SALAME|APRESUNTADO|PEITO PERU|EMBUTIDO|PIZZA|SALSICHA|BLANQUET|REQUEIJAO|IOGURTE|IOG |BEB LACTEA|LEITE FERM|MASSA FOLHADA|MASSA PASTEL|MASSA FRESCA|PAO DE QUEIJO|MANTEIGA|MARGARINA|NUGGETS|HAMBURGUER|LASANHA)/.test(d)) return 'pereciveis';
   if(/^(BOV|SUI|FGO|FRANGO|CARNE|OVINO|CORDEIRO|CAPRINO)\b/.test(d)) return 'acougue';
   if(/^(SALG|TORTA|PAO|BOLO|BISC|ROSCA|CUCA|SONHO|BOLINHO|CHURROS|LANCHE|FOCACCIA|ESFIHA)/.test(d)) return 'padaria';
   return ''; }
@@ -177,7 +177,10 @@ async function importarRelatorioAcertos(f){
   busy('Lendo o resumo de acertos do balanço…');
   let r=null, prod=new Map();
   try{ r=Parser.analisarRelatorioAcertos(await linhasDoArquivo(f));
-    if(r){ for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; } } }
+    if(r){ for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
+      // aprende com as trocas já importadas (relatório por departamento) e com as vendas: produto que já apareceu num setor vai para o mesmo setor
+      try{ const ant=await q(S.sb.from('analise_trocas').select('setor_id,dados').order('periodo_fim',{ascending:false}).limit(300)); for(const a of ant) for(const i of (a.dados?.itens||[])) if(!prod.has(String(i.c))) prod.set(String(i.c), a.setor_id); }catch(_){ }
+      try{ for(let i=0;;i+=1000){ const pg=await q(S.sb.rpc('mapa_setor_analises').range(i,i+999)); (pg||[]).forEach(x=>{ if(x.tipo==='p' && !prod.has(String(x.codigo))) prod.set(String(x.codigo), x.setor_id); }); if(!pg||pg.length<1000) break; } }catch(_){ } } }
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
   closeModal();
   if(!r){ toast('Esse arquivo não parece o “Resumo de acertos/perdas por produto” do sistema.', 6000); return null; }
@@ -248,7 +251,10 @@ async function importarRelatorioTrocas(f){
   busy('Lendo o relatório de trocas…');
   let r=null, prod=new Map();
   try{ r=Parser.analisarRelatorioTransferencias(await linhasDoArquivo(f));
-    if(r){ for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; } } }
+    if(r){ for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
+      // aprende com as trocas já importadas (relatório por departamento) e com as vendas: produto que já apareceu num setor vai para o mesmo setor
+      try{ const ant=await q(S.sb.from('analise_trocas').select('setor_id,dados').order('periodo_fim',{ascending:false}).limit(300)); for(const a of ant) for(const i of (a.dados?.itens||[])) if(!prod.has(String(i.c))) prod.set(String(i.c), a.setor_id); }catch(_){ }
+      try{ for(let i=0;;i+=1000){ const pg=await q(S.sb.rpc('mapa_setor_analises').range(i,i+999)); (pg||[]).forEach(x=>{ if(x.tipo==='p' && !prod.has(String(x.codigo))) prod.set(String(x.codigo), x.setor_id); }); if(!pg||pg.length<1000) break; } }catch(_){ } } }
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
   closeModal();
   if(!r){ toast('Esse arquivo não parece o “Resumo de produtos transferidos” do sistema.', 6000); return null; }

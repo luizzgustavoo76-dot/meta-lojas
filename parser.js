@@ -290,11 +290,14 @@
       let m=t.match(/^Departamento\s*:\s*(\d+)\s*-\s*(.+)$/i);
       if(m){ const cod=+m[1]; dep=res.deps.find(x=>x.codigo===cod); if(!dep){ dep={codigo:cod, nome:m[2].trim(), itens:[]}; res.deps.push(dep); } continue; }
       m=t.match(/^TOTAL GERAL:?\s+(.+)$/i); if(m){ const n=m[1].split(' ').map(numBR); res.total={venda:n[n.length-3], custo:n[n.length-1]}; dep=null; continue; }
+      if(/^CODIGO\s+DESCRICAO/i.test(t)){ res._cab=true; continue; }
+      // relatório tirado por SUBGRUPO não traz a linha "Departamento": os produtos vêm direto (o setor sai do cadastro de produtos)
+      if(!dep && res._cab && /^\d+\s+\S/.test(t)){ dep=res.deps.find(x=>x.codigo===0); if(!dep){ dep={codigo:0, nome:'', itens:[]}; res.deps.push(dep); } }
       if(dep && /^\d+\s+\S/.test(t)){ const tk=t.split(' '); if(tk.length<10) continue; const n=tk.slice(-5).map(numBR); if(n.some(v=>v==null)) continue;
         const d=tk.slice(1,-8).join(' '); if(!d) continue;
         dep.itens.push({ c:tk[0], d, pv:n[0], tv:round2(n[1]), q:n[2], cu:n[3], tc:round2(n[4]) }); }
     }
-    res.deps=res.deps.filter(x=>x.itens.length); if(!res.deps.length) return null;
+    delete res._cab; res.deps=res.deps.filter(x=>x.itens.length); if(!res.deps.length) return null;
     res.itens=res.deps.reduce((a,x)=>a+x.itens.length,0);
     res.custo=round2(res.deps.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.tc,0),0));
     res.venda=round2(res.deps.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.tv,0),0));
