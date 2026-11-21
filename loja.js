@@ -98,10 +98,11 @@ async function cardChecklist(app){
   if(!box.isConnected) return;
   const st=(ok,meio)=> ok?'<span style="color:var(--good);font-weight:700">✔</span>':meio?'<span style="color:var(--warn);font-weight:700">●</span>':'<span style="color:var(--bad);font-weight:700">✗</span>';
   const ate=x=>x?`até ${fD(x.periodo_fim)}`:'nada neste mês';
+  const falta=x=>!x? '' : x.periodo_fim<ontem? ` · <b>falta ${diaSeg(x.periodo_fim)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(x.periodo_fim)).slice(0,5)+' a '+fD(ontem).slice(0,5)}</b>` : '';
   const linhas=[
-    [st(d.lv>=ontem), 'Venda do dia lançada', d.lv?`último dia: ${fD(d.lv)}`:'nenhum dia', 'Vendas por departamento, acumulado até ontem'],
-    [st(d.av?.periodo_fim>=ontem, !!d.av), 'Análise de vendas', ate(d.av), 'mesmo relatório (entra junto com a venda)'],
-    [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
+    [st(d.lv>=ontem), 'Venda do dia lançada', d.lv?`último dia: ${fD(d.lv)}${d.lv<ontem?` · <b>falta ${diaSeg(d.lv)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(d.lv)).slice(0,5)+' a '+fD(ontem).slice(0,5)}</b>`:''}`:'nenhum dia', 'Vendas por departamento, acumulado até ontem'],
+    [st(d.av?.periodo_fim>=ontem, !!d.av), 'Análise de vendas', ate(d.av)+falta(d.av), 'mesmo relatório (entra junto com a venda)'],
+    [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap)+falta(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
     [st(d.ab?.periodo_fim>=isoOf(new Date(Date.now()-8*864e5)), !!d.ab), 'Embandeijados (semanal)', ate(d.ab), 'Vendas por classe'],
     [st(d.avLy===2 && d.apLy===2 && d.abLy===2, d.avLy||d.apLy||d.abLy), 'Base do ano passado', [['vendas',d.avLy,d.av],['perdas',d.apLy,d.ap],['embandeijados',d.abLy,d.ab]].map(([n,v,x])=>`${n} ${v===2?'✔':v===1?`● (falta ${x?fD(addAnos(x.periodo_inicio,-1))+' a '+fD(addAnos(x.periodo_fim,-1)):''})`:'✗'}`).join(' · '), 'para comparar: mesmo período do ano passado'],
     [st(d.cf && !d.cf.erros.length && (d.cf.periodoV||d.cf.periodoP), d.cf && d.cf.erros.length && d.cf.erros.every(x=>Math.abs(x.dif)<=Math.max(50,x.relatorio*0.005))), 'Conferência site × relatórios', d.cf? (d.cf.recomendar&&d.cf.recomendar.length? `tirar o relatório só do dia ${d.cf.recomendar.map(k=>fD(k).slice(0,5)).join(', ')} e importar` : d.cf.erros.length? d.cf.erros.slice(0,3).map(x=>`${nomeSetor(x.setor)} ${x.tipo} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')+(d.cf.erros.length>3?` +${d.cf.erros.length-3}`:'') : (d.cf.periodoV||d.cf.periodoP?'tudo bate ✔':'sem relatório no mês')) : '—', 'toque em Conferir para ver setor por setor'],
