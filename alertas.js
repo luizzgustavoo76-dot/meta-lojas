@@ -45,6 +45,23 @@ async function calcularAlertas(forcar){
     if(pc>t) add('alto','perda',s.id,`${s.nome}: perda acima do teto`,`${pc.toLocaleString('pt-BR',{maximumFractionDigits:2})}% da venda no mês (teto ${t.toLocaleString('pt-BR')}%) · ${brl0(p[s.id])}`,'per');
     else if(pc>t*L.tetoAmarelo/100) add('medio','perda',s.id,`${s.nome}: perda perto do teto`,`${pc.toLocaleString('pt-BR',{maximumFractionDigits:2})}% da venda (teto ${t.toLocaleString('pt-BR')}%)`,'per'); }
 
+  // 1b) perda lançada junta / dias seguidos sem lançar perda
+  const dsP=diasDoMes(doc.mes).filter(k=>!S.cutoff||k<=S.cutoff);
+  for(const s of doc.setores){ if(tetos[s.id]==null) continue;
+    const val=k=>({v:+(doc.dias?.[k]?.vendas?.[s.id]||0), p:+(doc.dias?.[k]?.perdas?.[s.id]||0)});
+    let zeros=0, de=null, comPerda=0; const junt=[];
+    for(const k of dsP){ const x=val(k); if(!(x.v>0)) continue;
+      if(x.p>=1){ comPerda++; if(zeros>=3 && x.p>=100) junt.push({k, p:x.p, n:zeros, de, ate:diaAnt(k)}); zeros=0; de=null; }
+      else { if(!zeros) de=k; zeros++; } }
+    const it=junt.map(j=>`${fD(j.k)}: ${brl0(j.p)} lançados depois de ${j.n} dias sem perda (${fD(j.de)} a ${fD(j.ate)})`);
+    if(zeros>=3 && (comPerda||junt.length)) it.push(`Agora: há ${zeros} dias sem lançar perda (desde ${fD(de)})`);
+    if(junt.length) add('medio','perda',s.id,`${s.nome}: perda parece lançada junta`,`${junt.length===1?'1 vez':junt.length+' vezes'} no mês o setor ficou 3 dias ou mais sem perda e depois lançou um valor alto. Lançando a perda no dia em que acontece, a análise dia a dia fica certa.`,'per',it);
+    else if(zeros>=3 && comPerda>=3) add('medio','perda',s.id,`${s.nome}: ${zeros} dias sem lançar perda`,`desde ${fD(de)} · confira se a perda está sendo lançada todo dia`,'per');
+  }
+  // 1c) falta o relatório de perdas dos últimos dias
+  for(const r of P){ if(!S.cutoff || r.periodo_fim>=S.cutoff) continue; const a=diaSeg(r.periodo_fim);
+    add('medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: falta o relatório de perdas ${a===S.cutoff?'de '+fD(a):`de ${fD(a)} a ${fD(S.cutoff)}`}`,`o último relatório importado vai até ${fD(r.periodo_fim)} e a venda já está lançada até ${fD(S.cutoff)}. Importe o relatório só do dia: o site soma no mês e mostra os produtos de cada dia.`,'per'); }
+
   // 2) perdas por produto
   for(const r of P){ const its=r.dados.secoes.flatMap(x=>x.itens).filter(i=>i.q>0); const tot=+r.valor||0; if(!tot) continue; const per=`${fD(r.periodo_inicio)} a ${fD(r.periodo_fim)}`;
     const ly=lyDe(PL,r); if(ly){ const b=+ly.valor||0; if(b>=200){ const d=tot/b-1; if(d*100>L.perdaSubiu) add(d>0.5?'alto':'medio','perda',r.setor_id,`${nomeSetor(r.setor_id)}: perda subiu ${pctBR(d,0)} contra o ano passado`,`${brl0(tot)} em ${per} · ano passado ${brl0(b)}`,'per'); }

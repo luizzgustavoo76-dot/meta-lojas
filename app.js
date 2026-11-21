@@ -363,6 +363,7 @@ function renderSetor(app, doc){
   <button class="btn m-only kpi-mais" data-kpimais>＋ Ver mais números</button>
   ${alertasPainel(doc, loja, [s], true)}
   ${cardComparativos(compS, s.nome)}
+  <div id="calVendas"></div>
   <div class="card m-dobra" data-dobra="setor-graf" style="margin-top:12px">
     <div class="row m-dobra-h"><h2 style="margin:0">Gráfico do mês</h2><div class="sp"></div><div class="tabs2" id="chTabs"><button data-c="dia" class="${(S.chMode||'dia')==='dia'?'on':''}">Diário</button><button data-c="acum" class="${S.chMode==='acum'?'on':''}">Acumulado</button></div></div>
     <div class="legend"><span><i class="lg-bar"></i>Realizado</span><span><i class="lg-line"></i>Meta</span></div>
@@ -387,6 +388,7 @@ function renderSetor(app, doc){
   if(S.setorAba==='trc'){ if(!SETORES_TROCA.includes(s.id)){ S.setorAba='per'; return render(); } renderTrocasSetor($('#trcBox'), s); return; }
   $('#chTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.chMode=b.dataset.c; render();});
   drawLojaChart({daily:s.daily},'chSet');
+  montarCalVendas($('#calVendas'), s, doc);
   aplicarCelular(app);
 }
 async function renderBalancosSetor(box, s, doc){

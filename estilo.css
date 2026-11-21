@@ -379,6 +379,12 @@ tr.an-sub td{background:#fafaf7;font-size:12.5px}
 .cal-m{text-align:center;border-top:2px solid var(--line);padding-top:4px;display:flex;flex-direction:column;font-size:11px;color:var(--ink2);line-height:1.25}
 .cal-m b{font-size:13px;color:var(--ink)}
 .cal-mp{border-top-color:var(--bad)}.cal-mp b{color:var(--bad)}
+.cal-good{background:#d7f0df;border-color:#a9d8b8}.cal-warn{background:#fff1cc;border-color:#f1d98a}.cal-bad{background:#fbd9d9;border-color:#f0b2b2}
+.cal-lg{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;border:1px solid var(--line)}
+.cal-r{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 0 2px #fff}
+.cal-r-lg{position:static;display:inline-block;vertical-align:0}
+.cal-j{color:var(--warn);font-size:11px}
+.cal-ly{font-size:13px;margin:0 0 6px;color:var(--ink)}
 .cal-det{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
 .dsm-det{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
 .dsm-h{font-size:14px}
