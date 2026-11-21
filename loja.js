@@ -98,9 +98,9 @@ async function cardChecklist(app){
   if(!box.isConnected) return;
   const st=(ok,meio)=> ok?'<span style="color:var(--good);font-weight:700">✔</span>':meio?'<span style="color:var(--warn);font-weight:700">●</span>':'<span style="color:var(--bad);font-weight:700">✗</span>';
   const ate=x=>x?`até ${fD(x.periodo_fim)}`:'nada neste mês';
-  const falta=x=>!x? '' : x.periodo_fim<ontem? ` · <b>falta ${diaSeg(x.periodo_fim)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(x.periodo_fim)).slice(0,5)+' a '+fD(ontem).slice(0,5)}</b>` : '';
+  const falta=x=>!x? '' : x.periodo_fim<ontem? ` · falta ${diaSeg(x.periodo_fim)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(x.periodo_fim)).slice(0,5)+' a '+fD(ontem).slice(0,5)}` : '';
   const linhas=[
-    [st(d.lv>=ontem), 'Venda do dia lançada', d.lv?`último dia: ${fD(d.lv)}${d.lv<ontem?` · <b>falta ${diaSeg(d.lv)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(d.lv)).slice(0,5)+' a '+fD(ontem).slice(0,5)}</b>`:''}`:'nenhum dia', 'Vendas por departamento, acumulado até ontem'],
+    [st(d.lv>=ontem), 'Venda do dia lançada', d.lv?`último dia: ${fD(d.lv)}${d.lv<ontem?` · falta ${diaSeg(d.lv)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(d.lv)).slice(0,5)+' a '+fD(ontem).slice(0,5)}`:''}`:'nenhum dia', 'Vendas por departamento, acumulado até ontem'],
     [st(d.av?.periodo_fim>=ontem, !!d.av), 'Análise de vendas', ate(d.av)+falta(d.av), 'mesmo relatório (entra junto com a venda)'],
     [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap)+falta(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
     [st(d.ab?.periodo_fim>=isoOf(new Date(Date.now()-8*864e5)), !!d.ab), 'Embandeijados (semanal)', ate(d.ab), 'Vendas por classe'],
@@ -108,10 +108,11 @@ async function cardChecklist(app){
     [st(d.cf && !d.cf.erros.length && (d.cf.periodoV||d.cf.periodoP), d.cf && d.cf.erros.length && d.cf.erros.every(x=>Math.abs(x.dif)<=Math.max(50,x.relatorio*0.005))), 'Conferência site × relatórios', d.cf? (d.cf.recomendar&&d.cf.recomendar.length? `tirar o relatório só do dia ${d.cf.recomendar.map(k=>fD(k).slice(0,5)).join(', ')} e importar` : d.cf.erros.length? d.cf.erros.slice(0,3).map(x=>`${nomeSetor(x.setor)} ${x.tipo} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')+(d.cf.erros.length>3?` +${d.cf.erros.length-3}`:'') : (d.cf.periodoV||d.cf.periodoP?'tudo bate ✔':'sem relatório no mês')) : '—', 'toque em Conferir para ver setor por setor'],
     [st(!!d.aa, true), 'Acertos de balanço (opcional)', ate(d.aa), 'Resumo de acertos/perdas por produto'],
   ];
+  const realcaFalta=t=>esc(t).replace(/(falta (?:o dia|de) [\d/]+(?: a [\d/]+)?)/,'<b style="color:var(--bad)">$1</b>');
   const pend=linhas.filter(l=>!l[0].includes('✔')).length;
   box.innerHTML=`<div class="card" style="margin-bottom:12px">
     <div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📋 Importações de hoje</h2><span class="small muted">${pend?`${pend} item(ns) para olhar`:'tudo em dia ✔'}</span><div class="sp"></div><button class="btn" id="bConf">🔎 Conferir</button>${botaoImportarVarios('bCk')}</div>
-    <div class="tw" style="margin-top:8px"><table><tbody>${linhas.map(l=>`<tr><td style="width:24px">${l[0]}</td><td><b>${l[1]}</b><div class="small muted m-only">${esc(l[2])}</div></td><td class="small m-hide">${esc(l[2])}</td><td class="small muted m-hide">${esc(l[3])}</td></tr>`).join('')}</tbody></table></div>
+    <div class="tw" style="margin-top:8px"><table><tbody>${linhas.map(l=>`<tr><td style="width:24px">${l[0]}</td><td><b>${l[1]}</b><div class="small muted m-only">${realcaFalta(l[2])}</div></td><td class="small m-hide">${realcaFalta(l[2])}</td><td class="small muted m-hide">${esc(l[3])}</td></tr>`).join('')}</tbody></table></div>
     <p class="small muted" style="margin:6px 0 0">Pode selecionar todos os PDFs de uma vez: o site reconhece cada relatório, avisa se algum é repetido ou está com o período errado, e abre a conferência de um por um.</p></div>`;
   ligarImportarVarios('bCk'); const bc=$('#bConf'); if(bc) bc.onclick=()=>mostrarConferencia(false);
 }
