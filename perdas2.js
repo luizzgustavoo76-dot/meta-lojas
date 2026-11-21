@@ -90,17 +90,26 @@ async function cardPerdaDiaSemana(box, sid){
     const ws=W.filter(x=>x.n).map(x=>({...x, media:x.p/x.n, pc:x.v? x.p/x.v : 0}));
     const tot=ws.reduce((a,x)=>a+x.n,0), mediaGeral=tot? ws.reduce((a,x)=>a+x.p,0)/tot : 0; const max=Math.max(0,...ws.map(x=>x.media))||1;
     const pior=mediaGeral? [...ws].sort((a,b)=>b.media-a.media)[0] : null;
-    const poucos = modo==='mes' && Math.min(...ws.map(x=>x.n).concat([9]))<3;
+    const poucos = false;
     const sel=(m,t)=>`<button type="button" class="dsm-m ${modo===m?'on':''}" data-m="${m}">${t}</button>`;
-    el.innerHTML=`<div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">📅 Perda por dia da semana</h2><div class="sp"></div>
+    el.innerHTML=`<div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">📅 ${modo==='mes'?'Perda dia a dia':'Perda por dia da semana'}</h2><div class="sp"></div>
       <div class="dsm-ms" role="group" aria-label="Período">${sel('mes',doc?mesLabel(doc.mes):'Este mês')}${sel('8s','Últimas 8 semanas')}</div></div>
       <div class="small muted" style="margin-top:4px">${modo==='mes'?'média do mês':'média das últimas 8 semanas'} (${fD(ini)} a ${fD(fim)}) · sem balanços${poucos?' · ainda são poucas datas de cada dia, a média vai firmar com o mês':''}</div>
-      ${ws.length?`<div class="dsm">${ws.map(x=>`<button type="button" class="dsm-i ${x===pior?'dsm-pior':''}" data-w="${x.w}" aria-expanded="false" title="Ver dia a dia"><div class="dsm-n">${nomes[x.w].slice(0,3)}</div><div class="dsm-ds">${modo==='mes'? [...x.dias].sort((a,b)=>a.data.localeCompare(b.data)).map(d=>+d.data.slice(8)).join(' · ') : `${x.n} datas`}</div><div class="dsm-bar"><i style="height:${Math.max(4,x.media/max*100)}%"></i></div><div class="dsm-v">${brl0(x.media)}</div><div class="small muted">${pctBR(x.pc,1)} da venda</div></button>`).join('')}</div>
+      ${ws.length && modo==='mes' ? htmlCalPerda(doc, porDia, fim, ws, pior, nomes, mediaGeral) : ws.length?`<div class="dsm">${ws.map(x=>`<button type="button" class="dsm-i ${x===pior?'dsm-pior':''}" data-w="${x.w}" aria-expanded="false" title="Ver dia a dia"><div class="dsm-n">${nomes[x.w].slice(0,3)}</div><div class="dsm-ds">${modo==='mes'? [...x.dias].sort((a,b)=>a.data.localeCompare(b.data)).map(d=>+d.data.slice(8)).join(' · ') : `${x.n} datas`}</div><div class="dsm-bar"><i style="height:${Math.max(4,x.media/max*100)}%"></i></div><div class="dsm-v">${brl0(x.media)}</div><div class="small muted">${pctBR(x.pc,1)} da venda</div></button>`).join('')}</div>
       <p class="small muted" style="margin:6px 0 0">👆 Toque num dia para ver cada data e o que foi perdido.</p>
       <div class="dsm-det hide"></div>
       ${pior?`<p class="small" style="margin:8px 0 0"><b>${nomes[pior.w]}</b> é o dia que mais perde: ${brl0(pior.media)} em média, ${(pior.media/mediaGeral).toLocaleString('pt-BR',{maximumFractionDigits:1})}× a média dos outros dias. Vale olhar o pedido e a exposição da véspera.</p>`:''}`
       : '<p class="small muted" style="margin:8px 0 0">Ainda não tem venda lançada nesse período.</p>'}`;
     el.querySelectorAll('.dsm-m').forEach(b=>b.onclick=()=>{ if(b.dataset.m!==modo) desenhar(b.dataset.m); });
+    el.querySelectorAll('.cal-c[data-dia]').forEach(c=>c.onclick=()=>{
+      const aberto=c.classList.contains('cal-sel'), cd=$('.cal-det',el);
+      el.querySelectorAll('.cal-c').forEach(b=>{ b.classList.remove('cal-sel'); b.setAttribute('aria-expanded','false'); });
+      if(aberto){ cd.classList.add('hide'); cd.innerHTML=''; return; }
+      c.classList.add('cal-sel'); c.setAttribute('aria-expanded','true');
+      const d=porDia[c.dataset.dia], dow=nomes[new Date(c.dataset.dia+'T12:00:00').getDay()];
+      cd.innerHTML=`<div class="dsm-h"><b>${dow}, ${fD(c.dataset.dia)}</b> · perdeu <b>${brl0(d?.p||0)}</b> · ${d?.v?`${pctBR(d.p/d.v,1)} da venda de ${brl0(d.v)}`:'sem venda lançada'}</div><div class="dsm-dd small muted" style="padding:8px 0 0">carregando…</div>`;
+      cd.classList.remove('hide'); abrirDiaPerda($('.dsm-dd',cd), d, sid);
+    });
     const det=$('.dsm-det',el);
     el.querySelectorAll('.dsm-i').forEach(bt=>bt.onclick=()=>{
       const aberto=bt.classList.contains('dsm-sel');
@@ -113,6 +122,25 @@ async function cardPerdaDiaSemana(box, sid){
     return true;
   };
   if(await desenhar('mes')) box.appendChild(el);
+}
+function htmlCalPerda(doc, porDia, fim, ws, pior, nomes, mediaGeral){
+  const dias=diasDoMes(doc.mes), pad=new Date(dias[0]+'T12:00:00').getDay();
+  const vals=Object.values(porDia).filter(d=>d.v>0&&d.data<=fim).map(d=>d.p), mx=Math.max(0,...vals)||1;
+  const srt=[...vals].sort((a,b)=>a-b), med=srt.length? srt[Math.floor(srt.length/2)] : 0;
+  const num=v=>Math.round(v).toLocaleString('pt-BR');
+  const cel=k=>{ const d=porDia[k], dd=+k.slice(8);
+    if(k>fim || !d || !(d.v>0)) return `<div class="cal-c cal-vazio"><span class="cal-n">${dd}</span></div>`;
+    const fora=d.p>0 && d.p>=2*med && d.p-med>=100 && d.p>=mediaGeral*1.5;
+    const a=d.p>0? 0.12+0.6*d.p/mx : 0;
+    return `<button type="button" class="cal-c ${fora?'cal-fora':''}" data-dia="${k}" aria-expanded="false" title="${fD(k)}: perdeu ${brl0(d.p)}" style="background:${d.p>0?`rgba(42,120,214,${a.toFixed(2)})`:'#fff'}">
+      <span class="cal-n">${dd}</span><span class="cal-v">${d.p>0?num(d.p):'—'}</span><span class="cal-p">${d.p>0?pctBR(d.p/d.v,1):''}</span></button>`; };
+  const porW=Object.fromEntries(ws.map(x=>[x.w,x]));
+  return `<div class="cal">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(n=>`<div class="cal-h">${n}</div>`).join('')}
+    ${'<div></div>'.repeat(pad)}${dias.map(cel).join('')}${'<div></div>'.repeat((7-(pad+dias.length)%7)%7)}
+    ${[0,1,2,3,4,5,6].map(w=>{ const x=porW[w]; return `<div class="cal-m ${x&&x===pior?'cal-mp':''}">${x?`<span>média</span><b>${num(x.media)}</b><span>${pctBR(x.pc,1)}</span>`:''}</div>`; }).join('')}</div>
+    <p class="small muted" style="margin:6px 0 0">Valores em R$ · quanto mais azul, mais perdeu · borda vermelha = dia fora do normal · 👆 toque num dia para ver o que foi perdido.</p>
+    <div class="cal-det hide"></div>
+    ${pior&&mediaGeral?`<p class="small" style="margin:8px 0 0">Em média, <b>${nomes[pior.w].toLowerCase()}</b> é o dia que mais perde: ${brl0(pior.media)}, ${(pior.media/mediaGeral).toLocaleString('pt-BR',{maximumFractionDigits:1})}× a média dos outros dias.</p>`:''}`;
 }
 function htmlDiasDaSemana(x, nome, sid){
   const dias=[...x.dias].sort((a,b)=>b.data.localeCompare(a.data));
