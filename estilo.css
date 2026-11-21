@@ -355,3 +355,19 @@ tr.an-sub td{background:#fafaf7;font-size:12.5px}
 .an-gmi{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
 .an-gmi:first-of-type{border-top:0}
 .an-suf{font-weight:600;color:var(--ink2);font-size:.9em}
+/* perdas: orçamento, dia da semana, plano de ação */
+.orc-l{display:flex;flex-direction:column;gap:6px}
+.orc-i{display:grid;grid-template-columns:1.3fr 120px 1.6fr;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#fff}
+.orc-t b{display:block}.orc-v{font-weight:800;font-size:16px;text-align:right}
+.dsm{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+.dsm-i{text-align:center;border:1px solid var(--line);border-radius:10px;padding:6px 4px;background:#fff}
+.dsm-pior{border-color:var(--bad);background:var(--bad-bg)}
+.dsm-n{font-weight:700;font-size:12px}.dsm-v{font-weight:700;font-size:12px;margin-top:2px}
+.dsm-bar{height:70px;display:flex;align-items:flex-end;justify-content:center;margin-top:4px}
+.dsm-bar i{display:block;width:60%;background:#2a78d6;border-radius:4px 4px 0 0}
+.dsm-pior .dsm-bar i{background:var(--bad)}
+.acp-l{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.acp-i{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#fff}
+.acp-ok{opacity:.7}.acp-t{flex:1;min-width:0}.acp-s{display:flex;gap:6px;align-items:center}
+.acp-add{padding:3px 8px;font-size:12px;white-space:nowrap}
+@media (max-width:760px){ .orc-i{grid-template-columns:1fr auto} .orc-b{grid-column:1/-1} .dsm{gap:3px} .dsm-i{padding:4px 1px} .dsm-v{font-size:10.5px} .dsm-i .small{font-size:9.5px} .acp-i{flex-direction:column} }

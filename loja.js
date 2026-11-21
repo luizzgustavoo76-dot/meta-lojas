@@ -214,7 +214,7 @@ async function renderPerdasLoja(app, doc){
     const ls=lista.filter(x=>(!s||x.setor===s) && (!t||normN2(x.d).includes(t)||x.c===t)).slice(0,150);
     $('#plBody').innerHTML = ls.map((x,i)=>{ const pc=x.venda? x.total/x.venda : null; return `<tr><td class="muted">${i+1}</td><td><span class="muted small">${esc(x.c)}</span> ${esc(cap1(x.d))}<div class="small muted m-only">${esc(nomeSetor(x.setor))} · venda ${x.venda?brl0(x.venda):'—'} · perda ${x.perda?brl0(x.perda):'—'} · falta ${x.falta?brl0(x.falta):'—'}</div></td><td class="small m-hide">${esc(nomeSetor(x.setor))}</td><td class="n m-hide">${x.venda?brl0(x.venda):'<span class="muted">sem venda</span>'}</td><td class="n m-hide">${x.perda?brl0(x.perda):'—'}</td><td class="n m-hide">${x.falta?brl0(x.falta):'—'}</td><td class="n"><b>${brl0(x.total)}</b></td><td class="n" style="${pc!=null&&pc>=0.1?'color:var(--bad);font-weight:600':''}">${pc==null?'—':pctBR(pc,1)}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>'; };
   $('#plBusca').oninput=desenha; $('#plSet').onchange=desenha; desenha();
-  cardTendencia(box, null);
+  cardTendencia(box, null); cardOrcamentoPerda(box, null); cardPerdaDiaSemana(box, null);
   $('#plSel').onchange=e=>{ S.plPer=e.target.value; renderPerdasLoja(app,doc); };
 }
 

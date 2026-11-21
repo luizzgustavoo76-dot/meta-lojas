@@ -66,6 +66,7 @@ async function importarRelatorioPerdas(f, setorAtual){
         dados:{ emitido:r.emitido, filial:r.filial, secoes:gs.map(g=>({codigo:g.sec.codigo, nome:g.sec.nome, itens:g.itens})) } }));
       await q(S.sb.from('analise_perdas').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
       let msg=`Perdas salvas ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`;
+      if(r.periodo.ini===r.periodo.fim){ try{ const n=await acumularPerdasDia(rows, r.periodo.fim); if(n>0) msg+=` · acumulado do mês até ${fD(r.periodo.fim)} atualizado`; }catch(_){ } }
       if(acertar){
         const fim=r.periodo.fim, mes=fim.slice(0,7);
         if(!S.mesList.includes(mes)) throw new Error(`o mês ${mesLabel(mes)} não está cadastrado — a análise foi salva, mas a perda não foi acertada.`);
@@ -93,6 +94,7 @@ async function renderPerdasSetor(box, s){
   try{ lista=await q(S.sb.from('analise_perdas').select('id,periodo_inicio,periodo_fim,valor').eq('setor_id',sid).order('periodo_fim',{ascending:false}).limit(100)); }
   catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
+  lista.sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
   if(!lista.length){ box.innerHTML=`<div class="card empty"><h2>Nenhum relatório de perdas do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o relatório “Perdas da filial” do sistema (PDF). O site mostra o que mais pesa na perda, produto por produto, e pode acertar a perda lançada para bater com o sistema.':'Assim que o gerente importar o relatório de perdas do sistema, a análise por produto aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div><div id="acBox"></div>`; ligar(); cardAcertos($('#acBox'), sid); return; }
   S.perSel=S.perSel||{}; const selId=S.perSel[sid] && lista.some(x=>x.id===S.perSel[sid]) ? S.perSel[sid] : lista[0].id;
   let reg, lancado=null, venda=null;
@@ -102,9 +104,12 @@ async function renderPerdasSetor(box, s){
     const l=await q(S.sb.from('analise_perdas').select('valor,dados,periodo_inicio,periodo_fim').eq('setor_id',sid).eq('periodo_inicio',addAnos(reg.periodo_inicio,-1)).eq('periodo_fim',addAnos(reg.periodo_fim,-1)).limit(1)); reg._ly=l[0]||null;
   }catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
-  const LY=reg._ly, lyMap=new Map(); if(LY) for(const x of LY.dados.secoes) for(const i of x.itens) lyMap.set(String(i.c),i);
+  let gruposS=[]; try{ gruposS=(await carregarGrupos()).filter(g=>g.setor_id===sid); }catch(_){ } if(!vivo()) return;
+  const LY=reg._ly, lyMap=new Map(); if(LY) for(const i of agruparItensPerda(LY.dados.secoes.flatMap(x=>x.itens.map(i=>({...i, sec:x.nome}))), gruposS)) lyMap.set(String(i.c),i);
   const varP=(a,b)=>{ if(b==null) return '<span class="muted">—</span>'; if(!b) return a>0?'<span class="an-novo">nova</span>':'<span class="muted">—</span>'; const v=a/b-1; return `<span style="color:${v>0?'var(--bad)':'var(--good)'};font-weight:600">${v>0?'▲':'▼'} ${pctBR(Math.abs(v),0)}</span>`; };
-  const itens=reg.dados.secoes.flatMap(x=>x.itens.map(i=>({...i, sec:x.nome})));
+  const itens=agruparItensPerda(reg.dados.secoes.flatMap(x=>x.itens.map(i=>({...i, sec:x.nome}))), gruposS);
+  const nDias=Math.max(1,Math.round((new Date(reg.periodo_fim+'T12:00:00')-new Date(reg.periodo_inicio+'T12:00:00'))/864e5)+1), perTxt=`${fD(reg.periodo_inicio)} a ${fD(reg.periodo_fim)}`;
+  const pEnt=i=>i.e>0? i.q/i.e : null;
   const tot=itens.reduce((a,i)=>a+i.val,0), qt=itens.reduce((a,i)=>a+i.q,0), ent=itens.reduce((a,i)=>a+i.e,0);
   const comPerda=itens.filter(i=>i.q>0).sort((a,b)=>b.val-a.val);
   const saida=i=>i.v+i.q>0 ? i.q/(i.v+i.q) : 0;
@@ -125,27 +130,34 @@ async function renderPerdasSetor(box, s){
       <div class="kpi"><div class="l">Perda sobre a venda</div><div class="v">${pctBR(venda?tot/venda:null,2)}</div><div class="d">venda lançada no período: ${brl0(venda)}</div></div>
       <div class="kpi"><div class="l">Lançado no site</div><div class="v">${brl0(lancado)}</div><div class="d">${Math.abs(lancado-tot)<1?'✔ igual ao relatório':`diferença de ${brl(tot-lancado)} para o relatório`}</div></div>
     </div>
+    <div id="pdOrc"></div>
     <div class="card" style="margin-top:12px"><h2>👀 Onde olhar primeiro</h2><ul class="small" style="margin:6px 0 0 18px;line-height:1.6">
       <li><b>${n80} produto(s)</b> fazem 80% da perda do setor.</li>
       ${top.map(i=>`<li><b>${esc(cap1(i.d))}</b> — ${brl0(i.val)} (${pctBR(i.val/tot,0)} da perda do setor; ${qtBR(i.q)} perdidos)</li>`).join('')}
+      ${(()=>{ const pe=comPerda.filter(i=>i.e>=10 && i.val>=20 && pEnt(i)!=null).sort((a,b)=>pEnt(b)-pEnt(a)).slice(0,4); return pe.length?`<li>Maior % perdido do que entrou: ${pe.map(i=>`<b>${esc(cap1(i.d))}</b> ${pctBR(pEnt(i),1)} (${qtBR(i.q)} de ${qtBR(i.e)})`).join(' · ')}</li>`:''; })()}
       ${altos.length?`<li>Perdem 30% ou mais do que sai da loja: ${altos.map(i=>`<b>${esc(cap1(i.d))}</b> ${pctBR(saida(i),0)}`).join(' · ')}</li>`:''}
       ${LY?(()=>{ const piores=comPerda.map(i=>({i, d:i.val-((lyMap.get(String(i.c))||{}).val||0)})).filter(x=>x.d>0).sort((a,b)=>b.d-a.d).slice(0,3); const melhores=[...lyMap.values()].map(o=>{ const n=itens.find(i=>String(i.c)===String(o.c)); return {o, d:(n?n.val:0)-o.val}; }).filter(x=>x.d<0).sort((a,b)=>a.d-b.d).slice(0,3);
         return `${piores.length?`<li>Mais subiram contra o ano passado: ${piores.map(x=>`<b>${esc(cap1(x.i.d))}</b> +${brl0(x.d)}`).join(' · ')}</li>`:''}${melhores.length?`<li>Mais caíram: ${melhores.map(x=>`<b>${esc(cap1(x.o.d))}</b> ${brl0(x.d)}`).join(' · ')}</li>`:''}`; })():''}
       ${ant?`<li>Período anterior importado (${fD(ant.periodo_inicio)} a ${fD(ant.periodo_fim)}): ${brl0(ant.valor)}.</li>`:''}
     </ul></div>
+    <div id="pdPlano"></div>
     <div class="card" style="margin-top:12px">
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Produtos</h2><div class="sp"></div>
+        <select id="pdTipo" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px"><option value="">A quilo e unidade/pacote</option><option value="kg">Só a quilo</option><option value="un">Só unidade/pacote</option></select>
         <input id="pdBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:160px">
         <label class="small" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="pdSo" checked> só com perda</label></div>
-      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="n">Entrou</th><th class="n">Vendeu</th><th class="n">Perdeu</th><th class="n m-hide">Custo méd.</th><th class="n">Perda R$</th>${LY?'<th class="n">Ano pass.</th><th class="n">Var.</th>':''}<th class="n">% da saída</th><th class="n m-hide">Part.</th></tr></thead><tbody id="pdBody"></tbody></table></div>
+      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="n">Entrou</th><th class="n">Vendeu</th><th class="n">Perdeu</th><th class="n m-hide">Custo méd.</th><th class="n">Perda R$</th>${LY?'<th class="n">Ano pass.</th><th class="n">Var.</th>':''}<th class="n">% da entrada</th><th class="n">% da saída</th><th class="n m-hide">Part.</th><th></th></tr></thead><tbody id="pdBody"></tbody></table></div>
     </div>`;
-  const desenha=()=>{ const t=normN2($('#pdBusca').value), so=$('#pdSo').checked;
-    const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>!t || normN2(i.d).includes(t) || String(i.c)===t);
-    $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td>${LY?(()=>{ const o=lyMap.get(String(i.c)); return `<td class="n">${o?brl(o.val)+`<div class="small muted">${qtBR(o.q)} perdidos</div>`:'—'}</td><td class="n">${varP(i.val,o?o.val:0)}${o&&o.q?`<div class="small muted">qtd ${i.q>=o.q?'▲':'▼'} ${pctBR(Math.abs(i.q/o.q-1),0)}</div>`:''}</td>`; })():''}<td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td></tr>`; }).join('') || '<tr><td colspan="10" class="muted">Nenhum produto.</td></tr>'; };
+  const desenha=()=>{ const t=normN2($('#pdBusca').value), so=$('#pdSo').checked, tp=$('#pdTipo').value;
+    const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>(!t || normN2(i.d).includes(t) || String(i.c)===t || (i.grupo||[]).some(g=>String(g.c)===t)) && (!tp || (tp==='kg')===perdaAQuilo(i)));
+    $('#pdBody').innerHTML = ls.slice(0,400).map(i=>{ const sd=saida(i), pe=pEnt(i); return `<tr><td><span class="muted small">${esc(i.grupo?i.grupo.map(g=>g.c).join(' - '):i.c)}</span> ${esc(cap1(i.d))}${i.grupo?` <span class="badge" title="${esc(i.grupo.map(g=>g.d).join(' + '))}">🔗 junta ${i.grupo.length}</span>`:''} <span class="small muted">${perdaAQuilo(i)?'kg':'un'}</span></td><td class="n">${qtBR(i.e)}</td><td class="n">${qtBR(i.v)}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.val)}</b></td>${LY?(()=>{ const o=lyMap.get(String(i.c)); return `<td class="n">${o?brl(o.val)+`<div class="small muted">${qtBR(o.q)} perdidos</div>`:'—'}</td><td class="n">${varP(i.val,o?o.val:0)}${o&&o.q?`<div class="small muted">qtd ${i.q>=o.q?'▲':'▼'} ${pctBR(Math.abs(i.q/o.q-1),0)}</div>`:''}</td>`; })():''}<td class="n" style="${pe!=null&&pe>=0.1?'color:var(--bad);font-weight:600':''}">${i.q&&pe!=null?pctBR(pe,1):'—'}</td><td class="n" style="${sd>=0.3?'color:var(--bad);font-weight:600':''}">${i.q?pctBR(sd,0):'—'}</td><td class="n m-hide">${tot?pctBR(i.val/tot,1):'—'}</td><td>${i.q?`<button class="btn acp-add" data-ac="${esc(String(i.c))}" title="Criar plano de ação">＋ ação</button>`:''}</td></tr>`; }).join('') || '<tr><td colspan="12" class="muted">Nenhum produto.</td></tr>';
+    $('#pdBody').querySelectorAll('[data-ac]').forEach(b=>b.onclick=()=>{ const it=itens.find(x=>String(x.c)===b.dataset.ac); if(it) novaAcaoPerda(sid, it, perTxt, nDias, ()=>cardPlanoAcao($('#pdPlano'), sid, itens, nDias, perTxt, ()=>renderPerdasSetor(box,s))); }); };
   box.insertAdjacentHTML('beforeend','<div id="acBox"></div>'); cardAcertos($('#acBox'), sid);
   cardAlertas(box, sid, box.querySelector('.row'));
   cardTendencia(box, sid); cardSugestaoPedido(box, sid, reg);
-  $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; desenha();
+  cardPlanoAcao($('#pdPlano'), sid, itens, nDias, perTxt, ()=>renderPerdasSetor(box,s));
+  cardOrcamentoPerda($('#pdOrc'), sid); cardPerdaDiaSemana(box, sid); cardPerdaRuptura(box, sid, comPerda, reg.periodo_fim);
+  $('#pdBusca').oninput=desenha; $('#pdSo').onchange=desenha; $('#pdTipo').onchange=desenha; desenha();
   $('#pdSel').onchange=e=>{ S.perSel[sid]=+e.target.value; renderPerdasSetor(box,s); };
   ligar();
 }
