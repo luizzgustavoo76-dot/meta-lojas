@@ -215,7 +215,8 @@
       if(m){ const tk=m[1].split(' '); res.totalGeral={ itens:parseInt(tk[0],10)||null, qt:null, venda: tk.length>=7 ? numBR(tk[tk.length-6]) : numBR(tk[5]) }; dep=null; continue; }
       m=t.match(/TOTAL DE CUPONS:?\s*(\d+)/i); if(m){ res.cupons=+m[1]; continue; }
       if(dep && /^\d+\s+\S/.test(t)){
-        const tk=t.split(' '); if(tk.length<14) continue;
+        // o sistema às vezes gruda %S/VEN e %S/LUC (ex.: "11,972-202,833", "52,058****,***", "47,9421260,654"): separa antes de contar as colunas
+        const tk=t.replace(/(^|\s)(-?\d+,\d{3})(-?\d+,\d{3}|\*+,\*+)(?=\s|$)/g,'$1$2 $3').split(' '); if(tk.length<14) continue;
         const nums=tk.slice(-12).map(numBR); if(nums.some(v=>v==null)) continue;
         const desc=tk.slice(1,-12).join(' '); if(!desc) continue;
         // QT.VENDA CUSTO_UN ENC_UN VENDA_UN TOT_CUSTO TOT_VENDA TOT_LUCRO LS/CUS LS/VEN %S/VEN %S/LUC MG.TRA
