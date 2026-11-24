@@ -534,8 +534,9 @@ async function cardRuptura(el, sid, fim, todos, irProd){
   const bo=$('#rupOutros',el); if(bo) bo.onclick=async()=>{ bo.disabled=true; bo.textContent='Procurando…';
     let r2=[]; try{ r2=await q(S.sb.rpc('ruptura_produtos',{p_setor:sid, p_fim:fim, p_min_pct:0.4})); }catch(_){ }
     const ja=new Set(r.map(x=>String(x.c))); const extra=r2.filter(x=>!ja.has(String(x.c)));
-    $('#rupO',el).innerHTML = extra.length? `<p class="small" style="margin:4px 0"><b>${extra.length}</b> produto(s) que vendiam em menos dias e também zeraram nos últimos 2 dias:</p>`+extra.map(linha).join('') : '<p class="small muted" style="margin:4px 0">Nenhum outro produto zerou.</p>';
-    $('#rupO',el).querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b)); bo.remove(); };
+    $('#rupO',el).innerHTML = extra.length? `<p class="small" style="margin:4px 0"><b>${extra.length}</b> produto(s) que vendiam em menos dias e também zeraram nos últimos 2 dias:</p><div class="rup-l" id="rupOL">${extra.slice(0,20).map(linha).join('')}</div>${extra.length>20?`<button class="btn" id="rupOT" style="margin-top:8px">Ver todos (${extra.length})</button>`:''}` : '<p class="small muted" style="margin:4px 0">Nenhum outro produto zerou.</p>';
+    const liga=()=>$('#rupO',el).querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b)); liga(); bo.remove();
+    const ot=$('#rupOT',el); if(ot) ot.onclick=()=>{ $('#rupOL',el).insertAdjacentHTML('beforeend', extra.slice(20).map(linha).join('')); ot.remove(); liga(); }; };
   el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b));
 }
 
