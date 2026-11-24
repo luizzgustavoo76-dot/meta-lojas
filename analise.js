@@ -353,8 +353,9 @@ function setorPorRegra(sec, desc){ const d=String(desc||'').toUpperCase();
 function partesDoProduto(p, s, prodSeg, segDiv){
   const seg = p._seg ?? prodSeg?.get(String(p.c)); const pct = segDiv?.get(seg)?.pct;
   if(pct==null || !(pct<1)) return [[s,p]];
-  const parte=(f)=>({...p, v:round2(p.v*f), q:Math.round(p.q*f*1000)/1000, parte:Math.round(f*100)});
-  return [['padaria',parte(pct)],['panif_terc',parte(1-pct)]];
+  // a parte de terceiros é o que sobra: a soma das duas fecha no centavo com o relatório
+  const vp=round2(p.v*pct), qp=Math.round(p.q*pct*1000)/1000;
+  return [['padaria',{...p, v:vp, q:qp, parte:Math.round(pct*100)}],['panif_terc',{...p, v:round2(p.v-vp), q:Math.round((p.q-qp)*1000)/1000, parte:Math.round(100-pct*100)}]];
 }
 function dividirPorSetor(r, prod, mapa, prodSeg, segDiv){
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim(); const grupos=[]; const secao = r.nivel==='SECAO';
