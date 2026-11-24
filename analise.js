@@ -257,11 +257,13 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   if(r && r.nivel==='CLASSE'){ r._bandeja=true; if(!ehBdj()) S.setorAba='bdj'; }
   if(r && r.nivel && r.nivel!=='DEPTO' && r.nivel!=='CLASSE' && !r._dividido){ // relatório por SEÇÃO: separa cada produto no setor certo
     try{ busy('Separando os produtos por setor…'); const prod=new Map();
-      for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
+      const prodSeg=new Map(); let segDiv=new Map();
+      for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id,sub_codigo').range(i,i+999)); (pg||[]).forEach(x=>{ prod.set(String(x.codigo),x.setor_id); if(x.sub_codigo!=null) prodSeg.set(String(x.codigo),x.sub_codigo); }); if(!pg||pg.length<1000) break; }
+      try{ const sg=await q(S.sb.from('segmentos').select('codigo,setor_id,pct_propria')); segDiv=new Map((sg||[]).map(x=>[x.codigo,{setor:x.setor_id, pct:x.pct_propria==null?null:+x.pct_propria}])); }catch(_){ }
       // aprende com os relatórios já guardados: produto/subgrupo que já apareceu num setor vai para o mesmo setor
       try{ const ap=[]; for(let i=0;;i+=1000){ const pg=await q(S.sb.rpc('mapa_setor_analises').range(i,i+999)); ap.push(...(pg||[])); if(!pg||pg.length<1000) break; } for(const x of ap){ if(x.tipo==='p'){ if(!prod.has(String(x.codigo))) prod.set(String(x.codigo), x.setor_id); }
           else if(!mapa.some(m=>String(m.codigo)===String(x.codigo) && m.nome===x.nome)) mapa.push({codigo:+x.codigo, nome:x.nome, setor_id:x.setor_id}); } }catch(_){ }
-      r=dividirPorSetor(r, prod, mapa); r.semMapa=!prod.size;
+      r=dividirPorSetor(r, prod, mapa, prodSeg, segDiv); r.semMapa=!prod.size;
     }catch(e){ closeModal(); toast('Não consegui separar por setor: '+e.message, 6000); return null; }
   }
   closeModal();
@@ -316,6 +318,8 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
         rel=((await q(S.sb.from('relatorios_venda').insert({ periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name, arquivo_path:up.error?null:path, cupons:r.cupons, total_venda:r.venda }).select('id')))||[])[0]||null; }
       if(!r._dividido && !r._bandeja){ const ps=[]; for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) ps.push({codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()});
         for(let i=0;i<ps.length;i+=500) await q(S.sb.from('produtos_setor').upsert(ps.slice(i,i+500), {onConflict:'codigo'})); }
+      if(r._dividido){ const np=new Map(); for(const x of escolhas) for(const p of x.d.produtos) if(p._seg!=null && !np.has(String(p.c))) np.set(String(p.c),{codigo:String(p.c), setor_id:x.setor||null, sub_codigo:p._seg, atualizado_em:new Date().toISOString()});
+        const npl=[...np.values()]; for(let i=0;i<npl.length;i+=500) await q(S.sb.from('produtos_setor').upsert(npl.slice(i,i+500), {onConflict:'codigo'})); }
       if(r._dividido){ const novos=escolhas.filter(x=>x.setor && !x.d._setor); if(novos.length) await q(S.sb.from('departamentos').upsert(novos.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'})); }
       if(!r._dividido && !r._bandeja) await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
       const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push({codigo:x.d.codigo, nome:x.d.nome, produtos:x.d.produtos}); }
@@ -345,12 +349,22 @@ function setorPorRegra(sec, desc){ const d=String(desc||'').toUpperCase();
   if(sec===18 && /^(SACO|VASSOURA|RODO|PA |ESCOVA|BALDE|PREND)/.test(d)) return 'bazar';
   if(sec===31 && /ALCOOL.*GEL/.test(d)) return 'limpeza';
   return null; }
-function dividirPorSetor(r, prod, mapa){
+/* segmentos divididos entre a panificadora própria e a de terceiros (ex.: rotisseria 99% própria / 1% terceiro) */
+function partesDoProduto(p, s, prodSeg, segDiv){
+  const seg = p._seg ?? prodSeg?.get(String(p.c)); const pct = segDiv?.get(seg)?.pct;
+  if(pct==null || !(pct<1)) return [[s,p]];
+  const parte=(f)=>({...p, v:round2(p.v*f), q:Math.round(p.q*f*1000)/1000, parte:Math.round(f*100)});
+  return [['padaria',parte(pct)],['panif_terc',parte(1-pct)]];
+}
+function dividirPorSetor(r, prod, mapa, prodSeg, segDiv){
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim(); const grupos=[]; const secao = r.nivel==='SECAO';
   for(const d of r.departamentos){
     const pad=(mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome))||{}).setor_id || (secao?null:setorPorNomeParecido(d.nome, mapa)) || setorPorPalavra(d.nome) || Parser.matchSector(d.nome) || null;
     const por=new Map();
-    for(const p of d.produtos){ const s=prod.get(String(p.c)) || (secao?setorPorRegra(d.codigo,p.d):null) || (typeof setorPorDescricao==='function'?setorPorDescricao(p.d):null) || pad || ''; if(!por.has(s)) por.set(s,[]); por.get(s).push(p); }
+    // produto novo (fora do cadastro): usa o segmento da maioria dos produtos do mesmo subgrupo
+    let segMaj=null; if(prodSeg && segDiv){ const cnt=new Map(); for(const p of d.produtos){ const g=prodSeg.get(String(p.c)); if(g!=null) cnt.set(g,(cnt.get(g)||0)+1); } let mx=0; for(const [g,n] of cnt) if(n>mx){ mx=n; segMaj=g; } }
+    for(const p0 of d.produtos){ let p=p0; if(segMaj!=null && !prodSeg.has(String(p.c)) && segDiv.get(segMaj)?.setor) p={...p0, _seg:segMaj};
+      const s=(p._seg!=null? segDiv.get(p._seg).setor : null) || prod.get(String(p.c)) || (secao?setorPorRegra(d.codigo,p.d):null) || (typeof setorPorDescricao==='function'?setorPorDescricao(p.d):null) || pad || ''; for(const [s2,p2] of partesDoProduto(p,s,prodSeg,segDiv)){ if(!por.has(s2)) por.set(s2,[]); por.get(s2).push(p2); } }
     for(const [s,ps] of por) grupos.push({codigo:d.codigo, nome:d.nome, produtos:ps, _setor:s});
   }
   return {...r, departamentos:grupos, _dividido:true};
