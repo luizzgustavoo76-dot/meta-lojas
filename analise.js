@@ -67,7 +67,7 @@ function perdasBalanco(bals){
 async function completarBalancosAntigos(bals){ // relê o PDF dos balanços sem análise ou com a análise antiga (só faltas)
   if(!S.gerente) return false; S._bfFeito=S._bfFeito||new Set(); let mudou=false;
   for(const b of bals){
-    if(!b.arquivo_path || !/\.pdf$/i.test(b.arquivo_path) || b.analise?.versao>=3 || S._bfFeito.has(b.id)) continue;
+    if(!b.arquivo_path || !/\.pdf$/i.test(b.arquivo_path) || b.analise?.versao>=4 || S._bfFeito.has(b.id)) continue;
     S._bfFeito.add(b.id);
     try{ const { data:blob, error } = await S.sb.storage.from('balancos').download(b.arquivo_path); if(error) throw error;
       const an=Parser.analisarBalancoSistema(await linhasDoArquivo(new File([blob], b.arquivo_nome||'balanco.pdf', {type:'application/pdf'})));

@@ -182,11 +182,22 @@
         // relatório antigo traz a coluna TIPO (uma letra) antes dos números; o novo não
         const temTipo=false; // não há coluna TIPO separada: a descrição vai até antes dos 13 números
         const tipo=temTipo? tk[tk.length-14] : '', desc=tk.slice(1,tk.length-(temTipo?14:13)).join(' ');
-        const p={ codigo:tk[0], produto:desc, tipo, setor:atual.codigo, qtdPerdas:qtd(nums[4]), pctPerdas:din(nums[5]), qtdVendida:qtd(nums[6]), custoMedio:din(nums[7]), vendaMedia:din(nums[8]) };
+        const p={ codigo:tk[0], produto:desc, tipo, setor:atual.codigo, qtdPerdas:qtd(nums[4]), pctPerdas:din(nums[5]), qtdVendida:qtd(nums[6]), custoMedio:din(nums[7]), vendaMedia:din(nums[8]), outras:qtd(nums[2]) };
         p.valor=round2(p.qtdPerdas*p.custoMedio);
         res.produtos.push(p); atual.itens++; const pre=desc.split(' ')[0]; atual.prefixos[pre]=(atual.prefixos[pre]||0)+1;
       }
     }
+    // produto associado (ASS) baixa do estoque do principal (PRI) que vem logo acima: calcula junto
+    { const agr=[]; let pri=null;
+      for(const p of res.produtos){
+        const ass=/\sASS$/.test(p.produto), ehPri=/\sPRI$/.test(p.produto);
+        if(ass && pri && pri.setor===p.setor){ pri.associados.push({codigo:p.codigo, produto:p.produto, qtd:p.qtdPerdas, valor:p.valor, vendida:p.qtdVendida});
+          pri.qtdPerdas=Math.round((pri.qtdPerdas+p.qtdPerdas)*1000)/1000; pri.valor=round2(pri.valor+p.valor); pri.qtdVendida=Math.round((pri.qtdVendida+p.qtdVendida)*1000)/1000; pri.outras=Math.round((pri.outras+p.outras)*1000)/1000;
+          const base=pri.qtdVendida+pri.outras; pri.pctPerdas = pri.qtdPerdas<0 && base>0 ? round2(-pri.qtdPerdas/base*100) : 0; continue; }
+        if(ehPri){ p.associados=[]; pri=p; } else if(!ass) pri=null;
+        agr.push(p); }
+      for(const p of agr) if(p.associados && !p.associados.length) delete p.associados;
+      res.produtos=agr; }
     for(const s of res.setores){ const top=Object.entries(s.prefixos).sort((a,b)=>b[1]-a[1])[0]; s.grupo=top?top[0]:''; delete s.prefixos; }
     if(!res.geral){ // relatório de um setor só
       if(res.setores.length===1){ const s=res.setores[0]; res.geral={perdas:s.perdas,pctPerdas:s.pctPerdas,custo:s.custo,vendas:s.vendas,pctLucro:s.pctLucro,lucro:s.lucro}; }
@@ -197,7 +208,7 @@
     res.totalProdutos=res.produtos.length; res.produtosComPerda=perdas.length; res.produtosComSobra=sobras.length;
     res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8);
     // faltas positivas e sobras negativas: somando tudo dá o TOTAL DE PERDAS do relatório (falta menos sobra)
-    res.perdasProdutos=res.produtos.filter(p=>p.valor).map(p=>[p.codigo, round2(-p.valor)]); res.versao=3; delete res.produtos;
+    res.perdasProdutos=res.produtos.filter(p=>p.valor).map(p=>[p.codigo, round2(-p.valor)]); res.versao=4; delete res.produtos;
     res.valorPerda = res.geral.perdas<0 ? round2(-res.geral.perdas) : 0;
     return res;
   }
