@@ -305,6 +305,31 @@
     res.venda=round2(res.deps.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.tv,0),0));
     return res;
   }
-  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas, analisarRelatorioAcertos, analisarRelatorioTransferencias };
+
+  /* ---------- "RELATORIO DA PESQUISA DE PRECOS" (preço do concorrente) ---------- */
+  function analisarPesquisaPrecos(linhas){
+    const textos = linhas.map(l => (typeof l==='string' ? l : String(l.text||'')).replace(/\s+/g,' ').trim());
+    const cab = textos.find(t=>/PESQUISA DE PRECOS/i.test(t)); if(!cab) return null;
+    const res={ tipo:'pesquisa_precos', numero:null, periodo:{ini:null,fim:null}, emitido:null, concorrentes:[], itens:[] };
+    let m=cab.match(/No\.?\s*(\d+)/i); if(m) res.numero=+m[1];
+    m=cab.match(/ENTRE (\d{2}\/\d{2}\/\d{2,4}) E (\d{2}\/\d{2}\/\d{2,4})/i); if(m){ res.periodo.ini=dataBR(m[1]); res.periodo.fim=dataBR(m[2]); }
+    const num=x=>{ if(x==null||x==='---'||/\*/.test(x)) return null; x=String(x).replace('%',''); if(/,\d{4}$/.test(x)||(x.includes(',')&&!x.includes('.'))) x=x.replace(/\./g,'').replace(',','.'); const v=parseFloat(x); return isNaN(v)?null:v; };
+    for(const t of textos){
+      if(!res.emitido){ const e=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(e) res.emitido=dataBR(e[1]); }
+      if(/^COD DESCRICAO/i.test(t) && !res.concorrentes.length){ const i=t.search(/\bQTD\b/i); if(i>=0) res.concorrentes=t.slice(i+3).trim().split(' ').filter(x=>x && !/^MG\.?AP\.?$/i.test(x)); continue; }
+      if(!/^\d+\s+\S/.test(t)) continue;
+      const tk=t.split(' '); const iv=tk.findIndex((x,k)=>k>1 && /^[\d*]+,[\d*]{4}$/.test(x)); if(iv<0) continue;
+      const r=tk.slice(iv+1); if(r.length<9 || r[6]!=='X') continue;
+      const it={ c:tk[0], d:tk.slice(1,iv).join(' '), cad:num(tk[iv]), custo:num(r[0]), mgAlvo:num(r[1]), mgAtual:num(r[2]), venda:num(r[3]), menor:num(r[4]), conc:[] };
+      let k=8;
+      while(k<r.length){ if(r[k]==='---'){ it.conc.push(null); k+=2; continue; }
+        const pr=num(r[k]), mg=num(r[k+1]); let promo=false; k+=2; if(r[k]==='P'){ promo=true; k++; }
+        it.conc.push(pr==null? null : {p:pr, mg, promo}); }
+      res.itens.push(it);
+    }
+    if(!res.itens.length) return null;
+    return res;
+  }
+  const api = { norm, round2, parseNum, extractNums, ALIASES, matchSector, sectorHeader, parseLines, parseModelo, analisarBalancoSistema, analisarRelatorioVendas, analisarRelatorioPerdas, analisarRelatorioAcertos, analisarRelatorioTransferencias, analisarPesquisaPrecos };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Parser = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -109,6 +109,7 @@ function render(){
   else if(S.view==='diarias' && S.gerente) renderDiarias(app,doc);
   else if(S.view==='hoje') renderHoje(app,doc);
   else if(S.view==='fechamento' && S.gerente) renderFechamento(app,doc);
+  else if(S.view==='precos' && S.gerente) renderPrecos(app);
   else renderPainel(app,doc);
 }
 
@@ -175,6 +176,7 @@ function renderPainel(app, doc){
     </div>
   </div>
 
+  <div id="ppPainel"></div>
   <div id="calLoja"></div>
   <div class="card m-dobra" data-dobra="painel-setores" data-aberto="1" style="margin-top:12px">
     <div class="row m-dobra-h" style="margin-bottom:10px"><h2 style="margin:0">Setores — detalhado</h2><div class="sp"></div><span class="small muted d-only">Clique em um setor para abrir o detalhe aqui mesmo</span></div>
@@ -203,7 +205,7 @@ function renderPainel(app, doc){
   aplicarCelular(app);
   drawLojaChart(loja);
   drawRank(setores);
-  kpiTrocasMes($('#kpTrocas'), doc, loja);
+  kpiTrocasMes($('#kpTrocas'), doc, loja); cardPrecosPainel($('#ppPainel'));
   montarCalVendas($('#calLoja'), {id:null, daily:loja.daily}, doc, {titulo:S.gerente?'📅 Vendas da loja dia a dia':'📅 Vendas dia a dia', setores: setores.length>1? setores : null});
 }
 
@@ -1151,7 +1153,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['perdas','Balanços e Perdas'],['diarias','Diárias'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['perdas','Balanços e Perdas'],['precos','Preços'],['diarias','Diárias'],['historico','Histórico']];
 const VIEWS_E=[['hoje','Hoje'],['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);

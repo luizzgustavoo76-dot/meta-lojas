@@ -2,7 +2,7 @@
    perdas e balanços da loja e cruzamento venda × perda × balanço por produto. */
 
 const ontemIso = () => isoOf(new Date(Date.now()-864e5));
-const nomeTipo = { vendas:'Vendas por departamento', vendas_secao:'Vendas por seção', bandeja:'Embandeijados (por classe)', perdas:'Perdas por produto', acertos:'Acertos de balanço', balanco:'Resultado de balanço', trocas:'Trocas (produtos transferidos)', planilha:'Planilha / relatório de vendas' };
+const nomeTipo = { pesquisa:'Pesquisa de preços (concorrente)', vendas:'Vendas por departamento', vendas_secao:'Vendas por seção', bandeja:'Embandeijados (por classe)', perdas:'Perdas por produto', acertos:'Acertos de balanço', balanco:'Resultado de balanço', trocas:'Trocas (produtos transferidos)', planilha:'Planilha / relatório de vendas' };
 
 /* ---------- impressão digital do arquivo (para avisar repetidos) ---------- */
 async function hashArquivo(f){ const b=await crypto.subtle.digest('SHA-256', await f.arrayBuffer()); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
@@ -13,6 +13,7 @@ async function identificarArquivo(f){
   if(/\.(xlsx|xls|xlsm|csv)$/.test(nome) || f.type.startsWith('image/')) return { tipo:'planilha' };
   const linhas=await linhasDoArquivo(f);
   const rv=Parser.analisarRelatorioVendas(linhas); if(rv) return { tipo: rv.nivel==='CLASSE'?'bandeja':(rv.nivel && rv.nivel!=='DEPTO'?'vendas_secao':'vendas'), r:rv, ini:rv.periodo.ini, fim:rv.periodo.fim, valor:rv.venda };
+  const pp=Parser.analisarPesquisaPrecos(linhas); if(pp) return { tipo:'pesquisa', r:pp, ini:pp.periodo.ini, fim:pp.periodo.fim, valor:pp.itens.length };
   const tr=Parser.analisarRelatorioTransferencias(linhas); if(tr) return { tipo:'trocas', r:tr, ini:tr.periodo.ini, fim:tr.periodo.fim, valor:tr.custo };
   const ac=Parser.analisarRelatorioAcertos(linhas); if(ac) return { tipo:'acertos', r:ac, ini:ac.periodo.ini, fim:ac.periodo.fim, valor:ac.diferenca };
   const pe=Parser.analisarRelatorioPerdas(linhas); if(pe) return { tipo:'perdas', r:pe, ini:pe.periodo.ini, fim:pe.periodo.fim, valor:pe.valor };
@@ -68,6 +69,7 @@ async function importarVarios(files){
       else if(it.tipo==='perdas') r=await importarRelatorioPerdas(it.f, '');
       else if(it.tipo==='acertos') r=await importarRelatorioAcertos(it.f);
       else if(it.tipo==='trocas') r=await importarRelatorioTrocas(it.f);
+      else if(it.tipo==='pesquisa') r=await importarPesquisaPrecos(it.f, it.r);
       else if(it.tipo==='balanco'){ formBalanco(null); const inp=$('#fbArq'); if(inp){ const dt=new DataTransfer(); dt.items.add(it.f); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); } await esperaModalFechar(); r=(S._salvouEm||0)>antes; }
       else if(it.tipo==='planilha'){ await importFile(it.f); await esperaModalFechar(); r=(S._salvouEm||0)>antes; }
       if(r){ feitos.push(it.f.name); try{ await q(S.sb.from('importacoes').upsert({hash:it.hash, tipo:it.tipo, periodo_inicio:it.ini||null, periodo_fim:it.fim||null, arquivo_nome:it.f.name})); }catch(_){} }
