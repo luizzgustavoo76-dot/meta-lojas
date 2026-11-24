@@ -67,7 +67,7 @@ function perdasBalanco(bals){
 async function completarBalancosAntigos(bals){ // relê o PDF dos balanços sem análise ou com a análise antiga (só faltas)
   if(!S.gerente) return false; S._bfFeito=S._bfFeito||new Set(); let mudou=false;
   for(const b of bals){
-    if(!b.arquivo_path || !/\.pdf$/i.test(b.arquivo_path) || b.analise?.versao>=2 || S._bfFeito.has(b.id)) continue;
+    if(!b.arquivo_path || !/\.pdf$/i.test(b.arquivo_path) || b.analise?.versao>=3 || S._bfFeito.has(b.id)) continue;
     S._bfFeito.add(b.id);
     try{ const { data:blob, error } = await S.sb.storage.from('balancos').download(b.arquivo_path); if(error) throw error;
       const an=Parser.analisarBalancoSistema(await linhasDoArquivo(new File([blob], b.arquivo_nome||'balanco.pdf', {type:'application/pdf'})));
@@ -273,7 +273,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
   const sug=d=>{ if(r._bandeja) return /HORTI/i.test(d.nome)?'hortifruti':'acougue'; if(d._setor!==undefined) return d._setor||''; const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
   let existentes=[]; try{ existentes=await q(S.sb.from(tabAna()).select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
-  const opcoesSetor=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
+  const opcoesSetor=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
   const ontem = isoOf(new Date(Date.now()-864e5));
   const fimSugerido = (r.periodo.fim>=todayIso() && r.periodo.ini<=ontem) ? ontem : r.periodo.fim;
@@ -300,13 +300,15 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     const sem=[...m.querySelectorAll('select[data-i]')].filter(x=>!x.value); sem.forEach(x=>x.closest('tr').style.background='#fff6dc'); m.querySelectorAll('select[data-i]').forEach(x=>{ if(x.value) x.closest('tr').style.background=''; });
     const vSem=sem.reduce((a,x)=>a+r.departamentos[+x.dataset.i].produtos.reduce((b,p)=>b+p.v,0),0);
     const subst=Object.keys(por).filter(id=>existentes.some(e=>e.setor_id===id));
-    $('#rvResumo',m).innerHTML = Object.keys(por).length ? `Vai salvar: ${Object.entries(por).map(([id,v])=>`<b>${esc(nomeSetor(id))}</b> ${brl0(v)}`).join(' · ')}${sem.length?`<br><span style="color:var(--bad)">⚠ ${sem.length} departamento(s) sem setor (${brl0(vSem)}) — essa venda não entra. Escolha o setor nas linhas em amarelo.</span>`:''}${subst.length?`<br><span style="color:var(--warn)">Já existe relatório desse período para ${subst.map(nomeSetor).join(', ')} — será substituído.</span>`:''}` : '<span style="color:var(--bad)">Nenhum departamento escolhido.</span>'; };
+    $('#rvResumo',m).innerHTML = Object.keys(por).length ? `Vai salvar: ${Object.entries(por).map(([id,v])=>`<b>${esc(nomeSetor(id))}</b> ${brl0(v)}`).join(' · ')}${sem.length?`<br><span style="color:var(--bad)">⚠ ${sem.length} departamento(s) sem setor (${brl0(vSem)}) — é obrigatório escolher o setor (as linhas pendentes estão no topo, em amarelo) — sem isso não salva.</span>`:''}${subst.length?`<br><span style="color:var(--warn)">Já existe relatório desse período para ${subst.map(nomeSetor).join(', ')} — será substituído.</span>`:''}` : '<span style="color:var(--bad)">Nenhum departamento escolhido.</span>'; };
+  pendentesNoTopo(m,'select[data-i]');
   m.querySelectorAll('select[data-i]').forEach(s=>s.onchange=resumo); resumo();
   const tab=$('#rvTab',m), tg=$('#rvTodos',m); const aplicaFiltro=()=>{ const so=r._dividido && !(tg&&tg.checked); tab.classList.toggle('so-pend',so); if(so && !tab.querySelector('tr:not(.rv-ok) select')) tab.style.display='none'; else tab.style.display=''; }; if(tg) tg.onchange=aplicaFiltro; aplicaFiltro();
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#rvErr',m); e.textContent=t; e.classList.remove('hide'); };
     const umDiaEsc = r.periodo.ini===$('#rvFim',m).value;
+    if(!exigirSetor(m,'select[data-i]','#rvErr')) return;
     const fimEsc=$('#rvFim',m).value; if(!fimEsc || fimEsc<r.periodo.ini) return err('Escolha até que dia vai a venda do relatório.'); r.periodo.fim=fimEsc;
     const escolhas=[...m.querySelectorAll('select[data-i]')].map(s=>({d:r.departamentos[+s.dataset.i], setor:s.value}));
     if(!escolhas.some(x=>x.setor)) return err('Escolha o setor de pelo menos um departamento.');

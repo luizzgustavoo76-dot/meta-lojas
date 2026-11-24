@@ -157,7 +157,8 @@
   const din = t => { let x=String(t).replace(/[?*%]/g,''); let neg=false; if(/-$/.test(x)){ neg=true; x=x.slice(0,-1); } if(/\+$/.test(x)) x=x.slice(0,-1); const v=parseNum(x); return isNaN(v)?0:(neg?-v:v); }; // reais: vírgula decimal
   const RESUMO = [['perdas',/^TOTAL DE PERDAS\b/],['pctPerdas',/^% PERDAS \(S\/CUSTO\)/],['custo',/^TOTAL DO CUSTO\b/],['vendas',/^TOTAL DE VENDAS\b/],['pctLucro',/^% LUCRO SOBRE VENDA\b/],['lucro',/^LUCRO APURADO\b/]];
   function analisarBalancoSistema(linhas){
-    const textos = linhas.map(l => typeof l==='string' ? l : String(l.text||''));
+    // o sistema às vezes exporta com vários espaços entre as palavras: normaliza antes de reconhecer
+    const textos = linhas.map(l => (typeof l==='string' ? l : String(l.text||'')).replace(/\s+/g,' ').trim());
     if(!textos.some(t=>/RESULTADO (DO BALANCO DO (SETOR|SUBGRUPO|GRUPO|DEPARTAMENTO)|GERAL DO BALANCO)/i.test(t))) return null;
     const res = { tipo:'balanco_setorial', emitido:null, periodo:{ini:null,fim:null}, geral:null, setores:[], produtos:[] };
     let atual=null, geral=false;
@@ -175,10 +176,12 @@
       if(achou) continue;
       // linha de produto: CODIGO DESCRICAO TIPO + 13 colunas numéricas
       if(/^\d+\s+\D/.test(t) && atual){
-        let tk=t.split(' '); const fixed=[]; for(const x of tk){ if((x==='-'||x==='+') && fixed.length) fixed[fixed.length-1]+=x; else fixed.push(x); } tk=fixed;
-        if(tk.length<16) continue;
-        const nums=tk.slice(-13); if(!/^-?\d/.test(nums[0])) continue;
-        const tipo=tk[tk.length-14], desc=tk.slice(1,tk.length-14).join(' ');
+        let tk=t.split(' '); const fixed=[]; for(const x of tk){ if((x==='-'||x==='+') && fixed.length) fixed[fixed.length-1]+=x; else fixed.push(x); } tk=fixed.map(x=>x.replace(/\?$/,''));
+        if(tk.length<15) continue;
+        const nums=tk.slice(-13); if(!nums.every(x=>/^-?[\d.,]+[-+]?$/.test(x))) continue;
+        // relatório antigo traz a coluna TIPO (uma letra) antes dos números; o novo não
+        const temTipo=false; // não há coluna TIPO separada: a descrição vai até antes dos 13 números
+        const tipo=temTipo? tk[tk.length-14] : '', desc=tk.slice(1,tk.length-(temTipo?14:13)).join(' ');
         const p={ codigo:tk[0], produto:desc, tipo, setor:atual.codigo, qtdPerdas:qtd(nums[4]), pctPerdas:din(nums[5]), qtdVendida:qtd(nums[6]), custoMedio:din(nums[7]), vendaMedia:din(nums[8]) };
         p.valor=round2(p.qtdPerdas*p.custoMedio);
         res.produtos.push(p); atual.itens++; const pre=desc.split(' ')[0]; atual.prefixos[pre]=(atual.prefixos[pre]||0)+1;
@@ -194,7 +197,7 @@
     res.totalProdutos=res.produtos.length; res.produtosComPerda=perdas.length; res.produtosComSobra=sobras.length;
     res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8);
     // faltas positivas e sobras negativas: somando tudo dá o TOTAL DE PERDAS do relatório (falta menos sobra)
-    res.perdasProdutos=res.produtos.filter(p=>p.valor).map(p=>[p.codigo, round2(-p.valor)]); res.versao=2; delete res.produtos;
+    res.perdasProdutos=res.produtos.filter(p=>p.valor).map(p=>[p.codigo, round2(-p.valor)]); res.versao=3; delete res.produtos;
     res.valorPerda = res.geral.perdas<0 ? round2(-res.geral.perdas) : 0;
     return res;
   }

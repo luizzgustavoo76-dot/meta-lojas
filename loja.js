@@ -21,6 +21,19 @@ async function identificarArquivo(f){
   return { tipo:null };
 }
 
+/* ---------- importação: nada fica sem setor ---------- */
+// linhas sem setor sobem para o topo da lista
+function pendentesNoTopo(m, sel){ const sem=[...m.querySelectorAll(sel)].filter(s=>!s.value); for(const s of sem.reverse()){ const tr=s.closest('tr'); if(tr?.parentNode) tr.parentNode.prepend(tr); } }
+// não deixa salvar enquanto houver linha sem setor
+function exigirSetor(m, sel, errSel){
+  const sem=[...m.querySelectorAll(sel)].filter(s=>!s.value); if(!sem.length) return true;
+  pendentesNoTopo(m, sel); sem.forEach(s=>{ const tr=s.closest('tr'); if(tr){ tr.style.background='#ffe1e1'; tr.style.display=''; } });
+  const tab=sem[0].closest('.tw, table'); if(tab){ tab.style.display=''; tab.classList?.remove('so-pend'); }
+  const e=$(errSel,m); if(e){ e.textContent=`Falta escolher o setor de ${sem.length} linha(s). Elas estão no topo da lista, em vermelho. Sem setor não salva.`; e.classList.remove('hide'); }
+  try{ sem[0].scrollIntoView({block:'center'}); sem[0].focus(); }catch(_){ }
+  return false;
+}
+
 /* ---------- importar vários arquivos de uma vez ---------- */
 async function importarVarios(files){
   files=[...files].filter(Boolean); if(!files.length) return;
@@ -95,6 +108,7 @@ async function cardChecklist(app){
   try{
     const [lv, av, ap, ab, aa, at] = await Promise.all([ q(S.sb.from('lancamentos').select('data').not('venda','is',null).order('data',{ascending:false}).limit(1)), ult('analise_vendas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_perdas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_bandeja',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_acertos',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')), ult('analise_trocas',b=>b.gte('periodo_fim',ontem.slice(0,8)+'01')) ]);
     d={ lv:lv[0]?.data||null, av, ap, ab, aa, at };
+    try{ d.bal=await q(S.sb.from('balancos').select('setor_id,data,periodo_inicio,analise').gte('data',isoOf(new Date(Date.now()-35*864e5))).order('data',{ascending:false}).limit(60)); }catch(_){ d.bal=[]; }
     [d.avLy, d.apLy, d.abLy] = await Promise.all([ temLy('analise_vendas',av), temLy('analise_perdas',ap), temLy('analise_bandeja',ab) ]);
     try{ d.cf=await conferencia(); }catch(_){ d.cf=null; }
   }catch(e){ box.innerHTML=''; return; }
@@ -105,12 +119,14 @@ async function cardChecklist(app){
   const linhas=[
     [st(d.lv>=ontem), 'Venda do dia lançada', d.lv?`último dia: ${fD(d.lv)}${d.lv<ontem?` · falta ${diaSeg(d.lv)===ontem?'o dia '+fD(ontem).slice(0,5):'de '+fD(diaSeg(d.lv)).slice(0,5)+' a '+fD(ontem).slice(0,5)}`:''}`:'nenhum dia', 'Vendas por departamento, acumulado até ontem'],
     [st(d.av?.periodo_fim>=ontem, !!d.av), 'Análise de vendas', ate(d.av)+falta(d.av), 'mesmo relatório (entra junto com a venda)'],
-    [st(d.ap?.periodo_fim>=ontem, !!d.ap), 'Perdas por produto', ate(d.ap)+falta(d.ap), 'Perdas da filial — Açougue, Hortifrúti e Padaria'],
     [st(d.at?.periodo_fim>=ontem, !!d.at), 'Trocas por produto', ate(d.at)+falta(d.at), 'Relatório de trocas — perecíveis, mercearias, bebidas, limpeza e outros'],
     [st(d.ab?.periodo_fim>=isoOf(new Date(Date.now()-8*864e5)), !!d.ab), 'Embandeijados (semanal)', ate(d.ab), 'Vendas por classe'],
     [st(d.avLy===2 && d.apLy===2 && d.abLy===2, d.avLy||d.apLy||d.abLy), 'Base do ano passado', [['vendas',d.avLy,d.av],['perdas',d.apLy,d.ap],['embandeijados',d.abLy,d.ab]].map(([n,v,x])=>`${n} ${v===2?'✔':v===1?`● (falta ${x?fD(addAnos(x.periodo_inicio,-1))+' a '+fD(addAnos(x.periodo_fim,-1)):''})`:'✗'}`).join(' · '), 'para comparar: mesmo período do ano passado'],
     [st(d.cf && !d.cf.erros.length && (d.cf.periodoV||d.cf.periodoP), d.cf && d.cf.erros.length && d.cf.erros.every(x=>Math.abs(x.dif)<=Math.max(50,x.relatorio*0.005))), 'Conferência site × relatórios', d.cf? (d.cf.recomendar&&d.cf.recomendar.length? `tirar o relatório só do dia ${d.cf.recomendar.map(k=>fD(k).slice(0,5)).join(', ')} e importar` : d.cf.erros.length? d.cf.erros.slice(0,3).map(x=>`${nomeSetor(x.setor)} ${x.tipo} ${x.dif>0?'+':''}${brl0(x.dif)}`).join(' · ')+(d.cf.erros.length>3?` +${d.cf.erros.length-3}`:'') : (d.cf.periodoV||d.cf.periodoP?'tudo bate ✔':'sem relatório no mês')) : '—', 'toque em Conferir para ver setor por setor'],
-    [st(!!d.aa, true), 'Acertos de balanço (opcional)', ate(d.aa), 'Resumo de acertos/perdas por produto'],
+    (()=>{ const ult={}; for(const x of (d.bal||[])) if(!ult[x.setor_id]) ult[x.setor_id]=x; const ls=Object.values(ult);
+      const semAn=ls.filter(x=>!x.analise).map(x=>nomeSetor(x.setor_id));
+      const txt=ls.length? ls.map(x=>`${nomeSetor(x.setor_id)} ${fD(x.data).slice(0,5)}`).join(' · ')+(semAn.length?` · sem análise: ${semAn.join(', ')}`:'') : 'nenhum balanço nos últimos 35 dias';
+      return [st(ls.length && !semAn.length, ls.length || !!d.aa), 'Balanços e acertos', txt+(d.aa?` · acertos ${ate(d.aa)}`:''), 'o mesmo lançado na aba Balanços e Perdas'] })(),
   ];
   const realcaFalta=t=>esc(t).replace(/(falta (?:o dia|de) [\d/]+(?: a [\d/]+)?)/,'<b style="color:var(--bad)">$1</b>');
   const pend=linhas.filter(l=>!l[0].includes('✔')).length;

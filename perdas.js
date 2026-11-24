@@ -31,7 +31,7 @@ async function importarRelatorioPerdas(f, setorAtual){
   const lanc={}; try{ for(const id of new Set(grupos.map(g=>g.setor).filter(Boolean))) lanc[id]=await perdaLancada(id, r.periodo.ini, r.periodo.fim); }catch(_){}
   closeModal();
   const totG=g=>round2(g.itens.reduce((a,i)=>a+i.val,0));
-  const opcoes=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
+  const opcoes=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   const confere = r.total ? Math.abs(r.total.q-r.qtd)<0.05 : null;
   return await new Promise(resolver=>{
   const m=modal(`<h2>🗑️ Relatório de perdas por produto</h2>
@@ -53,10 +53,12 @@ async function importarRelatorioPerdas(f, setorAtual){
     m.querySelectorAll('select[data-g]').forEach(x=>x.closest('tr').style.background=x.value?'':'#fff6dc');
     $('#rpResumo',m).innerHTML = Object.keys(por).length ? `<table style="width:100%"><thead><tr><th>Setor</th><th class="n">Relatório</th><th class="n">Lançado no site</th>${ac?'<th class="n">Lança no dia '+fD(r.periodo.fim)+'</th>':''}</tr></thead><tbody>${Object.entries(por).map(([id,gs])=>{ const v=round2(gs.reduce((a,g)=>a+totG(g),0)); const d=round2(v-(lanc[id]||0));
       return `<tr><td><b>${esc(nomeSetor(id))}</b></td><td class="n">${brl(v)}</td><td class="n">${brl(lanc[id]||0)}</td>${ac?`<td class="n" style="color:${d>=0?'var(--bad)':'var(--good)'}">${d>=0?'+':''}${brl(d)}</td>`:''}</tr>`; }).join('')}</tbody></table>` : '<span style="color:var(--bad)">Nenhuma seção escolhida.</span>'; };
+  pendentesNoTopo(m,'select[data-g]');
   m.querySelectorAll('select[data-g]').forEach(s=>s.onchange=resumo); $('#rpAcerta',m).onchange=resumo; resumo();
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
     const err=t=>{ const e=$('#rpErr',m); e.textContent=t; e.classList.remove('hide'); };
+    if(!exigirSetor(m,'select[data-g]','#rpErr')) return;
     const por=escolhas(); if(!Object.keys(por).length) return err('Escolha o setor de pelo menos uma seção.');
     const acertar=$('#rpAcerta',m).checked;
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
@@ -186,8 +188,9 @@ async function importarRelatorioAcertos(f){
   if(!r){ toast('Esse arquivo não parece o “Resumo de acertos/perdas por produto” do sistema.', 6000); return null; }
   const por=new Map(); let porDesc=0;
   for(const it of r.itens){ let s=prod.get(String(it.c)); if(!s){ s=setorPorDescricao(it.d); if(s) porDesc++; } s=s||''; if(!por.has(s)) por.set(s,[]); por.get(s).push(it); }
-  const grupos=[...por.entries()].map(([setor,itens])=>({setor, itens, v:round2(itens.reduce((a,i)=>a+i.vd,0))})).sort((a,b)=>a.v-b.v);
-  const opcoes=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
+  // produto sem setor: uma linha para cada, no topo, para escolher o setor de cada um
+  const grupos=[...por.entries()].flatMap(([setor,itens])=> setor? [{setor, itens}] : itens.map(it=>({setor:'', itens:[it], um:it}))).map(g=>({...g, v:round2(g.itens.reduce((a,i)=>a+i.vd,0))})).sort((a,b)=>(a.setor?1:0)-(b.setor?1:0) || a.v-b.v);
+  const opcoes=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   return await new Promise(resolver=>{
   const m=modal(`<h2>📦 Acertos de balanço por produto</h2>
     <div class="grid kpis" style="margin:8px 0">
@@ -197,13 +200,14 @@ async function importarRelatorioAcertos(f){
     ${r.total!=null?(Math.abs(r.total-r.diferenca)<1?'<div class="note small" style="background:var(--good-bg);border-color:#a9d8b8">✔ Conferido: bate com o TOTAL DIFERENÇA do relatório.</div>':`<div class="note err small">A soma (${brl(r.diferenca)}) não bate com o TOTAL DIFERENÇA (${brl(r.total)}).</div>`):''}
     <p class="small muted" style="margin:8px 0 6px">O relatório não separa por seção: cada produto foi para o setor pelo cadastro de produtos${porDesc?` (${porDesc} pela descrição, como BOV, LING, F/V…)`:''}. Confira as linhas em amarelo.</p>
     <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Grupo</th><th class="n">Produtos</th><th class="n">Resultado</th><th>Setor do site</th></tr></thead><tbody>
-      ${grupos.map((g,i)=>`<tr style="${g.setor?'':'background:#fff6dc'}"><td>${g.setor?esc(nomeSetor(g.setor)):'<b>Não identificados</b><div class="small muted">'+esc(g.itens.slice().sort((a,b)=>a.vd-b.vd).slice(0,4).map(x=>cap1(x.d)).join(', '))+'…</div>'}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(g.v)}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
+      ${grupos.map((g,i)=>`<tr style="${g.setor?'':'background:#fff6dc'}"><td>${g.setor?esc(nomeSetor(g.setor)):g.um?'<b>'+esc(String(g.um.c))+' '+esc(cap1(g.um.d))+'</b><div class="small" style="color:var(--bad)">sem setor: escolha</div>':'<b>Não identificados</b><div class="small muted">'+esc(g.itens.slice().sort((a,b)=>a.vd-b.vd).slice(0,4).map(x=>cap1(x.d)).join(', '))+'…</div>'}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(g.v)}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
     </tbody></table></div>
     <p class="small muted" style="margin-top:8px">Isso entra só na análise (aba Perdas → Acertos de balanço). Não mexe na perda lançada nos dias.</p>
     <div id="raErr" class="note err small hide"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar acertos</button></div>`);
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
+    if(!exigirSetor(m,'select[data-g]','#raErr')) return;
     const por={}; m.querySelectorAll('select[data-g]').forEach(s=>{ if(s.value) (por[s.value]=por[s.value]||[]).push(...grupos[+s.dataset.g].itens); });
     if(!Object.keys(por).length){ const e=$('#raErr',m); e.textContent='Escolha o setor de pelo menos um grupo.'; e.classList.remove('hide'); return; }
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
@@ -260,8 +264,8 @@ async function importarRelatorioTrocas(f){
   if(!r){ toast('Esse arquivo não parece o “Resumo de produtos transferidos” do sistema.', 6000); return null; }
   const por=new Map();
   for(const dp of r.deps) for(const it of dp.itens){ const s=prod.get(String(it.c)) || setorPorDescricao(it.d) || DEP_TROCA[normN2(dp.nome)] || ''; if(!por.has(s)) por.set(s,[]); por.get(s).push({...it, dep:dp.nome}); }
-  const grupos=[...por.entries()].map(([setor,itens])=>({setor, itens, c:round2(itens.reduce((a,i)=>a+i.tc,0))})).sort((a,b)=>b.c-a.c);
-  const opcoes=sel=>`<option value="">— não importar —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
+  const grupos=[...por.entries()].flatMap(([setor,itens])=> setor? [{setor, itens}] : itens.map(it=>({setor:'', itens:[it], um:it}))).map(g=>({...g, c:round2(g.itens.reduce((a,i)=>a+i.tc,0))})).sort((a,b)=>(a.setor?1:0)-(b.setor?1:0) || b.c-a.c);
+  const opcoes=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   return await new Promise(resolver=>{
   const m=modal(`<h2>🔄 Trocas (produtos transferidos)</h2>
     <div class="grid kpis" style="margin:8px 0">
@@ -271,13 +275,14 @@ async function importarRelatorioTrocas(f){
     ${r.total?(Math.abs(r.total.custo-r.custo)<1?'<div class="note small" style="background:var(--good-bg);border-color:#a9d8b8">✔ Conferido: bate com o TOTAL GERAL do relatório.</div>':`<div class="note err small">A soma (${brl(r.custo)}) não bate com o TOTAL GERAL (${brl(r.total.custo)}).</div>`):''}
     <p class="small muted" style="margin:8px 0 6px">Cada produto foi para o setor pelo cadastro de produtos (ou pela descrição / departamento). Confira as linhas em amarelo.</p>
     <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Grupo</th><th class="n">Produtos</th><th class="n">Custo</th><th>Setor do site</th></tr></thead><tbody>
-      ${grupos.map((g,i)=>`<tr style="${g.setor?'':'background:#fff6dc'}"><td>${g.setor?esc(nomeSetor(g.setor)):'<b>Não identificados</b><div class="small muted">'+esc(g.itens.slice().sort((a,b)=>b.tc-a.tc).slice(0,4).map(x=>cap1(x.d)).join(', '))+'…</div>'}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(g.c)}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
+      ${grupos.map((g,i)=>`<tr style="${g.setor?'':'background:#fff6dc'}"><td>${g.setor?esc(nomeSetor(g.setor)):g.um?'<b>'+esc(String(g.um.c))+' '+esc(cap1(g.um.d))+'</b><div class="small" style="color:var(--bad)">sem setor: escolha</div>':'<b>Não identificados</b><div class="small muted">'+esc(g.itens.slice().sort((a,b)=>b.tc-a.tc).slice(0,4).map(x=>cap1(x.d)).join(', '))+'…</div>'}</td><td class="n">${g.itens.length}</td><td class="n">${brl0(g.c)}</td><td><select data-g="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoes(g.setor)}</select></td></tr>`).join('')}
     </tbody></table></div>
     <p class="small muted" style="margin-top:8px">As trocas entram na análise (aba Trocas do setor, Painel e tela Perdas da loja), separadas da perda: não mexem na perda lançada nem no teto.</p>
     <div id="rtErr" class="note err small hide"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar trocas</button></div>`);
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
+    if(!exigirSetor(m,'select[data-g]','#rtErr')) return;
     const por={}; m.querySelectorAll('select[data-g]').forEach(s=>{ if(s.value) (por[s.value]=por[s.value]||[]).push(...grupos[+s.dataset.g].itens); });
     if(!Object.keys(por).length){ const e=$('#rtErr',m); e.textContent='Escolha o setor de pelo menos um grupo.'; e.classList.remove('hide'); return; }
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';

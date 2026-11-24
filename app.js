@@ -1089,6 +1089,8 @@ function formBalanco(b){
     if(!data) return err('Informe a data do balanço.');
     if(isNaN(valor)) return err(f? 'Não achei o valor da perda no arquivo. Digite o valor da perda.' : 'Anexe o relatório do balanço ou digite o valor da perda.');
     if(f && f.size>25*1024*1024) return err('O arquivo passa de 25 MB.');
+    // todo balanço em PDF precisa sair com a análise (produtos que faltaram e sobraram)
+    if(f && /\.pdf$/i.test(f.name)){ const r0=leitura? await leitura : null; if(!r0?.analise) return err('O site não conseguiu analisar esse PDF, então não salvou. Tire no sistema o “Resultado do balanço setorial” (com os produtos) e anexe de novo. Se for esse mesmo relatório, me avise para eu ensinar o site a ler.'); }
     $('#mY',m).disabled=true; $('#mY',m).textContent='Salvando…';
     try{
       const ini=$('#fbIni',m).value||null; if(ini && ini>data) throw new Error('O início do período não pode ser depois do fim.');
