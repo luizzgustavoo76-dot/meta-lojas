@@ -526,10 +526,16 @@ async function cardRuptura(el, sid, fim, todos, irProd){
     <p class="small muted" style="margin:0 0 8px">Vendiam quase todo dia e <b>não venderam nada nos últimos 2 dias</b> (até ${fD(ult)}). Confira gôndola e estoque. Toque no produto para ver os números.</p>
     <div class="rup-l" id="rupL">${r.slice(0,10).map(linha).join('')}</div>
     ${r.length>10?`<div class="row" style="margin-top:8px;gap:8px"><button class="btn" id="rupMais">Ver mais 10</button><button class="btn" id="rupTodos">Ver todos (${r.length})</button><span class="small muted" id="rupN">mostrando 10 de ${r.length}</span></div>`:''}
+    <div class="row" style="margin-top:8px;gap:8px"><button class="btn" id="rupOutros">➕ Ver também os que vendiam menos (em 40% dos dias)</button></div><div class="rup-l" id="rupO" style="margin-top:6px"></div>
     <p class="small muted" style="margin:6px 0 0">Venda perdida = média de venda por dia × dias sem vender. Produto que saiu de linha ou é sazonal também pode aparecer aqui.</p></div>`;
   let mostr=10; const add=n=>{ const fim2=Math.min(r.length, mostr+n); $('#rupL',el).insertAdjacentHTML('beforeend', r.slice(mostr,fim2).map(linha).join('')); mostr=fim2;
     $('#rupL',el).querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b)); const nn=$('#rupN',el); if(nn) nn.textContent=`mostrando ${mostr} de ${r.length}`; if(mostr>=r.length){ $('#rupMais',el)?.remove(); $('#rupTodos',el)?.remove(); } };
   const bm=$('#rupMais',el); if(bm) bm.onclick=()=>add(10); const bt=$('#rupTodos',el); if(bt) bt.onclick=()=>add(r.length);
+  const bo=$('#rupOutros',el); if(bo) bo.onclick=async()=>{ bo.disabled=true; bo.textContent='Procurando…';
+    let r2=[]; try{ r2=await q(S.sb.rpc('ruptura_produtos',{p_setor:sid, p_fim:fim, p_min_pct:0.4})); }catch(_){ }
+    const ja=new Set(r.map(x=>String(x.c))); const extra=r2.filter(x=>!ja.has(String(x.c)));
+    $('#rupO',el).innerHTML = extra.length? `<p class="small" style="margin:4px 0"><b>${extra.length}</b> produto(s) que vendiam em menos dias e também zeraram nos últimos 2 dias:</p>`+extra.map(linha).join('') : '<p class="small muted" style="margin:4px 0">Nenhum outro produto zerou.</p>';
+    $('#rupO',el).querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b)); bo.remove(); };
   el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b));
 }
 
