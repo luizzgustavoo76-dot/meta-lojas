@@ -158,14 +158,14 @@
   const RESUMO = [['perdas',/^TOTAL DE PERDAS\b/],['pctPerdas',/^% PERDAS \(S\/CUSTO\)/],['custo',/^TOTAL DO CUSTO\b/],['vendas',/^TOTAL DE VENDAS\b/],['pctLucro',/^% LUCRO SOBRE VENDA\b/],['lucro',/^LUCRO APURADO\b/]];
   function analisarBalancoSistema(linhas){
     const textos = linhas.map(l => typeof l==='string' ? l : String(l.text||''));
-    if(!textos.some(t=>/RESULTADO (DO BALANCO DO SETOR|GERAL DO BALANCO)/i.test(t))) return null;
+    if(!textos.some(t=>/RESULTADO (DO BALANCO DO (SETOR|SUBGRUPO|GRUPO|DEPARTAMENTO)|GERAL DO BALANCO)/i.test(t))) return null;
     const res = { tipo:'balanco_setorial', emitido:null, periodo:{ini:null,fim:null}, geral:null, setores:[], produtos:[] };
     let atual=null, geral=false;
     const novoSetor = cod => { let s=res.setores.find(x=>x.codigo===cod); if(!s){ s={codigo:cod, itens:0, prefixos:{}}; res.setores.push(s); } return s; };
     for(const raw of textos){
       const t=raw.replace(/\s+/g,' ').trim(); if(!t) continue;
       if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
-      let m=t.match(/RESULTADO DO BALANCO DO SETOR (\d+) DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+      let m=t.match(/RESULTADO DO BALANCO DO (?:SETOR|SUBGRUPO|GRUPO|DEPARTAMENTO) (\d+).*?DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
       if(m){ atual=novoSetor(m[1]); geral=false; res.periodo.ini=res.periodo.ini||dataBR(m[2]); res.periodo.fim=res.periodo.fim||dataBR(m[3]); continue; }
       m=t.match(/RESULTADO GERAL DO BALANCO.*?DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
       if(m){ geral=true; atual=null; res.geral=res.geral||{}; res.periodo.ini=dataBR(m[1]); res.periodo.fim=dataBR(m[2]); continue; }
@@ -192,7 +192,9 @@
     if(!res.geral || res.geral.perdas==null) return null;
     const perdas=res.produtos.filter(p=>p.valor<0).sort((a,b)=>a.valor-b.valor), sobras=res.produtos.filter(p=>p.valor>0).sort((a,b)=>b.valor-a.valor);
     res.totalProdutos=res.produtos.length; res.produtosComPerda=perdas.length; res.produtosComSobra=sobras.length;
-    res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8); res.perdasProdutos=perdas.map(p=>[p.codigo, round2(-p.valor)]); delete res.produtos;
+    res.top=perdas.slice(0,15); res.sobras=sobras.slice(0,8);
+    // faltas positivas e sobras negativas: somando tudo dá o TOTAL DE PERDAS do relatório (falta menos sobra)
+    res.perdasProdutos=res.produtos.filter(p=>p.valor).map(p=>[p.codigo, round2(-p.valor)]); res.versao=2; delete res.produtos;
     res.valorPerda = res.geral.perdas<0 ? round2(-res.geral.perdas) : 0;
     return res;
   }

@@ -317,13 +317,18 @@ async function cardTrocas(box, sid){
 /* ===== Aba "Trocas" do setor ===== */
 const SETORES_TROCA = ['pereciveis','merc_seca','merc_salgada','merc_doce','bebidas','perfumaria','limpeza','bazar','leite_gas','eletro'];
 function barraPct(p, cor='var(--brand, #d71f26)'){ return `<div style="height:6px;background:#eee;border-radius:9px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${Math.max(2,Math.min(100,p*100))}%;background:${cor}"></div></div>`; }
+function trocaSetorSel(sid){
+  const ids=setoresVisiveis().map(x=>x.id).filter(id=>SETORES_TROCA.includes(id)); if(ids.length<2 && !S.gerente) return '';
+  return `<label class="f" style="margin:0">Setor<select id="trSet">${S.gerente?'<option value="*">🏪 Geral (loja toda)</option>':''}${ids.map(id=>`<option value="${id}" ${id===sid?'selected':''}>${esc(nomeSetor(id))}</option>`).join('')}</select></label>`;
+}
+function ligarTrocaSetorSel(){ const e=$('#trSet'); if(!e) return; e.onchange=()=>{ if(e.value==='*'){ S.tlSet=null; location.hash='#trocas'; } else { S.setorSel=e.value; S.setorAba='trc'; render(); } }; }
 async function renderTrocasSetor(box, s){
   const sid=s.id; const vivo=()=>S.view==='setor' && S.setorAba==='trc' && S.setorSel===sid && box.isConnected;
   const btnImp = S.gerente? `<button class="btn p" id="trImp">＋ Importar relatório de trocas</button><input type="file" id="trArq" accept=".pdf,.txt" class="hide">`:'';
   const ligar=()=>{ const b=$('#trImp'); if(b){ b.onclick=()=>$('#trArq').click(); $('#trArq').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(f) importarRelatorioTrocas(f); }; } };
   let ls=[]; try{ ls=await q(S.sb.from('analise_trocas').select('id,periodo_inicio,periodo_fim,custo').eq('setor_id',sid).order('periodo_fim',{ascending:false}).order('periodo_inicio',{ascending:true}).limit(60)); }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
-  if(!ls.length){ box.innerHTML=`<div class="card empty"><h2>Nenhuma troca do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o “Resumo de produtos transferidos” (trocas) do sistema. O site separa os produtos por setor e mostra o que mais vai para troca.':'Assim que o gerente importar o relatório de trocas, a análise aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div>`; ligar(); return; }
+  if(!ls.length){ box.innerHTML=`<div class="row" style="margin-bottom:10px">${trocaSetorSel(sid)}</div><div class="card empty"><h2>Nenhuma troca do ${esc(s.nome)} ainda</h2><p>${S.gerente?'Importe o “Resumo de produtos transferidos” (trocas) do sistema. O site separa os produtos por setor e mostra o que mais vai para troca.':'Assim que o gerente importar o relatório de trocas, a análise aparece aqui.'}</p><div style="margin-top:12px">${btnImp}</div></div>`; ligar(); ligarTrocaSetorSel(); return; }
   S.trSel=S.trSel||{}; const selId=ls.some(x=>x.id===S.trSel[sid])?S.trSel[sid]:ls[0].id;
   let a, ly=null, lojaTot=0, venda=0;
   try{ a=(await q(S.sb.from('analise_trocas').select('*').eq('id',selId)))[0];
@@ -339,7 +344,7 @@ async function renderTrocasSetor(box, s){
   const porDep={}; for(const i of its){ const k=i.dep||'—'; porDep[k]=(porDep[k]||0)+i.tc; }
   const subiu=ly? its.map(i=>({i,d:i.tc-((lyMap.get(String(i.c))||{}).tc||0)})).filter(x=>x.d>0).sort((x,y)=>y.d-x.d).slice(0,3):[];
   box.innerHTML=`
-    <div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap"><label class="f" style="margin:0">Período<select id="trSel">${ls.map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${fD(x.periodo_inicio)} a ${fD(x.periodo_fim)} · ${brl0(+x.custo)}</option>`).join('')}</select></label><div class="sp"></div>${btnImp}</div>
+    <div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap">${trocaSetorSel(sid)}<label class="f" style="margin:0">Período<select id="trSel">${ls.map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${fD(x.periodo_inicio)} a ${fD(x.periodo_fim)} · ${brl0(+x.custo)}</option>`).join('')}</select></label><div class="sp"></div>${btnImp}</div>
     <div class="grid kpis">
       <div class="kpi hero"><div class="l">Trocas de ${fD(a.periodo_inicio)} até ${fD(a.periodo_fim)}</div><div class="v">${brl0(tot)}</div><div class="d">a custo · ${its.length} produtos · a preço de venda ${brl0(+a.venda)}</div></div>
       <div class="kpi"><div class="l">Sobre a venda do setor</div><div class="v">${venda?pctBR(tot/venda,2):'—'}</div><div class="d">venda lançada no período: ${brl0(venda)}</div></div>
@@ -360,7 +365,7 @@ async function renderTrocasSetor(box, s){
     </div>`;
   const desenha=()=>{ const t=normN2($('#trBusca').value);
     $('#trBody').innerHTML=its.map((i,k)=>({i,k})).filter(({i})=>!t||normN2(i.d).includes(t)||String(i.c)===t).slice(0,400).map(({i,k})=>{ const o=lyMap.get(String(i.c)); return `<tr><td class="muted m-hide">${k+1}</td><td><span class="muted small">${k+1}º · ${esc(i.c)}</span> ${esc(cap1(i.d))}<div class="small muted m-only">${qtBR(i.q)} un/kg · ${brl(i.cu)}/un · venda ${brl(i.tv)}${ly?` · ano pass. ${o?brl(o.tc):'—'}`:''}</div></td><td class="n m-hide">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.tc)}</b></td><td class="n m-hide">${brl(i.tv)}</td>${ly?`<td class="n m-hide">${o?brl(o.tc)+`<div class="small muted">${qtBR(o.q)} un/kg</div>`:'—'}</td>`:''}<td class="n" style="min-width:70px">${pctBR(i.tc/tot,1)}${barraPct(i.tc/its[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>'; };
-  $('#trBusca').oninput=desenha; desenha(); cardTrocasDia($('#trCal'), sid);
+  $('#trBusca').oninput=desenha; desenha(); cardTrocasDia($('#trCal'), sid); ligarTrocaSetorSel();
   $('#trSel').onchange=e=>{ S.trSel[sid]=+e.target.value; renderTrocasSetor(box,s); };
   ligar();
 }

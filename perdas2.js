@@ -285,7 +285,15 @@ async function cardPerdaComparar(el, sid, reg, itens, gruposS){
       <div class="pq" style="margin-top:8px">${barra(D.Q,'Quantidade','perdeu mais ou menos quilos/unidades')}${barra(D.P,'Preço','custo dos produtos mais alto ou mais baixo')}</div>
       <p class="small" style="margin:8px 0 0">${frase}</p>
       <div class="pq-2"><div><div class="small" style="font-weight:700;margin:8px 0 4px">Mais subiram por quantidade</div>${lista(topQ,fq)}</div>
-        <div><div class="small" style="font-weight:700;margin:8px 0 4px">Mais subiram por preço (custo do kg/un)</div>${lista(topP,fp)}</div></div></div>
+        <div><div class="small" style="font-weight:700;margin:8px 0 4px">Mais subiram por preço (custo do kg/un)</div>${lista(topP,fp)}</div></div>
+      ${(()=>{ const todosP=[...D.ls].sort((a,b)=>b.dt-a.dt); const sub=todosP.filter(x=>x.dt>=0.5), des=todosP.filter(x=>x.dt<=-0.5).reverse();
+        const lin=x=>{ const qtd = x.novo? `não tinha · agora ${qtBR(x.q1)}` : x.sumiu? `tinha ${qtBR(x.q0)} · agora nada` : `qtd ${qtBR(x.q0)} → ${qtBR(x.q1)}`;
+          const cu = (x.q0>0&&x.q1>0)? ` · custo ${brl(x.v0/x.q0)} → ${brl(x.v1/x.q1)}` : '';
+          return `<div><span><span class="muted">${esc(String(x.c))}</span> ${esc(cap1(x.d))}<span class="muted" style="display:block;font-size:11.5px">${qtd}${cu}</span></span><span class="muted" style="text-align:right;font-size:11.5px">qtd ${sg(x.dq)}<br>preço ${sg(x.dp)}</span><b style="color:${cor(x.dt)}">${sg(x.dt)}</b></div>`; };
+        const blk=(t,arr)=>`<div><div class="small" style="font-weight:700;margin:8px 0 4px">${t} (${arr.length})</div><div class="dsm-pl small">${arr.map(lin).join('')||'<span class="muted">nenhum</span>'}</div></div>`;
+        return `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700">🔎 Ver todos os produtos: o que aumentou e o que diminuiu (${todosP.length})</summary>
+          <div class="pq-2">${blk('📈 Aumentaram a perda', sub)}${blk('📉 Diminuíram a perda', des)}</div></details>`; })()}
+      </div>
     <div class="card" style="margin-top:12px"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">✅ O que melhorou</h2><div class="sp"></div><span class="small muted">contra o ${b.t}</span></div>
       ${mel.length? `<p class="small" style="margin:6px 0 8px"><b>${mel.length} produto(s)</b> perderam menos, somando <b style="color:var(--good)">${brl0(-somaMel)} a menos</b>. ${melQ.length} deles por perder menos quantidade.</p>
       <div class="dsm-pl small">${mel.slice(0,10).map(x=>{ const qtd=x.sumiu? 'não teve perda agora' : x.q0? `qtd ${qtBR(x.q0)} → ${qtBR(x.q1)}` : ''; const porQ=x.dq<0 && x.dq<=x.dp;

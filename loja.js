@@ -111,10 +111,12 @@ async function cardChecklist(app){
   ];
   const realcaFalta=t=>esc(t).replace(/(falta (?:o dia|de) [\d/]+(?: a [\d/]+)?)/,'<b style="color:var(--bad)">$1</b>');
   const pend=linhas.filter(l=>!l[0].includes('✔')).length;
-  box.innerHTML=`<div class="card" style="margin-bottom:12px">
-    <div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📋 Importações de hoje</h2><span class="small muted">${pend?`${pend} item(ns) para olhar`:'tudo em dia ✔'}</span><div class="sp"></div><button class="btn" id="bConf">🔎 Conferir</button>${botaoImportarVarios('bCk')}</div>
-    <div class="tw" style="margin-top:8px"><table><tbody>${linhas.map(l=>`<tr><td style="width:24px">${l[0]}</td><td><b>${l[1]}</b><div class="small muted m-only">${realcaFalta(l[2])}</div></td><td class="small m-hide">${realcaFalta(l[2])}</td><td class="small muted m-hide">${esc(l[3])}</td></tr>`).join('')}</tbody></table></div>
-    <p class="small muted" style="margin:6px 0 0">Pode selecionar todos os PDFs de uma vez: o site reconhece cada relatório, avisa se algum é repetido ou está com o período errado, e abre a conferência de um por um.</p></div>`;
+  let fechado=false; try{ fechado=localStorage.getItem('metas_ck_fechado')==='1'; }catch(_){ }
+  box.innerHTML=`<div class="card ck-card ${fechado?'ck-fechado':''}" style="margin-bottom:12px">
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="ck-tog" id="ckTog" aria-expanded="${!fechado}" title="Abrir ou fechar"><span class="ck-chev">▾</span><h2 style="margin:0;display:inline">📋 Importações de hoje</h2></button><span class="small ${pend?'':'muted'}" style="${pend?'color:var(--bad);font-weight:600':''}">${pend?`${pend} item(ns) para olhar`:'tudo em dia ✔'}</span><div class="sp"></div><button class="btn" id="bConf">🔎 Conferir</button>${botaoImportarVarios('bCk')}</div>
+    <div class="ck-corpo"><div class="tw" style="margin-top:8px"><table><tbody>${linhas.map(l=>`<tr><td style="width:24px">${l[0]}</td><td><b>${l[1]}</b><div class="small muted m-only">${realcaFalta(l[2])}</div></td><td class="small m-hide">${realcaFalta(l[2])}</td><td class="small muted m-hide">${esc(l[3])}</td></tr>`).join('')}</tbody></table></div>
+    <p class="small muted" style="margin:6px 0 0">Pode selecionar todos os PDFs de uma vez: o site reconhece cada relatório, avisa se algum é repetido ou está com o período errado, e abre a conferência de um por um.</p></div></div>`;
+  $('#ckTog').onclick=()=>{ const c=box.querySelector('.ck-card'); const f=!c.classList.contains('ck-fechado'); c.classList.toggle('ck-fechado',f); $('#ckTog').setAttribute('aria-expanded',String(!f)); try{ localStorage.setItem('metas_ck_fechado', f?'1':'0'); }catch(_){ } };
   ligarImportarVarios('bCk'); const bc=$('#bConf'); if(bc) bc.onclick=()=>mostrarConferencia(false);
 }
 
@@ -153,7 +155,7 @@ async function cardTetoConfig(app){
 
 /* ---------- Perdas da loja inteira ---------- */
 async function renderPerdasLoja(app, doc){
-  app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1>Perdas da loja</h1><p class="sub" style="margin:0">Todos os setores: teto, perdas por produto, acertos de balanço e os produtos que mais pesam</p></div><div class="sp"></div>${botaoImportarVarios('bVL')}</div><div id="plBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
+  app.innerHTML=`${abasBalPerdas()}<div class="row" style="align-items:flex-end;margin-bottom:12px"><div><h1>Perdas da loja</h1><p class="sub" style="margin:0">Todos os setores: teto, perdas por produto, acertos de balanço e os produtos que mais pesam</p></div><div class="sp"></div>${botaoImportarVarios('bVL')}</div><div id="plBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
   ligarImportarVarios('bVL');
   cardAlertas(app, null, app.querySelector('.row'));
   const box=$('#plBox'); const vivo=()=>S.view==='perdas' && box.isConnected;
@@ -191,9 +193,9 @@ async function renderPerdasLoja(app, doc){
   for(const r of P) for(const s of r.dados.secoes) for(const i of s.itens){ if(!i.q && !i.v) continue; const x=pk(i.c); x.d=x.d||i.d.replace(/^[FV] /,''); x.setor=x.setor||r.setor_id; x.perda+=i.val; x.qp+=i.q; }
   const temAcertos=A.length>0;
   if(temAcertos){ for(const r of A) for(const i of r.dados.itens){ const x=pk(i.c); x.d=x.d||i.d; x.setor=x.setor||r.setor_id; if(i.vd<0) x.falta+=-i.vd; else x.sobra+=i.vd; } }
-  else { for(const b of BAL){ if((b.periodo_inicio||b.data)<ini) continue; const an=b.analise||{}; const lista=an.perdasProdutos||(an.top||[]).map(p=>[p.codigo,-p.valor]); for(const [c,v] of lista){ if(v>0 && prod.has(String(c))){ const x=pk(c); x.falta+=v; x.setor=x.setor||b.setor_id; } } } }
+  else { for(const b of BAL){ if((b.periodo_inicio||b.data)<ini) continue; const an=b.analise||{}; const lista=an.perdasProdutos||(an.top||[]).map(p=>[p.codigo,-p.valor]); for(const [c,v] of lista){ if(v && prod.has(String(c))){ const x=pk(c); if(v>0) x.falta+=v; else x.sobra+=-v; x.setor=x.setor||b.setor_id; } } } }
   for(const r of V) for(const dep of r.dados.departamentos) for(const p of dep.produtos){ const c=String(p.c); if(prod.has(c)){ const x=prod.get(c); x.venda+=p.v; x.d=x.d||p.d; x.setor=x.setor||r.setor_id; } }
-  const lista=[...prod.values()].map(x=>({...x, total:x.perda+x.falta})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  const lista=[...prod.values()].map(x=>({...x, total:x.perda+x.falta-x.sobra})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const nSem=lista.filter(x=>!x.venda).length;
   box.innerHTML=`${tetoHtml}
     <div class="card" style="margin-top:12px"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">📊 Perdas e balanços por setor</h2><div class="sp"></div>
@@ -226,7 +228,7 @@ async function renderTrocasLoja(app, doc){
   app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap"><div><h1>Trocas da loja</h1><p class="sub" style="margin:0">Produtos transferidos para troca — por setor e por produto. Ficam fora da perda e do teto.</p></div><div class="sp"></div><span id="tlPer"></span>${botaoImportarVarios('bVT')}</div><div id="tlBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
   ligarImportarVarios('bVT');
   const box=$('#tlBox'); const vivo=()=>S.view==='trocas' && box.isConnected;
-  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(500)); }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
+  let per=[]; try{ per=await q(S.sb.from('analise_trocas').select('setor_id,periodo_inicio,periodo_fim').order('periodo_fim',{ascending:false}).limit(500)); }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
   const periodos=[...new Map(per.map(x=>[x.periodo_inicio+'|'+x.periodo_fim,x])).values()].sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
   if(!periodos.length){ box.innerHTML='<div class="card empty"><h2>Nenhum relatório de trocas ainda</h2><p>Importe o “Resumo de produtos transferidos” do sistema pelo botão 📥 Importar relatórios.</p></div>'; return; }
@@ -236,9 +238,14 @@ async function renderTrocasLoja(app, doc){
   $('#tlSel').onchange=e=>{ S.tlPer=e.target.value; renderTrocasLoja(app,doc); };
   const [ini,fim]=S.tlPer.split('|');
   let T=[],TL=[],L=[];
+  const setDoPer=[...new Set(per.filter(x=>x.periodo_inicio===ini && x.periodo_fim===fim).map(x=>x.setor_id).filter(Boolean))];
   try{ [T,TL,L]=await Promise.all([ q(S.sb.from('analise_trocas').select('setor_id,custo,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',fim)), q(S.sb.from('analise_trocas').select('setor_id,custo,dados').eq('periodo_inicio',addAnos(ini,-1)).eq('periodo_fim',addAnos(fim,-1))), todasLinhas(()=>S.sb.from('lancamentos').select('setor_id,venda').gte('data',ini).lte('data',fim)) ]); }
   catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
+  // filtro: geral (loja toda) ou um setor
+  const filtroSet = S.tlSet && T.some(x=>x.setor_id===S.tlSet) ? S.tlSet : null;
+  const chips=`<div class="chips tl-chips" style="margin:-4px 0 12px;display:flex;gap:6px;flex-wrap:wrap"><button class="chip ${!filtroSet?'on':''}" data-tlset="">🏪 Geral</button>${T.slice().sort((a,b)=>(+b.custo)-(+a.custo)).map(x=>`<button class="chip ${filtroSet===x.setor_id?'on':''}" data-tlset="${x.setor_id}">${esc(nomeSetor(x.setor_id))}</button>`).join('')}</div>`;
+  if(filtroSet){ T=T.filter(x=>x.setor_id===filtroSet); TL=TL.filter(x=>x.setor_id===filtroSet); L=L.filter(x=>x.setor_id===filtroSet); }
   const vs={}; let vLoja=0; for(const x of L){ vs[x.setor_id]=(vs[x.setor_id]||0)+(+x.venda||0); vLoja+=(+x.venda||0); }
   const tot=T.reduce((a,x)=>a+(+x.custo||0),0), totV=T.reduce((a,x)=>a+(+x.venda||0),0), totL=TL.reduce((a,x)=>a+(+x.custo||0),0);
   const mL=Object.fromEntries(TL.map(x=>[x.setor_id,+x.custo]));
@@ -249,13 +256,13 @@ async function renderTrocasLoja(app, doc){
   const maior=set[0], menor=set[set.length-1];
   let ac=0,n80=0; for(const p of prods){ ac+=p.tc; n80++; if(ac>=tot*0.8) break; }
   const subiu=TL.length? prods.map(p=>({p,d:p.tc-((lyP.get(String(p.c))||{}).tc||0)})).filter(x=>x.d>0).sort((a,b)=>b.d-a.d).slice(0,5):[];
-  box.innerHTML=`
+  box.innerHTML=chips+`
     <div class="grid kpis">
-      <div class="kpi hero"><div class="l">Total de trocas (custo)</div><div class="v">${brl0(tot)}</div><div class="d">${prods.length} produtos · a preço de venda ${brl0(totV)}</div></div>
-      <div class="kpi"><div class="l">Sobre a venda da loja</div><div class="v">${vLoja?pctBR(tot/vLoja,2):'—'}</div><div class="d">venda lançada no período ${brl0(vLoja)}</div></div>
+      <div class="kpi hero"><div class="l">${filtroSet?'Trocas de '+esc(nomeSetor(filtroSet))+' (custo)':'Total de trocas (custo)'}</div><div class="v">${brl0(tot)}</div><div class="d">${prods.length} produtos · a preço de venda ${brl0(totV)}</div></div>
+      <div class="kpi"><div class="l">Sobre a venda ${filtroSet?'do setor':'da loja'}</div><div class="v">${vLoja?pctBR(tot/vLoja,2):'—'}</div><div class="d">venda lançada no período ${brl0(vLoja)}</div></div>
       <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v">${TL.length?brl0(totL):'—'}</div><div class="d">${TL.length?varP(tot,totL)+' em relação ao ano passado':'importe o relatório de trocas de '+fD(addAnos(ini,-1))+' a '+fD(addAnos(fim,-1))}</div></div>
-      <div class="kpi"><div class="l">Maior troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(maior.id))}</div><div class="d">${brl0(maior.c)} · ${pctBR(maior.c/tot,0)} das trocas</div></div>
-      <div class="kpi"><div class="l">Menor troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(menor.id))}</div><div class="d">${brl0(menor.c)} · ${pctBR(menor.c/tot,1)} das trocas</div></div>
+      ${filtroSet?'':`      <div class="kpi"><div class="l">Maior troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(maior.id))}</div><div class="d">${brl0(maior.c)} · ${pctBR(maior.c/tot,0)} das trocas</div></div>
+      <div class="kpi"><div class="l">Menor troca por setor</div><div class="v" style="font-size:20px">${esc(nomeSetor(menor.id))}</div><div class="d">${brl0(menor.c)} · ${pctBR(menor.c/tot,1)} das trocas</div></div>`}
       <div class="kpi"><div class="l">Produto com maior troca</div><div class="v" style="font-size:16px">${esc(cap1(prods[0]?.d||'—'))}</div><div class="d">${prods[0]?brl(prods[0].tc)+' · '+esc(nomeSetor(prods[0].setor)):''}</div></div>
     </div>
     <div class="card" style="margin-top:12px"><h2>👀 Onde olhar primeiro</h2><ul class="small" style="margin:6px 0 0 18px;line-height:1.6">
@@ -277,6 +284,7 @@ async function renderTrocasLoja(app, doc){
   const desenha=()=>{ const t=normN2($('#tlBusca').value), st=$('#tlSet').value;
     $('#tlBody').innerHTML=prods.map((p,k)=>({p,k})).filter(({p})=>(!st||p.setor===st)&&(!t||normN2(p.d).includes(t)||String(p.c)===t)).slice(0,500).map(({p,k})=>{ const o=lyP.get(String(p.c)); return `<tr><td><span class="muted small">${k+1}º · ${esc(p.c)}</span> ${esc(cap1(p.d))}<div class="small muted m-only">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></td><td class="small m-hide">${esc(nomeSetor(p.setor))}</td><td class="n m-hide">${qtBR(p.q)}</td><td class="n m-hide">${brl(p.cu)}</td><td class="n"><b>${brl(p.tc)}</b></td>${TL.length?`<td class="n m-hide">${o?brl(o.tc):'—'}</td>`:''}<td class="n" style="min-width:64px">${pctBR(p.tc/tot,1)}${barraPct(p.tc/prods[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="7" class="muted">Nada encontrado.</td></tr>'; };
   $('#tlBusca').oninput=desenha; $('#tlSet').onchange=desenha; desenha();
+  box.querySelectorAll('[data-tlset]').forEach(b=>b.onclick=()=>{ S.tlSet=b.dataset.tlset||null; renderTrocasLoja(app,doc); });
   box.querySelectorAll('[data-trset]').forEach(d=>d.onclick=()=>{ const det=box.querySelector(`[data-det="${d.dataset.trset}"]`); const ab=det.classList.toggle('hide'); d.querySelector('.tl-seta').textContent=ab?'▸':'▾'; });
 }
 

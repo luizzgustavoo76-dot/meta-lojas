@@ -156,6 +156,7 @@ function renderPainel(app, doc){
     <div class="kpi m-hide"><div class="l">Meta de ${loja.proxDia?fDate(loja.proxDia):'—'}</div><div class="v">${brl0(loja.metaProx)}</div><div class="d">${loja.proxDia?fDateL(loja.proxDia):''}</div></div>
     ${kpisComparativos(comp)}
     <div class="kpi"><div class="l">Perdas</div><div class="v">${brl0(loja.perda)}</div><div class="d">${pct(loja.pPerda,2)} sobre a venda${loja.perdaBal?` · inclui <a href="#balancos">${brl0(loja.perdaBal)} de balanço</a>`:''}</div>${comp?.pm?`<div class="d">vs. mês passado: ${varTxt(loja.perda, comp.pm.perda, true)}</div>`:''}</div>
+    <div class="kpi" id="kpTrocas"><div class="l">Trocas do mês</div><div class="v">…</div><div class="d">a custo</div></div>
   </div>
   <button class="btn m-only kpi-mais" data-kpimais>＋ Ver mais números</button>
   ${alertasPainel(doc, loja, setores)}
@@ -202,6 +203,7 @@ function renderPainel(app, doc){
   aplicarCelular(app);
   drawLojaChart(loja);
   drawRank(setores);
+  kpiTrocasMes($('#kpTrocas'), doc, loja);
   montarCalVendas($('#calLoja'), {id:null, daily:loja.daily}, doc, {titulo:S.gerente?'📅 Vendas da loja dia a dia':'📅 Vendas dia a dia', setores: setores.length>1? setores : null});
 }
 
@@ -402,6 +404,7 @@ async function renderBalancosSetor(box, s, doc){
   try{ lista=await q(S.sb.from('balancos').select('*, balanco_comentarios(count)').eq('setor_id',sid).order('data',{ascending:false}).order('id',{ascending:false}).limit(60)); }
   catch(e){ box.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(S.view!=='setor' || S.setorAba!=='bal' || S.setorSel!==sid || !box.isConnected) return;
+  completarBalancosAntigos(lista.map(b=>({...b, valor_perda_antes:b.valor_perda}))).then(async m=>{ if(m && box.isConnected){ const ds=(S._balCorrigidos||[]).map(x=>x.data); avisarBalCorrigidos(); for(const d of new Set(ds)) await aposMudarBalanco(d).catch(()=>{}); if(box.isConnected) renderBalancosSetor(box,s,doc); } });
   const anteriorDe=b=>lista.find(x=>x.data<b.data || (x.data===b.data && x.id<b.id));
   S._anteriorDe=anteriorDe;
   const varia=b=>{ const a=anteriorDe(b); if(!a) return null; const v=+b.valor_perda||0, va=+a.valor_perda||0; return {a, dif:v-va, pct: va?(v-va)/va:null}; };
@@ -870,6 +873,7 @@ async function renderConta(app){
   const setTxt = S.gerenteReal ? 'Todos os setores' : esc((S.perfil.setores||[]).map(nomeSetor).join(', ')||'—');
   app.innerHTML=`
   <h1>Minha conta</h1><p class="sub">${esc(S.perfil.nome||'')} · ${esc(S.user.email)}</p>
+  ${S.gerente?`<div class="card" style="margin-bottom:12px"><div class="row" style="flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">📋 Fechamento do mês</h2><p class="small muted" style="margin:4px 0 0">Meta × realizado, perda, trocas, plano de ação e os fechamentos guardados para comparar.</p></div><div class="sp"></div><a class="btn p" href="#fechamento">Abrir o fechamento</a></div></div>`:''}
   <div class="grid conta2">
     <div class="card">
       <h2>Meus dados</h2>
@@ -997,6 +1001,7 @@ const SETORES_BALANCO=['acougue','hortifruti','padaria','pereciveis'];
 function setoresVisiveis(){ return S.gerente ? S.setoresAll : S.setoresAll.filter(x=>meusSetoresIds().includes(x.id)); }
 function meusSetoresIds(){ return S.preview ? S.preview.setores : (S.perfil.setores||[]); }
 function nomeArquivoSeguro(n){ return String(n||'arquivo').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9._-]+/g,'_').slice(-80); }
+function abasBalPerdas(){ if(!S.gerente) return ''; return `<div class="tabs2 abas-bp" style="margin:0 0 12px"><a href="#perdas" class="${S.view==='perdas'?'on':''}">🗑️ Perdas</a><a href="#balancos" class="${S.view==='balancos'?'on':''}">📦 Balanços</a></div>`; }
 async function renderBalancos(app){
   const mes=S.mes||todayIso().slice(0,7); const ini=`${mes}-01`, fim=fimDoMes(mes);
   app.innerHTML='<div class="empty"><span class="spin"></span> Carregando balanços…</div>';
@@ -1005,6 +1010,7 @@ async function renderBalancos(app){
   catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar: ${esc(e.message)}</div>`; return; }
   if(S.view!=='balancos') return;
   if(S.preview) lista=lista.filter(b=>S.preview.setores.includes(b.setor_id));
+  else completarBalancosAntigos(lista.map(b=>({...b, valor_perda_antes:b.valor_perda}))).then(async m=>{ if(m && S.view==='balancos'){ const ds=(S._balCorrigidos||[]).map(x=>x.data); avisarBalCorrigidos(); for(const d of new Set(ds)) await aposMudarBalanco(d).catch(()=>{}); if(S.view==='balancos') renderBalancos(app); } });
   // balanço anterior de cada setor (para comparar)
   let antes=[]; try{ antes=await q(S.sb.from('balancos').select('id,setor_id,data,valor_perda').lt('data',ini).order('data',{ascending:false}).limit(200)); }catch(_){ }
   if(S.preview) antes=antes.filter(b=>S.preview.setores.includes(b.setor_id));
@@ -1020,7 +1026,7 @@ async function renderBalancos(app){
   const porSetor={}; lista.forEach(b=>porSetor[b.setor_id]=(porSetor[b.setor_id]||0)+(+b.valor_perda||0));
   const destaque = (S.gerente? SETORES_BALANCO : vis.map(x=>x.id)).filter(id=>vis.some(x=>x.id===id));
   const vendaSetor = id => calcRes?.setores.find(x=>x.id===id)?.real || 0;
-  app.innerHTML=`
+  app.innerHTML=`${abasBalPerdas()}
   <div class="row" style="align-items:flex-end;margin-bottom:14px">
     <div><h1>Balanços — ${mesLabel(mes)}</h1><p class="sub" style="margin:0">Perdas apuradas nos balanços de estoque, com o relatório anexado para análise. Elas entram na perda do setor no painel.</p></div>
     <div class="sp"></div>
@@ -1145,7 +1151,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['balancos','Balanços'],['perdas','Perdas'],['diarias','Diárias'],['historico','Histórico'],['fechamento','Fechamento']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['perdas','Balanços e Perdas'],['diarias','Diárias'],['historico','Histórico']];
 const VIEWS_E=[['hoje','Hoje'],['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);
@@ -1159,10 +1165,10 @@ function montarCabecalho(){
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && S.sb && S.user){ try{ S.sb.auth.startAutoRefresh?.(); tokenValido(false).catch(()=>{}); }catch(_){} } });
 ['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false})); // iPhone: bloqueia o zoom de pinça
 function route(){
-  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta'];
+  const h=(location.hash||'#painel').slice(1); const v=[...(S.gerente?VIEWS_G:VIEWS_E).map(x=>x[0]),'conta', ...(S.gerente?['balancos','fechamento']:[])];
   const antes=S.view; if(S.gerente && (h==='lancar'||h==='metas')){ S.admAberto=h; S._admRolar=true; S.view='conta'; history.replaceState(null,'','#conta'); } else S.view=v.includes(h)?h:(S.gerente?'painel':'hoje');
   if(antes && antes!==S.view && antes!=='painel') S.voltarPainel = S.voltarPainel && S.view==='painel';
-  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view || (a.dataset.v==='perdas' && S.view==='balancos')));
   $('#bConta')?.classList.toggle('on', S.view==='conta'||S.view==='metas');
   render(); marcarBnav();
   // ao trocar de tela, começa do topo; ao voltar para o painel, volta para onde estava
@@ -1221,7 +1227,7 @@ async function iniciarSessao(){
   const { data:{ session } } = await S.sb.auth.getSession();
   if(!session) return telaLogin();
   let ult=0; try{ ult=+localStorage.getItem('metas_ultima_atividade')||0; }catch(_){ }
-  if(ult && Date.now()-ult>LIMITE_INATIVO){ return sair('Sua sessão expirou por inatividade. Entre novamente.'); }
+  if(ult && Date.now()-ult>LIMITE_INATIVO && !aparelhoCelular()){ return sair('Sua sessão expirou por inatividade. Entre novamente.'); }
   S.user=session.user;
   $('#app').innerHTML='<div class="empty"><span class="spin"></span> Carregando dados…</div>';
   try{
@@ -1288,6 +1294,8 @@ function mostrarFaixaVisualizacao(){
 
 /* ===================== saída automática por inatividade ===================== */
 const LIMITE_INATIVO=15*60*1000, AVISO_ANTES=60*1000;
+// no celular (ou no app instalado na tela inicial) não desconecta por inatividade; só no computador
+function aparelhoCelular(){ try{ return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent) || !!navigator.standalone || matchMedia('(display-mode: standalone)').matches || (matchMedia('(pointer:coarse)').matches && !matchMedia('(pointer:fine)').matches); }catch(_){ return false; } }
 function marcarAtividade(){ S.ultimaAtividade=Date.now(); try{ localStorage.setItem('metas_ultima_atividade', String(S.ultimaAtividade)); }catch(_){ } if(S._avisoInat){ S._avisoInat.remove(); S._avisoInat=null; } }
 function ultimaAtividade(){ let v=S.ultimaAtividade||0; try{ v=Math.max(v, +localStorage.getItem('metas_ultima_atividade')||0); }catch(_){ } return v; }
 async function sair(motivo){
@@ -1306,7 +1314,7 @@ function iniciarInatividade(){
   marcarAtividade();
 }
 function verificarInatividade(){
-  if(!S.loaded) return;
+  if(!S.loaded || aparelhoCelular()) return;
   const parado=Date.now()-ultimaAtividade();
   if(parado>=LIMITE_INATIVO) return sair('Você ficou 15 minutos sem usar o site e foi desconectado por segurança. Entre novamente.');
   if(parado>=LIMITE_INATIVO-AVISO_ANTES && !S._avisoInat){
@@ -1447,10 +1455,29 @@ async function linhasOcr(fontes){
   try{ for(const x of fontes){ const c=await prepararImagem(x); const { data } = await w.recognize(c); t+=data.text+'\n'; } } finally { await w.terminate(); }
   return limparTextoOcr(t).map(l=>({text:l}));
 }
+async function kpiTrocasMes(el, doc, loja){
+  if(!el) return; const ini=doc.mes+'-01';
+  let R=[]; try{ R=await q(S.sb.from('analise_trocas').select('setor_id,periodo_fim,custo').eq('periodo_inicio',ini).lte('periodo_fim',fimDoMes(doc.mes))); }catch(_){ }
+  if(!el.isConnected) return;
+  const ult={}; for(const r of R) if(!ult[r.setor_id] || r.periodo_fim>ult[r.setor_id].periodo_fim) ult[r.setor_id]=r;
+  const ls=Object.values(ult); if(!ls.length){ el.innerHTML='<div class="l">Trocas do mês</div><div class="v">—</div><div class="d">nenhum relatório de trocas no mês</div>'; return; }
+  const tot=ls.reduce((a,r)=>a+(+r.custo||0),0), ate=ls.map(r=>r.periodo_fim).sort().pop();
+  el.innerHTML=`<div class="l">Trocas do mês</div><div class="v">${brl0(tot)}</div><div class="d">a custo, até ${fD(ate)}${loja.real?` · ${pct(tot/loja.real,2)} da venda`:''} · <a href="#trocas">ver trocas</a></div>`;
+}
+function avisarBalCorrigidos(){ const c=S._balCorrigidos||[]; if(!c.length) return; S._balCorrigidos=[];
+  toast(`Balanço relido do PDF: ${c.map(x=>`${nomeSetor(x.setor)} ${fD(x.data)} ${x.de!=null?brl0(+x.de)+' → ':''}${brl0(x.para)}`).join(' · ')}`, 9000); }
 async function extrairPerdaArquivo(f){
   const linhas=await linhasDoArquivo(f);
   const an=Parser.analisarBalancoSistema(linhas);
   if(an) return { valor:an.valorPerda, linha:`TOTAL DE PERDAS do resultado geral: ${brl(an.geral.perdas)}`, data:an.periodo.fim, ini:an.periodo.ini, analise:an };
+  // reserva: período "DE dd/mm/aa A dd/mm/aa" (segunda linha) e o último "TOTAL DE PERDAS...: -541,712" (última folha)
+  { const txt=linhas.map(l=>String(l.text||l).replace(/\s+/g,' '));
+    const d2=s=>{ const m=s.match(/(\d{2})\/(\d{2})\/(\d{2,4})/); return m? `${m[3].length===2?'20'+m[3]:m[3]}-${m[2]}-${m[1]}` : null; };
+    const pl=txt.find(t=>/\bDE \d{2}\/\d{2}\/\d{2,4} A \d{2}\/\d{2}\/\d{2,4}/i.test(t));
+    const tps=txt.filter(t=>/TOTAL DE PERDAS\.*\s*:/i.test(t));
+    if(tps.length){ const mm=tps[tps.length-1].match(/TOTAL DE PERDAS\.*\s*:\s*(-?[\d.]*\d(?:,\d+)?)/i);
+      if(mm){ const v=parseFloat(mm[1].replace(/\./g,'').replace(',','.')); const pm=pl&&pl.match(/DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
+        return { valor: v<0? Math.round(-v*100)/100 : 0, linha:`TOTAL DE PERDAS da última folha: ${mm[1]}`, data: pm? d2(pm[2]) : null, ini: pm? d2(pm[1]) : null }; } } }
   let data=null;
   for(const l of linhas){ const m=String(l.text).match(/(\d{2})[\/.-](\d{2})[\/.-](\d{2,4})/); if(m){ const y=m[3].length===2?'20'+m[3]:m[3]; const k=`${y}-${m[2]}-${m[1]}`; if(!isNaN(new Date(k))){ data=k; break; } } }
   const numsDe=l=>{ if(l.nums&&l.nums.length) return l.nums; const t=String(l.text).replace(/^[^0-9(-]*/,''); return Parser.extractNums(t).filter(v=>!(Number.isInteger(v)&&Math.abs(v)<100)); };

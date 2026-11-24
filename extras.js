@@ -305,11 +305,12 @@ function marcarBnav(){
   const nav=$('#bnav'); if(!nav) return;
   nav.querySelectorAll('[data-bn]').forEach(a=>{ const [v,aba]=a.dataset.bn.split(':');
     let on = aba ? (S.view==='setor' && (S.setorAba||'dia')===aba) : (v===S.view);
-    if(v==='mais') on=['balancos','diarias','historico','fechamento','conta'].includes(S.view);
+    if(v==='mais') on=['diarias','historico','fechamento','conta'].includes(S.view);
+    if(v==='perdas') on=['perdas','balancos'].includes(S.view);
     a.classList.toggle('on',on); });
 }
 function menuMais(){
-  const it=[['lancar','➕','Lançar vendas'],['balancos','📦','Balanços'],['diarias','💵','Diárias'],['historico','📅','Histórico'],['fechamento','📋','Fechamento do mês'],['conta','👤','Minha conta e administração']];
+  const it=[['lancar','➕','Lançar vendas'],['diarias','💵','Diárias'],['historico','📅','Histórico'],['conta','👤','Minha conta e administração (fechamento do mês)']];
   const m=modal(`<div class="sheet"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Mais opções</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
     ${it.map(([k,i,t])=>`<a class="sheet-i ${S.view===k?'on':''}" href="#${k}"><span>${i}</span>${t}</a>`).join('')}
     <button class="sheet-i" id="mmAtual"><span>🔄</span>Atualizar os números</button>

@@ -60,17 +60,22 @@ function perdasBalanco(bals){
   const m=new Map();
   for(const b of bals){ const an=b.analise||{};
     const lista = an.perdasProdutos || (an.top||[]).map(p=>[p.codigo, -p.valor]);
-    for(const [c,v] of lista){ if(v>0) m.set(String(c),(m.get(String(c))||0)+v); } }
+    for(const [c,v] of lista){ if(v) m.set(String(c),(m.get(String(c))||0)+v); } }
+  for(const [c,v] of m) if(Math.abs(v)<0.005) m.delete(c); // falta menos sobra
   return m;
 }
-async function completarBalancosAntigos(bals){ // balanços salvos antes de guardar a perda de todos os produtos
+async function completarBalancosAntigos(bals){ // relê o PDF dos balanços sem análise ou com a análise antiga (só faltas)
   if(!S.gerente) return false; S._bfFeito=S._bfFeito||new Set(); let mudou=false;
   for(const b of bals){
-    if(!b.arquivo_path || !/\.pdf$/i.test(b.arquivo_path) || b.analise?.perdasProdutos || S._bfFeito.has(b.id)) continue;
+    if(!b.arquivo_path || !/\.pdf$/i.test(b.arquivo_path) || b.analise?.versao>=2 || S._bfFeito.has(b.id)) continue;
     S._bfFeito.add(b.id);
     try{ const { data:blob, error } = await S.sb.storage.from('balancos').download(b.arquivo_path); if(error) throw error;
       const an=Parser.analisarBalancoSistema(await linhasDoArquivo(new File([blob], b.arquivo_nome||'balanco.pdf', {type:'application/pdf'})));
-      if(an?.perdasProdutos){ const nova={...(b.analise||{}), perdasProdutos:an.perdasProdutos}; await q(S.sb.from('balancos').update({analise:nova}).eq('id',b.id)); b.analise=nova; mudou=true; } }
+      if(an){ const upd={analise:an};
+        if(!b.analise || Math.abs((+b.valor_perda||0)-an.valorPerda)>0.01){ upd.valor_perda=an.valorPerda; } // sem análise antes: o valor vem do TOTAL DE PERDAS
+        if(an.periodo?.ini && !b.periodo_inicio) upd.periodo_inicio=an.periodo.ini;
+        await q(S.sb.from('balancos').update(upd).eq('id',b.id)); Object.assign(b, upd); mudou=true;
+        if(upd.valor_perda!=null) S._balCorrigidos=(S._balCorrigidos||[]).concat([{id:b.id, setor:b.setor_id, data:b.data, de:b.valor_perda_antes, para:an.valorPerda}]); } }
     catch(e){ console.warn('balanço',b.id,e); }
   }
   return mudou;
@@ -125,8 +130,8 @@ async function renderAnaliseSetor(box, s){
   const metaDep=c=>{ const x=(S._metasDep||[]).find(m=>m.dep_codigo===c); return x&&+x.meta? +x.meta : null; };
   const faltaRel = (p0,p1)=> S.gerente ? `importe o relatório de ${fD(p0)} a ${fD(p1)}` : `sem o relatório de ${fD(p0)} a ${fD(p1)}`;
   const cartao=(rot, tot, p0, p1)=> `<div class="kpi"><div class="l">${rot}</div>${tot!=null?`<div class="v">${brl0(tot)}</div><div class="d">${fD(p0)} até ${fD(p1)} · ${varHtml(A.tot,tot)} (${A.tot-tot>=0?'+':''}${brl0(A.tot-tot)})</div>`:`<div class="v muted" style="font-size:20px">—</div><div class="d">${faltaRel(p0,p1)}</div>`}</div>`;
-  const lstS=(tit, ico, itens, fn, sub)=> `<div class="an-ol"><div class="an-olt">${ico} ${tit} <span class="small muted" style="font-weight:400">(${itens.length})</span></div><div class="small muted" style="margin:-2px 0 4px">${sub}</div>${itens.length?itens.slice(0,6).map(p=>`<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span>${esc(p.d)}<span class="small" style="display:block">${fn(p)}</span></span><b>${(p.efVol>=0?'+':'')+brl0(p.efVol)}</b></button>`).join(''):'<div class="small muted" style="padding:4px 0">nada por aqui</div>'}</div>`;
-  const lst=(tit, ico, itens, fn)=> `<div class="an-ol"><div class="an-olt">${ico} ${tit}</div>${itens.length?itens.slice(0,5).map(p=>`<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span>${esc(p.d)}</span><b>${fn(p)}</b></button>`).join(''):'<div class="small muted" style="padding:4px 0">nada por aqui</div>'}</div>`;
+  const lstS=(tit, ico, itens, fn, sub)=> `<div class="an-ol"><div class="an-olt">${ico} ${tit} <span class="small muted" style="font-weight:400">(${itens.length})</span></div><div class="small muted" style="margin:-2px 0 4px">${sub}</div>${itens.length?itens.slice(0,6).map(p=>`<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)}<span class="small" style="display:block">${fn(p)}</span></span><b>${(p.efVol>=0?'+':'')+brl0(p.efVol)}</b></button>`).join(''):'<div class="small muted" style="padding:4px 0">nada por aqui</div>'}</div>`;
+  const lst=(tit, ico, itens, fn)=> `<div class="an-ol"><div class="an-olt">${ico} ${tit}</div>${itens.length?itens.slice(0,5).map(p=>`<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)}</span><b>${fn(p)}</b></button>`).join(''):'<div class="small muted" style="padding:4px 0">nada por aqui</div>'}</div>`;
   const quedas=todos.filter(p=>p.vb>0&&p.v>0&&p.v<p.vb).sort((a,b)=>(a.v-a.vb)-(b.v-b.vb));
   const altas=todos.filter(p=>p.vb>0&&p.v>p.vb).sort((a,b)=>(b.v-b.vb)-(a.v-a.vb));
   const aQueda=quedas.filter(p=>p.abc==='A');
@@ -146,12 +151,12 @@ async function renderAnaliseSetor(box, s){
     ${cartao('Mês passado, mesmo período', totLm, pm0, pm1)}
     ${proj!=null?`<div class="kpi"><div class="l">Projeção do mês</div><div class="v">${brl0(proj)}</div><div class="d">no ritmo até o dia ${dias}${totLyM!=null?` · ${mesLabel(lyMes[0].slice(0,7))} fechou ${brl0(totLyM)} ${varHtml(proj,totLyM)}`:''}</div></div>`:''}
     <div class="kpi"><div class="l">Mix de produtos</div><div class="v">${A.itens}</div><div class="d">${base?`${nNovos} novo(s) · ${nParados} parou(ram) de vender vs. ${nomeBase}`:'com venda no período'}</div></div>
-    ${bals.length?`<div class="kpi"><div class="l">Perdas dos produtos no balanço</div><div class="v">${brl0(perdaTot)}</div><div class="d">soma das perdas, sem descontar as sobras · resultado do balanço ${brl0(bals.reduce((x,b)=>x+(+b.valor_perda||0),0))} · ${bals.map(b=>`${b.periodo_inicio?fDate(b.periodo_inicio)+' a ':''}${fDate(b.data)}`).join(', ')}</div></div>`:''}
+    ${bals.length?`<div class="kpi"><div class="l">Perda dos produtos no balanço</div><div class="v">${brl0(perdaTot)}</div><div class="d">faltas menos sobras dos produtos deste relatório · resultado do balanço ${brl0(bals.reduce((x,b)=>x+(+b.valor_perda||0),0))} · ${bals.map(b=>`${b.periodo_inicio?fDate(b.periodo_inicio)+' a ':''}${fDate(b.data)}`).join(', ')}</div></div>`:''}
   </div>
   ${notaDatas(ini, fim, [{rot:'ano passado', ini:ly?pa0:null, fim:pa1},{rot:'mês passado', ini:lm?pm0:null, fim:pm1}])}
   ${ehBdj()?'':'<div id="anRup"></div>'}
   ${cardCurvaABC(A, todos)}
-  ${base?cardVolumePreco(A, nomeBase):''}
+  ${base?cardVolumePreco(A, nomeBase, todos):''}
   ${base?(()=>{ const sens=sensibilidade(todos); const fq=v=>`<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'▲':'▼'} ${pct(Math.abs(v),0)}</span>`;
       const lin=p=>`preço <b>${p.dp>=0?'▲':'▼'} ${pct(Math.abs(p.dp),0)}</b> · qtd ${fq(p.dq)}`;
       return `<div class="card" style="margin-top:12px"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">🏷️ Sensibilidade ao preço</h2><div class="sp"></div><span class="small muted">preço médio e quantidade contra o ${nomeBase} · toque no produto para ver</span></div>
@@ -208,12 +213,12 @@ async function renderAnaliseSetor(box, s){
             <div class="dl-c"><div><span>${p.grupo?'Códigos':'Código'}</span><b>${esc(codProd(p))}</b></div><div><span>Quantidade</span><b>${qtdTxt(p.q)}${base&&p.qb!=null?` <small class="muted">(antes ${qtdTxt(p.qb)})</small> ${varHtml(p.q,p.qb)}`:''}</b></div>
             ${base?`<div><span>Venda ${nomeBase}</span><b>${p.vb?brl(p.vb):'—'}</b></div><div><span>Diferença</span><b>${p.vb!=null?`${p.v-p.vb>=0?'+':''}${brl0(p.v-p.vb)}`:'—'}</b></div>`:''}
             <div><span>Preço médio</span><b>${p.q?brl(p.v/p.q):'—'}${base&&p.qb?` <small class="muted">(antes ${brl(p.vb/p.qb)})</small> ${varHtml(p.v/p.q,p.vb/p.qb)}`:''}</b></div><div><span>Participação</span><b>${p.v?pct(p.part):'—'}</b></div><div><span>Margem</span><b>${p.m!=null?pct(p.m/100):'—'}</b></div>
-            ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?brl(pb):'—'}</b></div>`:''}</div>${p.grupo?`<div class="an-gm"><div class="small" style="font-weight:700;margin:6px 0 2px">Por código</div>${membrosGrupo(p).map(m=>`<div class="an-gmi"><div><span class="small muted">${esc(m.c)}</span> ${esc(m.d)}<div class="small muted">${qtdTxt(m.q)}${base&&m.qb!=null?` · antes ${qtdTxt(m.qb)} ${m.qb?varHtml(m.q,m.qb):''}`:''}</div></div><div class="n"><b>${m.v?brl0(m.v):'—'}</b><div class="small">${base?(m.vb?varHtml(m.v,m.vb):(m.v?'novo':'parou')):''}</div></div></div>`).join('')}</div>`:''}</details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
+            ${perdas.size?`<div><span>Perda no balanço</span><b>${pb?(pb>0?brl(pb):`<span style="color:var(--good)">sobra ${brl(-pb)}</span>`):'—'}</b></div>`:''}</div>${p.grupo?`<div class="an-gm"><div class="small" style="font-weight:700;margin:6px 0 2px">Por código</div>${membrosGrupo(p).map(m=>`<div class="an-gmi"><div><span class="small muted">${esc(m.c)}</span> ${esc(m.d)}<div class="small muted">${qtdTxt(m.q)}${base&&m.qb!=null?` · antes ${qtdTxt(m.qb)} ${m.qb?varHtml(m.q,m.qb):''}`:''}</div></div><div class="n"><b>${m.v?brl0(m.v):'—'}</b><div class="small">${base?(m.vb?varHtml(m.v,m.vb):(m.v?'novo':'parou')):''}</div></div></div>`).join('')}</div>`:''}</details>`; }).join('')}${!ps.length?'<div class="muted small" style="padding:10px">Nenhum produto</div>':''}</div>
         <div class="tw an-pt d-only"><table><thead><tr><th>Produto</th><th class="n">Qtd</th>${base?'<th class="n">Var. qtd</th>':''}<th class="n">Venda</th>${base?`<th class="n">${nomeBase}</th><th class="n">Var. venda</th>`:''}<th class="n">Part.</th><th class="n">Margem</th>${perdas.size?'<th class="n">Perda bal.</th>':''}</tr></thead><tbody>
           ${ps.map(p=>{ const pb=perdas.get(String(p.c)); return `<tr id="anp-${esc(p.c)}" class="${S.anaFoco===p.c?'an-foco':''}"><td><span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)} ${tags(p)}${p.grupo?` <button class="an-gx" data-gx="${esc(p.c)}">${S.anaGrp?.has(p.c)?'▾ esconder códigos':'▸ ver códigos'}</button>`:''}</td>
             <td class="n">${qtdTxt(p.q)}${base&&p.qb!=null?`<div class="small muted">antes ${qtdTxt(p.qb)}</div>`:''}</td>${base?`<td class="n">${p.qb!=null?varHtml(p.q,p.qb):'<span class="muted">—</span>'}</td>`:''}
             <td class="n"><b>${p.v?brl(p.v):'—'}</b>${p.q?`<div class="small muted">${brl(p.v/p.q)}/${ehKg(p)?'kg':'un'}${base&&p.qb&&p.vb?` (antes ${brl(p.vb/p.qb)})`:''}</div>`:''}</td>${base?`<td class="n">${p.vb?brl(p.vb):'—'}</td><td class="n">${varHtml(p.v,p.vb)}</td>`:''}
-            <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:'—'}</td>`:''}</tr>${p.grupo&&S.anaGrp?.has(p.c)?membrosGrupo(p).map(m=>`<tr class="an-sub"><td>↳ <span class="small muted">${esc(m.c)}</span> ${esc(m.d)}</td>
+            <td class="n">${p.v?pct(p.part):'—'}</td><td class="n">${p.m!=null?pct(p.m/100):'—'}</td>${perdas.size?`<td class="n">${pb?(pb>0?`${brl(pb)}${p.v?`<div class="small muted">${pct(pb/p.v,1)} da venda</div>`:''}`:`<span style="color:var(--good)">sobra ${brl(-pb)}</span>`):'—'}</td>`:''}</tr>${p.grupo&&S.anaGrp?.has(p.c)?membrosGrupo(p).map(m=>`<tr class="an-sub"><td>↳ <span class="small muted">${esc(m.c)}</span> ${esc(m.d)}</td>
             <td class="n">${qtdTxt(m.q)}${base&&m.qb!=null?`<div class="small muted">antes ${qtdTxt(m.qb)}</div>`:''}</td>${base?`<td class="n">${m.qb?varHtml(m.q,m.qb):(m.q?'<span class="badge b-good">novo</span>':'<span class="muted">—</span>')}</td>`:''}
             <td class="n"><b>${m.v?brl(m.v):'—'}</b>${m.q?`<div class="small muted">${brl(m.v/m.q)}/kg${base&&m.qb&&m.vb?` (antes ${brl(m.vb/m.qb)})`:''}</div>`:''}</td>${base?`<td class="n">${m.vb?brl(m.vb):'—'}</td><td class="n">${m.vb?varHtml(m.v,m.vb):(m.v?'<span class="badge b-good">novo</span>':'<span class="badge b-bad">parou</span>')}</td>`:''}
             <td class="n">${m.v&&p.v?`${pct(m.v/p.v,0)}<div class="small muted">do grupo</div>`:'—'}</td><td class="n"></td>${perdas.size?'<td></td>':''}</tr>`).join(''):''}`; }).join('')}
@@ -389,7 +394,7 @@ function efeitos(ps, temBase){
   return { vol, preco, novos, parados, vbComum };
 }
 function somaQtd(ps){ const r={kg:0,kgb:0,un:0,unb:0}; for(const p of ps){ if(ehKg(p)){ r.kg+=+p.q||0; r.kgb+=+p.qb||0; } else { r.un+=+p.q||0; r.unb+=+p.qb||0; } } return r; }
-function cardVolumePreco(A, nomeBase){
+function cardVolumePreco(A, nomeBase, todos){
   const e=A.ef; if(!e) return '';
   const base=A.totBase||0, dif=A.tot-base, pc=v=>base? (v>=0?'+':'')+pctBR(v/base,1):'';
   const linha=(t,v,expl)=>`<div style="display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${t}<div class="small muted">${expl}</div></span><b style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'+':''}${brl0(v)}</b><span class="small muted" style="width:62px;text-align:right">${pc(v)}</span></div>`;
@@ -403,7 +408,29 @@ function cardVolumePreco(A, nomeBase){
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px">
       ${q.kg||q.kgb?`<div class="kpi"><div class="l">Quilos vendidos</div><div class="v" style="font-size:20px">${qtBR(q.kg)} kg</div><div class="d">antes ${qtBR(q.kgb)} kg · ${vq(q.kg,q.kgb)}</div></div>`:''}
       ${q.un||q.unb?`<div class="kpi"><div class="l">Unidades vendidas</div><div class="v" style="font-size:20px">${qtBR(q.un)} un</div><div class="d">antes ${qtBR(q.unb)} un · ${vq(q.un,q.unb)}</div></div>`:''}
-    </div></div>`;
+    </div>
+    ${volPrecoProdutos(todos||[], nomeBase)}</div>`;
+}
+/* volume × preço produto a produto: o que aumentou e o que diminuiu, e se foi por quantidade ou por preço */
+function volPrecoProdutos(todos, nomeBase){
+  const un=d=>(/\bKG\b/.test(d)||(S._grupos||[]).some(g=>g.nome===d))?'kg':'un';
+  const ls=todos.filter(p=>(p.v||0)>0||(p.vb||0)>0).map(p=>{ const q1=+p.q||0, q0=+p.qb||0, v1=+p.v||0, v0=+p.vb||0, p0=q0?v0/q0:null, p1=q1?v1/q1:null;
+    let ev, ep; if(q0>0 && q1>0){ ev=(q1-q0)*p0; ep=(p1-p0)*q1; } else { ev=v1-v0; ep=0; }
+    return {p, q1, q0, v1, v0, p0, p1, ev, ep, dt:v1-v0}; }).filter(x=>Math.abs(x.dt)>=1);
+  const sub=ls.filter(x=>x.dt>0).sort((a,b)=>b.dt-a.dt), des=ls.filter(x=>x.dt<0).sort((a,b)=>a.dt-b.dt);
+  const sg=v=>`${v>=0?'+':'−'}${brl0(Math.abs(v))}`, vr=(a,b)=>b? ` (${a>=b?'▲':'▼'} ${pctBR(Math.abs(a/b-1),0)})` : '';
+  const item=x=>{ const u=un(x.p.d), nq=v=>(+v).toLocaleString('pt-BR',{maximumFractionDigits:u==='kg'?1:0});
+    const qtd = !x.q0? `não vendia · agora ${nq(x.q1)} ${u}` : !x.q1? `vendia ${nq(x.q0)} ${u} · parou` : `qtd ${nq(x.q0)} → ${nq(x.q1)} ${u}${vr(x.q1,x.q0)}`;
+    const prc = x.p0!=null && x.p1!=null ? ` · preço ${brl(x.p0)} → ${brl(x.p1)}${vr(x.p1,x.p0)}` : '';
+    const porque = (x.q0&&x.q1)? `<span class="small muted" style="display:block;text-align:right">volume ${sg(x.ev)} · preço ${sg(x.ep)}</span>` : '';
+    return `<button class="an-oli" data-go="${esc(x.p.c)}" data-dep="${x.p.depC}"><span><span class="small muted">${esc(codProd(x.p))}</span> ${esc(x.p.d)}<span class="small" style="display:block">${qtd}${prc}</span></span><span style="text-align:right"><b style="color:${x.dt>=0?'var(--good)':'var(--bad)'}">${sg(x.dt)}</b>${porque}</span></button>`; };
+  const bloco=(tit, arr, cor)=>`<div><div class="an-olt" style="color:${cor}">${tit} <span class="small muted" style="font-weight:400">(${arr.length})</span></div>
+    <div class="rup-l">${arr.slice(0,10).map(item).join('')||'<div class="small muted">nenhum</div>'}</div>
+    ${arr.length>10?`<details class="rup-mais"><summary class="small" style="cursor:pointer;margin-top:6px">ver mais ${arr.length-10}</summary><div class="rup-l">${arr.slice(10).map(item).join('')}</div></details>`:''}</div>`;
+  if(!ls.length) return '';
+  return `<details class="vp-prod" style="margin-top:12px" ${S._vpAberto?'open':''}><summary style="cursor:pointer;font-weight:700">🔎 Por produto: o que aumentou e o que diminuiu</summary>
+    <p class="small muted" style="margin:6px 0 8px">Contra o ${esc(nomeBase)}. Em cada produto: a variação da quantidade e do preço médio, e quanto da diferença veio do volume e quanto do preço.</p>
+    <div class="grid two" style="gap:14px">${bloco('📈 Aumentaram', sub, 'var(--good)')}${bloco('📉 Diminuíram', des, 'var(--bad)')}</div></details>`;
 }
 function efHtml(v, b){ if(!b) return v? `<span style="color:${v>=0?'var(--good)':'var(--bad)'}">${v>=0?'+':''}${brl0(v)}</span>`:'<span class="muted">—</span>'; const x=v/b; return `<span style="color:${x>=0?'var(--good)':'var(--bad)'};font-weight:600">${x>=0?'▲':'▼'} ${pctBR(Math.abs(x),1)}</span>`; }
 
@@ -463,15 +490,18 @@ async function cardRuptura(el, sid, fim, todos, irProd){
   const tot=r.reduce((a,x)=>a+(+x.perdida||0),0);
   const ult=r[0]?.ultimo_dia;
   const linha=x=>{ const p=porC.get(String(x.c)); const abc=p?.abc;
-    return `<button class="an-oli rup-i" ${p?`data-go="${esc(x.c)}" data-dep="${p.depC}"`:''}><span>${abc?`<span class="an-abc an-${abc}">${abc}</span> `:''}${esc(x.d)}${p?.grupo?` <span class="small muted">(${esc(codProd(p))})</span>`:''}<span class="small" style="display:block">vendia ${nq(x.media_q,x.d)} ${un(x.d)}/dia (${x.dias_venda} de ${x.dias_base} dias) · <b style="color:var(--bad)">sem venda há ${x.dias_sem} dia${x.dias_sem>1?'s':''}</b>${x.ult_venda?` · última ${fD(x.ult_venda)}`:''}</span></span><b style="color:var(--bad)">−${brl0(+x.perdida)}</b></button>`; };
+    return `<button class="an-oli rup-i" ${p?`data-go="${esc(x.c)}" data-dep="${p.depC}"`:''}><span>${abc?`<span class="an-abc an-${abc}">${abc}</span> `:''}<span class="small muted">${esc(p?codProd(p):String(x.c))}</span> ${esc(x.d)}<span class="small" style="display:block">vendia ${nq(x.media_q,x.d)} ${un(x.d)}/dia (${x.dias_venda} de ${x.dias_base} dias) · <b style="color:var(--bad)">sem venda há ${x.dias_sem} dia${x.dias_sem>1?'s':''}</b>${x.ult_venda?` · última ${fD(x.ult_venda)}`:''}</span></span><b style="color:var(--bad)">−${brl0(+x.perdida)}</b></button>`; };
   if(!r.length){ el.innerHTML=`<div class="card" style="margin-top:12px"><div class="row"><h2 style="margin:0">🚫 Ruptura de produto</h2><div class="sp"></div><span class="small" style="color:var(--good);font-weight:600">✔ nenhum produto parou de vender</span></div><p class="small muted" style="margin:6px 0 0">Olha os produtos que vendiam quase todo dia e zeraram nos últimos 2 dias. Precisa dos relatórios de venda de cada dia do mês.</p></div>`; return; }
   const nA=r.filter(x=>porC.get(String(x.c))?.abc==='A').length;
   el.innerHTML=`<div class="card" style="margin-top:12px;border-color:#f1b5b5">
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:4px"><h2 style="margin:0">🚫 Ruptura de produto</h2><span class="badge bad">${r.length}</span>${nA?`<span class="small" style="color:var(--bad);font-weight:700">${nA} da curva A</span>`:''}<div class="sp"></div><span class="small muted">venda perdida estimada <b style="color:var(--bad)">${brl0(tot)}</b></span></div>
     <p class="small muted" style="margin:0 0 8px">Vendiam quase todo dia e <b>não venderam nada nos últimos 2 dias</b> (até ${fD(ult)}). Confira gôndola e estoque. Toque no produto para ver os números.</p>
-    <div class="rup-l">${r.slice(0,8).map(linha).join('')}</div>
-    ${r.length>8?`<details class="rup-mais"><summary class="small" style="cursor:pointer;margin-top:6px">ver mais ${r.length-8}</summary><div class="rup-l">${r.slice(8).map(linha).join('')}</div></details>`:''}
+    <div class="rup-l" id="rupL">${r.slice(0,10).map(linha).join('')}</div>
+    ${r.length>10?`<div class="row" style="margin-top:8px;gap:8px"><button class="btn" id="rupMais">Ver mais 10</button><button class="btn" id="rupTodos">Ver todos (${r.length})</button><span class="small muted" id="rupN">mostrando 10 de ${r.length}</span></div>`:''}
     <p class="small muted" style="margin:6px 0 0">Venda perdida = média de venda por dia × dias sem vender. Produto que saiu de linha ou é sazonal também pode aparecer aqui.</p></div>`;
+  let mostr=10; const add=n=>{ const fim2=Math.min(r.length, mostr+n); $('#rupL',el).insertAdjacentHTML('beforeend', r.slice(mostr,fim2).map(linha).join('')); mostr=fim2;
+    $('#rupL',el).querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b)); const nn=$('#rupN',el); if(nn) nn.textContent=`mostrando ${mostr} de ${r.length}`; if(mostr>=r.length){ $('#rupMais',el)?.remove(); $('#rupTodos',el)?.remove(); } };
+  const bm=$('#rupMais',el); if(bm) bm.onclick=()=>add(10); const bt=$('#rupTodos',el); if(bt) bt.onclick=()=>add(r.length);
   el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>irProd(b));
 }
 
@@ -491,7 +521,7 @@ function cardCurvaABC(A, todos){
       <div class="abc-n"><b>${brl0(c.v)}</b> <span class="small muted">${pctBR(c.pv,0)} da venda</span></div>
       <div class="abc-bar"><i style="width:${(c.pv*100).toFixed(1)}%"></i></div></div>`).join('')}</div>
     <div class="small" style="margin:10px 0 4px"><b>${topA.length} produtos</b> fazem 80% da venda do setor. Os 10 maiores:</div>
-    <div class="rup-l">${topA.slice(0,10).map((p,i)=>{ ac+=p.v; return `<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="muted">${i+1}.</span> ${esc(p.d)}${p.grupo?` <span class="small muted">(${esc(codProd(p))})</span>`:''}<span class="small" style="display:block">${(+p.q).toLocaleString('pt-BR',{maximumFractionDigits:un(p.d)==='kg'?1:0})} ${un(p.d)} · ${pctBR(p.v/tot,1)} da venda · acumulado ${pctBR(ac/tot,0)}</span></span><b>${brl0(p.v)}</b></button>`; }).join('')}</div>
+    <div class="rup-l">${topA.slice(0,10).map((p,i)=>{ ac+=p.v; return `<button class="an-oli" data-go="${esc(p.c)}" data-dep="${p.depC}"><span><span class="muted">${i+1}.</span> <span class="small muted">${esc(codProd(p))}</span> ${esc(p.d)}<span class="small" style="display:block">${(+p.q).toLocaleString('pt-BR',{maximumFractionDigits:un(p.d)==='kg'?1:0})} ${un(p.d)} · ${pctBR(p.v/tot,1)} da venda · acumulado ${pctBR(ac/tot,0)}</span></span><b>${brl0(p.v)}</b></button>`; }).join('')}</div>
     <div class="row" style="margin-top:8px"><button class="btn" id="abcVerA">Ver todos os ${topA.length} da curva A</button></div>
   </div>`;
 }

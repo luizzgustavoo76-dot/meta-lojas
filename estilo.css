@@ -455,3 +455,12 @@ tr.an-sub td{background:#fafaf7;font-size:12.5px}
 .fc-t th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink2);background:#f6f4ef;padding:8px;white-space:nowrap}
 .fc-t td{padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}.fc-t .n{text-align:right}
 @media (max-width:760px){ .fc-t{font-size:13px} .fc-t th,.fc-t td{padding:6px} .fc-t td:first-child,.fc-t th:first-child{position:sticky;left:0;background:#fff;z-index:1} .fc-t th:first-child{background:#f6f4ef} }
+.tl-chips .chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer;color:var(--ink)}
+.tl-chips .chip.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+@media (max-width:760px){ .tl-chips{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px} .tl-chips .chip{white-space:nowrap} }
+.tabs2 a{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 14px;font-weight:600;text-decoration:none;color:var(--ink)}
+.tabs2 a.on{background:var(--dark);color:#fff;border-color:var(--dark)}
+.ck-tog{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px}
+.ck-chev{display:inline-block;transition:transform .15s;color:var(--muted)}
+.ck-fechado .ck-chev{transform:rotate(-90deg)}
+.ck-fechado .ck-corpo{display:none}
