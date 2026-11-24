@@ -23,7 +23,7 @@ async function identificarArquivo(f){
 
 /* ---------- importação: nada fica sem setor ---------- */
 // linhas sem setor sobem para o topo da lista
-function pendentesNoTopo(m, sel){ const sem=[...m.querySelectorAll(sel)].filter(s=>!s.value); for(const s of sem.reverse()){ const tr=s.closest('tr'); if(tr?.parentNode) tr.parentNode.prepend(tr); } }
+function pendentesNoTopo(m, sel){ m.querySelectorAll('tr.st-prods').forEach(x=>{ x.previousElementSibling?.querySelector('.st-tog') && (x.previousElementSibling.querySelector('.st-tog').textContent='▸'); x.remove(); }); const sem=[...m.querySelectorAll(sel)].filter(s=>!s.value); for(const s of sem.reverse()){ const tr=s.closest('tr'); if(tr?.parentNode) tr.parentNode.prepend(tr); } }
 // não deixa salvar enquanto houver linha sem setor
 function exigirSetor(m, sel, errSel){
   const sem=[...m.querySelectorAll(sel)].filter(s=>!s.value); if(!sem.length) return true;
@@ -32,6 +32,20 @@ function exigirSetor(m, sel, errSel){
   const e=$(errSel,m); if(e){ e.textContent=`Falta escolher o setor de ${sem.length} linha(s). Elas estão no topo da lista, em vermelho. Sem setor não salva.`; e.classList.remove('hide'); }
   try{ sem[0].scrollIntoView({block:'center'}); sem[0].focus(); }catch(_){ }
   return false;
+}
+
+// setinha em cada linha da importação: abre os produtos daquele departamento/grupo para conferir para onde vai
+function setinhasProdutos(m, sel, itensDe){
+  m.querySelectorAll(sel).forEach(s=>{ const tr=s.closest('tr'); const td=tr?.querySelector('td'); if(!td || td.querySelector('.st-tog')) return;
+    const bt=document.createElement('button'); bt.type='button'; bt.className='st-tog'; bt.title='Ver os produtos'; bt.textContent='▸';
+    bt.style.cssText='border:0;background:none;cursor:pointer;font-size:15px;padding:0 6px 0 0;color:var(--muted)';
+    td.prepend(bt);
+    bt.onclick=ev=>{ ev.stopPropagation(); const prox=tr.nextElementSibling; if(prox?.classList.contains('st-prods')){ prox.remove(); bt.textContent='▸'; return; }
+      const its=(itensDe(s)||[]).slice().sort((a,b)=>Math.abs(b.v??b.val??b.tc??b.vd??0)-Math.abs(a.v??a.val??a.tc??a.vd??0));
+      const lin=document.createElement('tr'); lin.className='st-prods';
+      lin.innerHTML=`<td colspan="${tr.children.length}" style="background:#fafafa;padding:6px 10px"><div class="small" style="max-height:220px;overflow:auto">${its.map(p=>{ const v=p.v??p.val??p.tc??p.vd; return `<div style="display:flex;gap:8px;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0"><span><span class="muted">${esc(String(p.c))}</span> ${esc(cap1(p.d||''))}${p.parte?` <span class="pp-promo">${p.parte}%</span>`:''}</span><span style="white-space:nowrap">${p.q!=null?String(Math.round(p.q*1000)/1000).replace('.',',')+' · ':''}<b>${v!=null?brl(v):''}</b></span></div>`; }).join('')||'<span class="muted">sem produtos</span>'}</div></td>`;
+      tr.after(lin); bt.textContent='▾'; };
+  });
 }
 
 /* ---------- importar vários arquivos de uma vez ---------- */

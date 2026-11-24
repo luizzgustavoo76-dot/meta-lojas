@@ -266,6 +266,15 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       r=dividirPorSetor(r, prod, mapa, prodSeg, segDiv); r.semMapa=!prod.size;
     }catch(e){ closeModal(); toast('Não consegui separar por setor: '+e.message, 6000); return null; }
   }
+  // relatório por departamento (segmento): o setor vem da lista de segmentos do comprador; rotisseria, refeições refrigeradas e Natal são divididos
+  if(r && !r._dividido && !r._bandeja){ try{ const sg=await q(S.sb.from('segmentos').select('codigo,setor_id,pct_propria')); const segs=new Map((sg||[]).map(x=>[+x.codigo,x]));
+      const novo=[]; for(const d of r.departamentos){ const g=segs.get(+d.codigo);
+        if(!g){ novo.push(d); continue; }
+        const pct=g.pct_propria==null?null:+g.pct_propria;
+        if(pct==null || !(pct<1)){ novo.push({...d, _setor:g.setor_id}); continue; }
+        const A=[],B=[]; for(const p of d.produtos){ const [[,a],[,b]]=partesDoProduto({...p,_seg:+d.codigo}, 'padaria', null, new Map([[+d.codigo,{setor:'padaria',pct}]])); A.push(a); B.push(b); }
+        novo.push({...d, produtos:A, _setor:'padaria', _parte:Math.round(pct*100)}, {...d, produtos:B, _setor:'panif_terc', _parte:Math.round(100-pct*100)}); }
+      r={...r, departamentos:novo}; }catch(_){ } }
   closeModal();
   if(!r){ toast('Esse arquivo não parece a “Relação de vendas com rentabilidade” do sistema.', 6000); return null; }
   return await new Promise(async resolver=>{
@@ -290,7 +299,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     ${r._dividido?(()=>{ const nSem=r.departamentos.filter(d=>!sug(d)).length; return `<p class="small" style="margin:10px 0 6px">${nSem?`<b style="color:var(--warn)">${nSem} grupo(s) sem setor</b> — escolha o setor nas linhas abaixo; o resto o site já separou sozinho.`:'<b style="color:var(--good)">✔ O site separou todos os produtos por setor.</b> Confira o resumo e salve.'} <label style="margin-left:6px;white-space:nowrap"><input type="checkbox" id="rvTodos"> ver todos os ${r.departamentos.length} grupos</label></p>`; })()
       :'<p class="small muted" style="margin:10px 0 6px">Escolha para qual setor do site vai cada departamento do sistema. O site lembra a escolha para os próximos relatórios.</p>'}
     <div class="tw" id="rvTab" style="max-height:340px;overflow:auto"><table><thead><tr><th>Departamento</th><th class="n">Produtos</th><th class="n">Venda</th><th>Setor do site</th></tr></thead><tbody>
-      ${r.departamentos.map((d,i)=>`<tr class="${r._dividido&&sug(d)?'rv-ok':''}"><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}${d._setor!==undefined?` <span class="muted">→ ${esc(d._setor?nomeSetor(d._setor):'?')}</span>`:''}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
+      ${r.departamentos.map((d,i)=>`<tr class="${r._dividido&&sug(d)?'rv-ok':''}"><td><b>${d.codigo}</b> ${esc(cap1(d.nome))}${d._parte?` <span class="pp-promo">${d._parte}%</span>`:''}${d._setor!==undefined?` <span class="muted">→ ${esc(d._setor?nomeSetor(d._setor):'?')}</span>`:''}</td><td class="n">${d.produtos.length}</td><td class="n">${brl0(d.produtos.reduce((a,p)=>a+p.v,0))}</td><td><select data-i="${i}" style="border:1px solid var(--line);border-radius:8px;padding:4px 6px">${opcoesSetor(sug(d))}</select></td></tr>`).join('')}
     </tbody></table></div>
     <div id="rvResumo" class="small" style="margin-top:10px"></div>
     ${opts.lancar?`<p class="small muted" style="margin:8px 0 0">📊 A Análise de vendas atualiza junto${umDia?' (o dia é somado no acumulado do mês)':''}.</p>`:''}
@@ -302,6 +311,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
     const subst=Object.keys(por).filter(id=>existentes.some(e=>e.setor_id===id));
     $('#rvResumo',m).innerHTML = Object.keys(por).length ? `Vai salvar: ${Object.entries(por).map(([id,v])=>`<b>${esc(nomeSetor(id))}</b> ${brl0(v)}`).join(' · ')}${sem.length?`<br><span style="color:var(--bad)">⚠ ${sem.length} departamento(s) sem setor (${brl0(vSem)}) — é obrigatório escolher o setor (as linhas pendentes estão no topo, em amarelo) — sem isso não salva.</span>`:''}${subst.length?`<br><span style="color:var(--warn)">Já existe relatório desse período para ${subst.map(nomeSetor).join(', ')} — será substituído.</span>`:''}` : '<span style="color:var(--bad)">Nenhum departamento escolhido.</span>'; };
   pendentesNoTopo(m,'select[data-i]');
+  setinhasProdutos(m,'select[data-i]', sl=>r.departamentos[+sl.dataset.i].produtos);
   m.querySelectorAll('select[data-i]').forEach(s=>s.onchange=resumo); resumo();
   const tab=$('#rvTab',m), tg=$('#rvTodos',m); const aplicaFiltro=()=>{ const so=r._dividido && !(tg&&tg.checked); tab.classList.toggle('so-pend',so); if(so && !tab.querySelector('tr:not(.rv-ok) select')) tab.style.display='none'; else tab.style.display=''; }; if(tg) tg.onchange=aplicaFiltro; aplicaFiltro();
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
@@ -318,12 +328,13 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       { const path=`${r.periodo.ini}_${r.periodo.fim}/${Date.now()}-${nomeArquivoSeguro(f.name)}`;
         const up=await S.sb.storage.from('relatorios').upload(path, f, {upsert:false, contentType:f.type||undefined});
         rel=((await q(S.sb.from('relatorios_venda').insert({ periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim, arquivo_nome:f.name, arquivo_path:up.error?null:path, cupons:r.cupons, total_venda:r.venda }).select('id')))||[])[0]||null; }
-      if(!r._dividido && !r._bandeja){ const ps=[]; for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) ps.push({codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()});
+      if(!r._dividido && !r._bandeja){ const psM=new Map(); for(const x of escolhas) if(x.setor) for(const p of x.d.produtos) if(!psM.has(String(p.c))) psM.set(String(p.c),{codigo:String(p.c), setor_id:x.setor, sub_codigo:x.d.codigo, atualizado_em:new Date().toISOString()}); const ps=[...psM.values()];
         for(let i=0;i<ps.length;i+=500) await q(S.sb.from('produtos_setor').upsert(ps.slice(i,i+500), {onConflict:'codigo'})); }
       if(r._dividido){ const np=new Map(); for(const x of escolhas) for(const p of x.d.produtos) if(p._seg!=null && !np.has(String(p.c))) np.set(String(p.c),{codigo:String(p.c), setor_id:x.setor||null, sub_codigo:p._seg, atualizado_em:new Date().toISOString()});
         const npl=[...np.values()]; for(let i=0;i<npl.length;i+=500) await q(S.sb.from('produtos_setor').upsert(npl.slice(i,i+500), {onConflict:'codigo'})); }
       if(r._dividido){ const novos=escolhas.filter(x=>x.setor && !x.d._setor); if(novos.length) await q(S.sb.from('departamentos').upsert(novos.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'})); }
-      if(!r._dividido && !r._bandeja) await q(S.sb.from('departamentos').upsert(escolhas.map(x=>({codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()})), {onConflict:'codigo,nome'}));
+      if(!r._dividido && !r._bandeja){ const dm=new Map(); for(const x of escolhas){ const k=x.d.codigo+'|'+x.d.nome; if(!dm.has(k) || !x.d._parte || x.setor==='padaria') dm.set(k,{codigo:x.d.codigo, nome:x.d.nome, setor_id:x.setor||null, atualizado_em:new Date().toISOString()}); }
+        await q(S.sb.from('departamentos').upsert([...dm.values()], {onConflict:'codigo,nome'})); }
       const por={}; for(const x of escolhas){ if(!x.setor) continue; (por[x.setor]=por[x.setor]||[]).push({codigo:x.d.codigo, nome:x.d.nome, produtos:x.d.produtos}); }
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));

@@ -54,6 +54,7 @@ async function importarRelatorioPerdas(f, setorAtual){
     $('#rpResumo',m).innerHTML = Object.keys(por).length ? `<table style="width:100%"><thead><tr><th>Setor</th><th class="n">Relatório</th><th class="n">Lançado no site</th>${ac?'<th class="n">Lança no dia '+fD(r.periodo.fim)+'</th>':''}</tr></thead><tbody>${Object.entries(por).map(([id,gs])=>{ const v=round2(gs.reduce((a,g)=>a+totG(g),0)); const d=round2(v-(lanc[id]||0));
       return `<tr><td><b>${esc(nomeSetor(id))}</b></td><td class="n">${brl(v)}</td><td class="n">${brl(lanc[id]||0)}</td>${ac?`<td class="n" style="color:${d>=0?'var(--bad)':'var(--good)'}">${d>=0?'+':''}${brl(d)}</td>`:''}</tr>`; }).join('')}</tbody></table>` : '<span style="color:var(--bad)">Nenhuma seção escolhida.</span>'; };
   pendentesNoTopo(m,'select[data-g]');
+  setinhasProdutos(m,'select[data-g]', sl=>grupos[+sl.dataset.g].itens);
   m.querySelectorAll('select[data-g]').forEach(s=>s.onchange=resumo); $('#rpAcerta',m).onchange=resumo; resumo();
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
@@ -205,6 +206,7 @@ async function importarRelatorioAcertos(f){
     <p class="small muted" style="margin-top:8px">Isso entra só na análise (aba Perdas → Acertos de balanço). Não mexe na perda lançada nos dias.</p>
     <div id="raErr" class="note err small hide"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar acertos</button></div>`);
+  pendentesNoTopo(m,'select[data-g]'); setinhasProdutos(m,'select[data-g]', sl=>grupos[+sl.dataset.g].itens);
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
     if(!exigirSetor(m,'select[data-g]','#raErr')) return;
@@ -280,6 +282,7 @@ async function importarRelatorioTrocas(f){
     <p class="small muted" style="margin-top:8px">As trocas entram na análise (aba Trocas do setor, Painel e tela Perdas da loja), separadas da perda: não mexem na perda lançada nem no teto.</p>
     <div id="rtErr" class="note err small hide"></div>
     <div class="row" style="margin-top:12px"><div class="sp"></div><button class="btn" id="mN">Cancelar</button><button class="btn p" id="mY">Salvar trocas</button></div>`);
+  pendentesNoTopo(m,'select[data-g]'); setinhasProdutos(m,'select[data-g]', sl=>grupos[+sl.dataset.g].itens);
   $('#mN',m).onclick=()=>{ closeModal(); resolver(null); };
   $('#mY',m).onclick=async()=>{
     if(!exigirSetor(m,'select[data-g]','#rtErr')) return;
