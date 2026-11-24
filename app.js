@@ -88,6 +88,7 @@ function calc(doc, cutoff){
 function destroyCharts(){ S.charts.forEach(c=>{try{c.destroy()}catch(e){}}); S.charts=[]; }
 function render(){
   if(S.view==='balancos' && S.loaded){ fillMesSelect(); destroyCharts(); return renderBalancos($('#app')); }
+  if(S.view==='ponto' && S.loaded && S.gerente){ fillMesSelect(); destroyCharts(); return renderPonto($('#app')); }
   if(S.view==='conta' && S.loaded){ fillMesSelect(); destroyCharts(); if(S.admAberto && S._admCont?.isConnected) return desenharCascataAdm(); return renderConta($('#app')); }
   fillMesSelect();
   destroyCharts();
@@ -1153,7 +1154,7 @@ async function abrirBalanco(b, alvo){
 }
 
 /* ===================== conta, login e navegação ===================== */
-const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['perdas','Balanços e Perdas'],['precos','Preços'],['diarias','Diárias'],['historico','Histórico']];
+const VIEWS_G=[['painel','Painel'],['setor','Setores'],['trocas','Trocas'],['perdas','Balanços e Perdas'],['precos','Preços'],['ponto','Ponto'],['diarias','Diárias'],['historico','Histórico']];
 const VIEWS_E=[['hoje','Hoje'],['setor','Meu setor'],['historico','Histórico']];
 function montarCabecalho(){
   const v=(S.gerente?VIEWS_G:VIEWS_E).map(([k,t])=>[k, (!S.gerente && k==='setor' && meusSetoresIds().length>1)?'Meus setores':t]);

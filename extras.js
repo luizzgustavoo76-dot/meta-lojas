@@ -310,7 +310,7 @@ function marcarBnav(){
     a.classList.toggle('on',on); });
 }
 function menuMais(){
-  const it=[['lancar','➕','Lançar vendas'],['precos','💲','Pesquisa de preço'],['diarias','💵','Diárias'],['historico','📅','Histórico'],['conta','👤','Minha conta e administração (fechamento do mês)']];
+  const it=[['lancar','➕','Lançar vendas'],['precos','💲','Pesquisa de preço'],['ponto','🕒','Conferência de ponto'],['diarias','💵','Diárias'],['historico','📅','Histórico'],['conta','👤','Minha conta e administração (fechamento do mês)']];
   const m=modal(`<div class="sheet"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Mais opções</h2><div class="sp"></div><button class="btn" id="mN">Fechar</button></div>
     ${it.map(([k,i,t])=>`<a class="sheet-i ${S.view===k?'on':''}" href="#${k}"><span>${i}</span>${t}</a>`).join('')}
     <button class="sheet-i" id="mmAtual"><span>🔄</span>Atualizar os números</button>

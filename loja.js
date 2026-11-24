@@ -24,6 +24,7 @@ async function identificarArquivo(f){
 /* ---------- importar vários arquivos de uma vez ---------- */
 async function importarVarios(files){
   files=[...files].filter(Boolean); if(!files.length) return;
+  const afd=files.find(ehArquivoPonto); if(afd){ await abrirArquivoPonto(afd); files=files.filter(f=>f!==afd); if(!files.length) return; }
   if(files.length===1 && /\.(xlsx|xls|xlsm|csv|txt)$/i.test(files[0].name)) return importFile(files[0]);
   busy(`Identificando ${files.length} arquivo(s)…`);
   const itens=[];
