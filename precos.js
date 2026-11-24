@@ -25,7 +25,7 @@ async function importarPesquisaPrecos(f, pre){
       catch(e){ toast('Não consegui salvar: '+(e.message||e), 6000); $('#mY',m).disabled=false; $('#mY',m).textContent='Salvar pesquisa'; } };
   });
 }
-function nomeConc(n){ const k=String(n||'').toUpperCase(); return ({MOSOLI:'Mosoli', TRADIC:'Tradicional'})[k] || cap1(String(n||'').toLowerCase()); }
+function nomeConc(n){ const k=String(n||'').toUpperCase(); return ({MOSOLI:'Mosoli', TRADIC:'Tradição', TRAD:'Tradição'})[k] || cap1(String(n||'').toLowerCase()); }
 
 /* monta a análise de uma pesquisa (concorrente: índice ou 'min' = o menor entre eles) */
 function analisarPesquisa(P, vendas, prodSetor, conc){
