@@ -132,10 +132,11 @@ function somarTrocas(base, dia){
     else { const n={...it}; its.push(n); m.set(String(it.c),n); } }
   return {...base, itens:its, emitido:dia.emitido||base.emitido, somado:true};
 }
-async function acumularTrocasDia(rows, dia){
-  const ini=dia.slice(0,8)+'01'; if(dia===ini) return 0;
-  const base=await q(S.sb.from('analise_trocas').select('setor_id,custo,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',diaAnt(dia)));
-  if(!base.length) return 0;
+// soma o relatório (de um dia ou de alguns dias seguidos) no acumulado do mês: 01 até o último dia
+async function acumularTrocasDia(rows, dia, iniPer){
+  iniPer=iniPer||dia; const ini=dia.slice(0,8)+'01'; if(iniPer<=ini || iniPer.slice(0,7)!==dia.slice(0,7)) return 0;
+  const base=await q(S.sb.from('analise_trocas').select('setor_id,custo,venda,dados').eq('periodo_inicio',ini).eq('periodo_fim',diaAnt(iniPer)));
+  if(!base.length) return -2;
   const emitNovo=(rows.find(x=>x.dados?.emitido)||{}).dados?.emitido||null;
   try{ const ex=await q(S.sb.from('analise_trocas').select('setor_id,dados->>emitido,dados->>somado').eq('periodo_inicio',ini).eq('periodo_fim',dia));
     if(ex.length && ex.every(x=>x.somado!=='true') && ex.some(x=>x.emitido && (!emitNovo || x.emitido>=emitNovo))) return -1; }catch(_){ }

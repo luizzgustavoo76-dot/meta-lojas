@@ -291,7 +291,7 @@ async function importarRelatorioTrocas(f){
         custo:round2(its.reduce((a,i)=>a+i.tc,0)), venda:round2(its.reduce((a,i)=>a+i.tv,0)), dados:{ emitido:r.emitido, origem:r.origem, destino:r.destino, itens:its } }));
       await q(S.sb.from('analise_trocas').upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
       let msg=`Trocas salvas ✔ — ${rows.map(x=>nomeSetor(x.setor_id)).join(', ')}`;
-      if(r.periodo.ini===r.periodo.fim){ try{ const n=await acumularTrocasDia(rows, r.periodo.fim); if(n>0) msg+=` · acumulado do mês até ${fD(r.periodo.fim)} atualizado`; }catch(_){ } }
+      if(r.periodo.ini>r.periodo.fim.slice(0,8)+'01'){ try{ const n=await acumularTrocasDia(rows, r.periodo.fim, r.periodo.ini); if(n>0) msg+=` · acumulado do mês até ${fD(r.periodo.fim)} atualizado`; else if(n===-2) msg+=` · ⚠ não entrou no acumulado do mês: falta o relatório de trocas até ${fD(diaAnt(r.periodo.ini))}`; }catch(_){ } }
       S._alertas=null; closeModal(); toast(msg, 5000);
       if(S.view==='setor'){ S.setorAba='trc'; if(!por[S.setorSel]) S.setorSel=Object.keys(por).find(x=>SETORES_TROCA.includes(x))||Object.keys(por)[0]; } render();
       resolver(true);

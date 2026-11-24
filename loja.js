@@ -184,7 +184,7 @@ async function renderPerdasLoja(app, doc){
   if(!vivo()) return;
   const periodos=[...new Map([...perPer,...acPer].map(x=>[x.periodo_inicio+'|'+x.periodo_fim,x])).values()].sort((a,b)=>b.periodo_fim.localeCompare(a.periodo_fim)||a.periodo_inicio.localeCompare(b.periodo_inicio));
   const atual=new Date().getFullYear()+'';
-  S.plPer = S.plPer && periodos.some(p=>p.periodo_inicio+'|'+p.periodo_fim===S.plPer) ? S.plPer : ((periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]) ? (()=>{ const p=periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]; return p.periodo_inicio+'|'+p.periodo_fim; })() : null);
+  S.plPer = S.plPer && periodos.some(p=>p.periodo_inicio+'|'+p.periodo_fim===S.plPer) ? S.plPer : ((periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]) ? (()=>{ const p=periodos.find(p=>p.periodo_fim.startsWith(atual) && p.periodo_inicio.endsWith('-01'))||periodos.find(p=>p.periodo_fim.startsWith(atual))||periodos[0]; /* padrão: acumulado do mês */ return p.periodo_inicio+'|'+p.periodo_fim; })() : null);
   const tetoHtml=`<div class="card"><h2>🎯 Perda do mês × teto — ${mesLabel(doc.mes)}</h2>${tabelaTeto(doc,tetos,S.cutoff)}<p class="small muted" style="margin:6px 0 0">Até ${fD(S.cutoff)}. ${esc(TETO_FONTE)}</p></div>`;
   if(!S.plPer){ box.innerHTML=tetoHtml+'<div class="card empty" style="margin-top:12px"><h2>Nenhum relatório de perdas ainda</h2><p>Importe o relatório “Perdas da filial” e o “Resumo de acertos/perdas por produto” do sistema.</p></div>'; return; }
   const [ini,fim]=S.plPer.split('|'); const lyI=addAnos(ini,-1), lyF=addAnos(fim,-1);
