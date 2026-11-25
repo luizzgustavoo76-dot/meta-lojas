@@ -267,6 +267,8 @@
         sec.itens.push({ c:tk[0], d:desc, e, s:sa, v, q, pc, cu, val:round2(q*cu) });
       }
     }
+    // o relatório por segmento lista todos os produtos movimentados: fica só quem teve perda
+    res.linhasRelatorio=res.secoes.reduce((a,x)=>a+x.itens.length,0); res.secoes.forEach(x=>x.itens=x.itens.filter(i=>i.q!==0 || i.val!==0));
     res.secoes=res.secoes.filter(x=>x.itens.length); if(!res.secoes.length || !res.periodo.ini) return null;
     res.itens=res.secoes.reduce((a,x)=>a+x.itens.length,0);
     res.qtd=round2(res.secoes.reduce((a,x)=>a+x.itens.reduce((b,i)=>b+i.q,0),0));
