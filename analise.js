@@ -256,7 +256,7 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   let r=opts.pre||null, mapa=[];
   try{ if(!r) r=Parser.analisarRelatorioVendas(await linhasDoArquivo(f)); mapa=await q(S.sb.from('departamentos').select('codigo,nome,setor_id')); }
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
-  if(r && r.nivel==='CLASSE'){ r._bandeja=true; if(!ehBdj()) S.setorAba='bdj'; }
+  if(r && r.nivel==='CLASSE'){ r._bandeja=true; if(!ehBdj()) S.setorAba='bdj'; } else if(r && ehBdj()) S.setorAba='ana';
   if(r && r.nivel && r.nivel!=='DEPTO' && r.nivel!=='CLASSE' && !r._dividido){ // relatório por SEÇÃO: separa cada produto no setor certo
     try{ busy('Separando os produtos por setor…'); const prod=new Map();
       const prodSeg=new Map(); let segDiv=new Map();
@@ -283,7 +283,9 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   const conf = r.totalGeral?.venda!=null ? Math.abs(r.totalGeral.venda-r.venda)<1 && (!r.totalGeral.itens || r.totalGeral.itens===r.itens) : null;
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
   const sug=d=>{ if(r._bandeja) return /HORTI/i.test(d.nome)?'hortifruti':'acougue'; if(d._setor!==undefined) return d._setor||''; const m=mapa.find(x=>x.codigo===d.codigo && normN(x.nome)===normN(d.nome)); if(m) return m.setor_id||''; const g=Parser.matchSector(d.nome); return (g && S.setoresAll.some(x=>x.id===g))? g : (mapa.length? '' : setorAtual); };
-  let existentes=[]; try{ existentes=await q(S.sb.from(tabAna()).select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
+  // a tabela depende do relatório (embandeijados ou vendas), não da aba que está aberta na tela
+  const tabRel = r._bandeja ? 'analise_bandeja' : 'analise_vendas';
+  let existentes=[]; try{ existentes=await q(S.sb.from(tabRel).select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
   const opcoesSetor=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
   const ontem = isoOf(new Date(Date.now()-864e5));
@@ -341,8 +343,8 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
       const rows=Object.entries(por).map(([setor,deps])=>({ relatorio_id:rel?.id||null, setor_id:setor, periodo_inicio:r.periodo.ini, periodo_fim:r.periodo.fim,
         venda:round2(deps.reduce((a,d)=>a+d.produtos.reduce((b,p)=>b+p.v,0),0)), dados:{ departamentos:deps, emitido:r.emitido, filial:r.filial } }));
       // relatório de um dia: soma no acumulado do mês (01 até o dia); se ainda não houver acumulado, guarda o próprio dia
-      let somou=0; if(umDiaEsc){ try{ somou=await acumularDia(rows, r.periodo.fim, tabAna()); }catch(e){ toast('Análise acumulada não atualizou: '+(e.message||e), 6000); } }
-      if(!somou) await q(S.sb.from(tabAna()).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
+      let somou=0; if(umDiaEsc){ try{ somou=await acumularDia(rows, r.periodo.fim, tabRel); }catch(e){ toast('Análise acumulada não atualizou: '+(e.message||e), 6000); } }
+      if(!somou) await q(S.sb.from(tabRel).upsert(rows, {onConflict:'setor_id,periodo_inicio,periodo_fim'}));
       else toast(somou<0?`Análise de vendas: mantido o relatório do mês até ${fDate(r.periodo.fim)} (é mais novo)`:`Análise de vendas atualizada até ${fDate(r.periodo.fim)} ✔`, 4500);
       closeModal();
       S.anaSel=S.anaSel||{}; for(const x of rows) delete S.anaSel[x.setor_id];
