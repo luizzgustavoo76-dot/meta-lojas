@@ -1229,7 +1229,10 @@ function telaPrimeiroAcesso(){
     catch(x){ er.textContent=x.message; er.classList.remove('hide'); $('#pBtn').disabled=false; } };
 }
 async function iniciarSessao(){
-  const { data:{ session } } = await S.sb.auth.getSession();
+  let session=null;
+  try{ const g=await Promise.race([ S.sb.auth.getSession(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('tempo')),12000)) ]); session=g?.data?.session||null; if(g?.error) session=null; }catch(_){ session=null; }
+  // sessão vencida/derrubada (token não existe mais): limpa e pede login em vez de ficar carregando
+  if(session){ try{ const u=await Promise.race([ S.sb.auth.getUser(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('tempo')),12000)) ]); if(u?.error || !u?.data?.user){ try{ Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k)); }catch(_){ } session=null; } }catch(_){ } }
   if(!session) return telaLogin();
   let ult=0; try{ ult=+localStorage.getItem('metas_ultima_atividade')||0; }catch(_){ }
   if(ult && Date.now()-ult>LIMITE_INATIVO && !aparelhoCelular()){ return sair('Sua sessão expirou por inatividade. Entre novamente.'); }
@@ -1244,7 +1247,7 @@ async function iniciarSessao(){
   }, 20000);
   try{
     const p=await q(S.sb.from('perfis').select('*').eq('id',S.user.id));
-    if(!p.length){ await S.sb.auth.signOut(); return telaLogin('Seu usuário ainda não foi liberado pelo gerente.'); }
+    if(!p.length){ await S.sb.auth.signOut({scope:'local'}); return telaLogin('Seu usuário ainda não foi liberado pelo gerente.'); }
     S.perfil=p[0]; S.gerente=S.gerenteReal=S.perfil.papel==='gerente'; S.preview=null;
     S.setoresAll=await q(S.sb.from('setores').select('*').order('ordem'));
     await carregarDatas();
@@ -1315,7 +1318,8 @@ async function sair(motivo){
   S._saindo=true;
   clearInterval(S._timerInat); try{ localStorage.removeItem('metas_ultima_atividade'); }catch(_){ }
   S.loaded=false; S.preview=null; S.months={}; S._tudo=false; $('#faixaVis')?.remove(); closeModal();
-  try{ await S.sb.auth.signOut(); }catch(_){ } $('#fabBusca')?.remove();
+  // sai só deste aparelho: sair no celular (ou por inatividade no PC) não derruba a sessão dos outros aparelhos
+  try{ await S.sb.auth.signOut({scope:'local'}); }catch(_){ } $('#fabBusca')?.remove();
   history.replaceState(null,'',location.pathname); telaLogin(motivo); S._saindo=false;
 }
 function iniciarInatividade(){
