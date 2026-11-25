@@ -37,27 +37,96 @@ function lerAFD(txt){
     }
   }
   if(!regs.length) return null;
-  const desde=ptAddDia(maxDia,-35);
+  const desde=ptAddDia(maxDia,-62);
   for(const [pis,dia,hr] of regs){ if(dia<desde) continue; ((bat[pis]=bat[pis]||{})[dia]=bat[pis][dia]||[]).push(hr); }
   const usados={}; for(const p in bat) usados[p]=nomes[p]||`PIS ${p}`;
   return { empresa, gerado, nomes:usados, bat, maxDia };
 }
 
-function ptGuardar(A){ try{ localStorage.setItem(PT_KEY, JSON.stringify(A)); }catch(_){ } }
-function ptCarregar(){ try{ return JSON.parse(localStorage.getItem(PT_KEY)||'null'); }catch(_){ return null; } }
+/* ---------- banco: o ponto fica salvo (só o gerente vê) ---------- */
+async function ptTodas(mk){ const out=[]; for(let i=0;;i+=1000){ const pg=await q(mk().range(i,i+999)); out.push(...(pg||[])); if(!pg||pg.length<1000) break; } return out; }
 
 async function abrirArquivoPonto(f){
   busy('Lendo o arquivo do ponto…');
   try{
     const buf=await f.arrayBuffer(); const txt=new TextDecoder('iso-8859-1').decode(buf);
-    const A=lerAFD(txt); closeModal();
-    if(!A){ toast('Esse arquivo não parece um AFD do relógio de ponto.', 6000); return false; }
-    A.arquivo=f.name; A.aberto=Date.now(); S._afd=A; ptGuardar(A); S.ptDia=null;
-    toast('Arquivo do ponto lido ✔');
+    const A=lerAFD(txt);
+    if(!A){ closeModal(); toast('Esse arquivo não parece um AFD do relógio de ponto.', 6000); return false; }
+    busy('Salvando as batidas…');
+    const agoraIso=new Date().toISOString();
+    const funcs=Object.entries(A.nomes).map(([pis,nome])=>({pis, nome, atualizado_em:agoraIso}));
+    for(let i=0;i<funcs.length;i+=500) await q(S.sb.from('ponto_funcionarios').upsert(funcs.slice(i,i+500),{onConflict:'pis'}));
+    const apr=funcs.filter(x=>ptAprendiz(x.nome)).map(x=>x.pis); if(apr.length) await q(S.sb.from('ponto_funcionarios').update({aprendiz:true}).in('pis',apr));
+    const rows=[]; for(const pis in A.bat) for(const dia in A.bat[pis]) for(const h of new Set(A.bat[pis][dia])) rows.push({pis, dia, hora:h, origem:'afd'});
+    for(let i=0;i<rows.length;i+=1000) await q(S.sb.from('ponto_batidas').upsert(rows.slice(i,i+1000),{onConflict:'pis,dia,hora,origem', ignoreDuplicates:true}));
+    await q(S.sb.from('ponto_arquivos').insert({arquivo:f.name, empresa:A.empresa||null, gerado_dia:A.gerado?.dia||null, gerado_min:A.gerado?.min??null, ultimo_dia:A.maxDia, batidas:rows.length}));
+    closeModal(); S._ptCache=null; S._ptDias=null; S.ptDia=null;
+    toast(`Ponto salvo ✔ ${rows.length.toLocaleString('pt-BR')} batidas de ${funcs.length} pessoas`);
     if(S.view!=='ponto') location.hash='#ponto'; else render();
     return true;
-  }catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return false; }
+  }catch(e){ closeModal(); toast('Não consegui salvar o ponto: '+(e.message||e), 7000); return false; }
 }
+
+// monta os dados do dia a partir do banco: batidas do relógio + lançadas à mão − removidas
+async function carregarPonto(dia){
+  const ini=ptAddDia(dia,-10);
+  const [funcs, arq, bats, js] = await Promise.all([
+    ptTodas(()=>S.sb.from('ponto_funcionarios').select('pis,nome,aprendiz').order('pis')),
+    q(S.sb.from('ponto_arquivos').select('*').order('criado_em',{ascending:false}).limit(1)),
+    ptTodas(()=>S.sb.from('ponto_batidas').select('id,pis,dia,hora,origem,motivo').gte('dia',ini).lte('dia',dia).order('id')),
+    q(S.sb.from('ponto_justificativas').select('*').gte('dia',ini).lte('dia',dia)) ]);
+  const A={ nomes:{}, apr:{}, bat:{}, man:{}, rem:{}, just:{}, maxDia:'' };
+  for(const x of funcs){ A.nomes[x.pis]=x.nome; A.apr[x.pis]=!!x.aprendiz; }
+  const k=(o,p,d)=>((o[p]=o[p]||{})[d]=o[p][d]||{});
+  for(const b of bats){ if(b.origem==='remover') k(A.rem,b.pis,b.dia)[b.hora]=b; }
+  for(const b of bats){ if(b.origem==='remover') continue; if(A.rem[b.pis]?.[b.dia]?.[b.hora] && b.origem==='afd') continue;
+    ((A.bat[b.pis]=A.bat[b.pis]||{})[b.dia]=A.bat[b.pis][b.dia]||[]).push(b.hora);
+    if(b.origem==='manual') k(A.man,b.pis,b.dia)[b.hora]=b; if(b.dia>A.maxDia) A.maxDia=b.dia; }
+  for(const j of (js||[])) k(A.just,j.pis,j.dia).j=j;
+  const a=arq?.[0]; if(a){ A.arquivo=a.arquivo; A.empresa=a.empresa; if(a.gerado_dia) A.gerado={dia:a.gerado_dia, min:a.gerado_min}; if(a.ultimo_dia>A.maxDia) A.maxDia=a.ultimo_dia; }
+  return A;
+}
+
+/* corrigir o ponto de uma pessoa num dia: tirar batida errada, lançar batida que faltou, justificar o dia */
+function corrigirPonto(pis, dia, A, depois){
+  const nome=ptNome(A.nomes[pis]||pis);
+  const afd=new Set(); const man=A.man[pis]?.[dia]||{}; const rem=A.rem[pis]?.[dia]||{};
+  (A.bat[pis]?.[dia]||[]).forEach(h=>{ if(!man[h]) afd.add(h); });
+  const todas=[...new Set([...(A.bat[pis]?.[dia]||[]), ...Object.keys(rem).map(Number)])].sort((a,b)=>a-b);
+  const j=A.just[pis]?.[dia]?.j;
+  const m=modal(`<h2>✏️ Corrigir ponto</h2><p class="sub" style="margin:-4px 0 10px"><b>${esc(nome)}</b> · ${fD(dia)}</p>
+    <div class="pp-l">${todas.map(h=>{ const ehMan=!!man[h], ehRem=!!rem[h];
+      return `<div class="pp-i"><div class="pp-p"><b style="${ehRem?'text-decoration:line-through;color:var(--muted)':''}">${ptHm(h)}</b> <span class="small muted">${ehMan?'lançada à mão'+(man[h].motivo?' · '+esc(man[h].motivo):''):ehRem?'removida'+(rem[h].motivo?' · '+esc(rem[h].motivo):''):'do relógio'}</span></div>
+        <div class="pp-n">${ehRem?`<button class="btn" data-pv="${h}">desfazer</button>`:`<button class="btn" data-px="${h}">✕ tirar</button>`}</div></div>`; }).join('')||'<div class="small muted">sem batidas neste dia</div>'}</div>
+    <h3 style="margin:14px 0 6px">Lançar batida que faltou</h3>
+    <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label class="f" style="margin:0">Horário<input type="time" id="pcH"></label>
+      <label class="f" style="margin:0;flex:1;min-width:180px">Motivo<select id="pcM"><option>Esqueceu de bater</option><option>Relógio com problema</option><option>Trabalho externo</option><option>Ajuste combinado</option><option>Outro</option></select></label>
+      <button class="btn p" id="pcAdd">＋ Lançar</button></div>
+    <h3 style="margin:14px 0 6px">Justificar o dia</h3>
+    <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label class="f" style="margin:0"><select id="pcJ"><option value="">— sem justificativa —</option>${[['folga','Folga'],['atestado','Atestado'],['ferias','Férias'],['dispensa','Dispensa'],['falta','Falta'],['outro','Outro']].map(([v,t])=>`<option value="${v}" ${j?.tipo===v?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="f" style="margin:0;flex:1;min-width:180px"><input id="pcO" placeholder="observação (opcional)" value="${esc(j?.obs||'')}"></label>
+      <button class="btn" id="pcJs">Salvar justificativa</button></div>
+    <div class="note err hide" id="pcErr" style="margin-top:8px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="mN">Fechar</button></div>`);
+  const err=t=>{ const e=$('#pcErr',m); e.textContent=t; e.classList.remove('hide'); };
+  const fim=async()=>{ closeModal(); S._ptCache=null; S._ptDias=null; toast('Ponto corrigido ✔'); depois&&depois(); };
+  $('#mN',m).onclick=closeModal;
+  m.querySelectorAll('[data-px]').forEach(b=>b.onclick=async()=>{ const h=+b.dataset.px; try{
+      if(man[h]) await q(S.sb.from('ponto_batidas').delete().eq('id',man[h].id));
+      else await q(S.sb.from('ponto_batidas').upsert({pis, dia, hora:h, origem:'remover', motivo:'batida errada'},{onConflict:'pis,dia,hora,origem'}));
+      await fim(); }catch(e){ err(e.message||String(e)); } });
+  m.querySelectorAll('[data-pv]').forEach(b=>b.onclick=async()=>{ const h=+b.dataset.pv; try{ await q(S.sb.from('ponto_batidas').delete().eq('id',rem[h].id)); await fim(); }catch(e){ err(e.message||String(e)); } });
+  $('#pcAdd',m).onclick=async()=>{ const v=$('#pcH',m).value; if(!v) return err('Informe o horário.'); const [hh,mm]=v.split(':').map(Number); const h=hh*60+mm;
+    if((A.bat[pis]?.[dia]||[]).includes(h)) return err('Já existe batida nesse horário.');
+    try{ await q(S.sb.from('ponto_batidas').upsert({pis, dia, hora:h, origem:'manual', motivo:$('#pcM',m).value},{onConflict:'pis,dia,hora,origem'})); await fim(); }catch(e){ err(e.message||String(e)); } };
+  $('#pcJs',m).onclick=async()=>{ const t=$('#pcJ',m).value; try{
+      if(!t) await q(S.sb.from('ponto_justificativas').delete().eq('pis',pis).eq('dia',dia));
+      else await q(S.sb.from('ponto_justificativas').upsert({pis, dia, tipo:t, obs:$('#pcO',m).value||null},{onConflict:'pis,dia'}));
+      await fim(); }catch(e){ err(e.message||String(e)); } };
+}
+
 const ehArquivoPonto = f => /^AFD.*\.txt$/i.test(f?.name||'');
 
 /* analisa um dia: devolve pessoas, alertas, extras etc. */
@@ -71,11 +140,11 @@ function conferirDia(A, dia, NOW){
   const add=(k,n,d,extra={})=>al.push({k,n,d,...extra});
   for(const pis in A.bat){
     const v=[...new Set(A.bat[pis][dia]||[])].sort((a,b)=>a-b); if(!v.length) continue;
-    const n=ptNome(A.nomes[pis]), apr=ptAprendiz(A.nomes[pis]), J = apr? PT.jornAprendiz : PT.jornada;
+    const n=ptNome(A.nomes[pis]), apr=(A.apr&&A.apr[pis])||ptAprendiz(A.nomes[pis]), J = apr? PT.jornAprendiz : PT.jornada;
     const pares=[]; for(let i=0;i+1<v.length;i+=2) pares.push([v[i],v[i+1]]);
     const trab=pares.reduce((a,[x,y])=>a+y-x,0), intervalos=[]; for(let i=1;i+1<v.length;i+=2) intervalos.push(v[i+1]-v[i]);
     const aberto=v.length%2===1;
-    const P={pis,n,apr,v,trab,J,intervalos};
+    const P={pis,n,apr,v,trab,J,intervalos, man:Object.keys(A.man?.[pis]?.[dia]||{}).length, just:A.just?.[pis]?.[dia]?.j||null};
     // almoço
     if(intervalos.length && !apr){ const alm=Math.max(...intervalos); P.alm=alm;
       if(alm>PT.almMax) add('ALMOÇO > 2h',n,`almoço de ${ptH(alm)} (${alm-PT.almMax} min a mais)`,{tipo:'alm',leve:alm-PT.almMax<=2});
@@ -131,12 +200,13 @@ function conferirDia(A, dia, NOW){
     if(bo && bo.length){ const fim=Math.max(...bo), desc=(1440-fim)+v[0]; if(desc<11*60) add('INTERJORNADA < 11h',n,`saiu ontem ${ptHm(fim)} e entrou hoje ${ptHm(v[0])} — descanso de ${ptH(desc)}`,{tipo:'clt'}); }
     let seq=1, d=ontem; while(A.bat[pis][d]?.length){ seq++; d=ptAddDia(d,-1); }
     P.seq=seq; if(seq>=7) add('7+ DIAS SEGUIDOS SEM FOLGA',n,`${seq}º dia seguido trabalhando`,{tipo:'clt'});
+    if(P.just) for(let i=al.length-1;i>=0;i--) if(al[i].n===n && al[i].tipo==='perda') al.splice(i,1); // dia justificado (atestado, folga…)
     pessoas.push(P);
   }
   // quem trabalhou nos últimos 7 dias e não bateu neste dia
   const faltou=[]; if(dia<=A.maxDia) for(const pis in A.bat){ if(A.bat[pis][dia]?.length) continue;
     let ult=null; for(let k=1;k<=7;k++){ const d=ptAddDia(dia,-k); if(A.bat[pis][d]?.length){ ult=d; break; } }
-    if(ult) faltou.push({n:ptNome(A.nomes[pis]), ult, apr:ptAprendiz(A.nomes[pis])}); }
+    if(ult) faltou.push({pis, n:ptNome(A.nomes[pis]), ult, apr:(A.apr&&A.apr[pis])||ptAprendiz(A.nomes[pis]), just:A.just?.[pis]?.[dia]?.j||null}); }
   faltou.sort((a,b)=>b.ult.localeCompare(a.ult)||a.n.localeCompare(b.n));
   return { dia, dom, FECH, NOW, ultima, CORTE, pessoas, al, extras, faltou };
 }
@@ -148,17 +218,24 @@ const PT_ROT = { 'MAIS DE 6h SEM PAUSA':'Mais de 6h sem pausa','APRENDIZ PASSOU 
   'ALMOÇO > 2h':'Almoço acima de 2h','ALMOÇO < 1h50':'Almoço abaixo de 1h50','PAUSA EXTRA':'Pausa a mais','INTERJORNADA < 11h':'Interjornada menor que 11h','7+ DIAS SEGUIDOS SEM FOLGA':'7 ou mais dias sem folga',
   'PERDA: NÃO VOLTOU / BATIDA FALTANDO':'Não voltou / batida faltando','PERDA: SAIU ANTES / HORAS A MENOS':'Saiu antes / horas a menos','SEM INTERVALO':'Sem intervalo' };
 
-function renderPonto(app){
+async function renderPonto(app){
   if(!S.gerente){ app.innerHTML='<div class="card empty">Só o gerente vê a conferência de ponto.</div>'; return; }
-  const A = S._afd || (S._afd=ptCarregar());
+  const agora0=ptAgoraBR();
+  if(!S._ptDias){ app.innerHTML='<div class="empty"><span class="spin"></span> Carregando o ponto…</div>'; try{ S._ptDias=(await q(S.sb.rpc('ponto_dias')))||[]; }catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar o ponto: ${esc(e.message||e)}</div>`; return; } }
+  const diasDb=S._ptDias.map(x=>x.dia);
+  if(!S.ptDia || !diasDb.includes(S.ptDia)) S.ptDia = diasDb.includes(agora0.dia)? agora0.dia : diasDb[0];
+  let A=null;
+  if(S.ptDia){ if(!S._ptCache || S._ptCache.dia!==S.ptDia){ app.innerHTML='<div class="empty"><span class="spin"></span> Carregando o ponto…</div>';
+      try{ S._ptCache={dia:S.ptDia, A:await carregarPonto(S.ptDia)}; }catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar o ponto: ${esc(e.message||e)}</div>`; return; } }
+    A=S._ptCache.A; }
+  if(S.view!=='ponto') return;
   const topo=`<div class="row" style="align-items:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap"><div><h1>🕒 Conferência de ponto</h1><p class="sub" style="margin:0">Abra o arquivo AFD do relógio: o site confere todo mundo e diz quem sai a que horas, quem passou, almoço, extras e regras da CLT.</p></div><div class="sp"></div><button class="btn p" id="ptAbrir">📥 Abrir arquivo do ponto (AFD)</button><input type="file" id="ptArq" accept=".txt" class="hide"></div>`;
   if(!A){
-    app.innerHTML=topo+`<div class="card empty"><h2>Nenhum arquivo aberto ainda</h2><p>No Gerenciador Inner Rep, gere o <b>AFD</b> (arquivo <code>AFD…txt</code>, fica em Downloads) e abra aqui.<br>O arquivo é lido só neste aparelho: os dados dos funcionários não vão para o banco do site.</p></div>`;
+    app.innerHTML=topo+`<div class="card empty"><h2>Nenhum arquivo aberto ainda</h2><p>No Gerenciador Inner Rep, gere o <b>AFD</b> (arquivo <code>AFD…txt</code>, fica em Downloads) e abra aqui.<br>As batidas ficam salvas no site (só o gerente vê) e cada arquivo novo completa os dias.</p></div>`;
     ligarPonto(); return;
   }
   const agora=ptAgoraBR();
-  const dias=[...new Set(Object.values(A.bat).flatMap(o=>Object.keys(o)))].sort().reverse();
-  if(!S.ptDia || !dias.includes(S.ptDia)) S.ptDia = dias.includes(agora.dia)? agora.dia : dias[0];
+  const dias=diasDb;
   const hoje = S.ptDia===agora.dia;
   const NOW = S.ptAgora!=null && hoje? S.ptAgora : (hoje? agora.min : 1440);
   const R=conferirDia(A, S.ptDia, NOW);
@@ -186,8 +263,10 @@ function renderPonto(app){
     if(a.length) return `<span class="pp-v ${PT_COR[a[0].k]}">${esc(PT_ROT[a[0].k])}</span>`;
     return `<span class="pp-v good">no horário</span>`; };
   const ordem=[...naLoja.sort((a,b)=>a.prev-b.prev), ...inter.sort((a,b)=>a.prev-b.prev), ...sairam.sort((a,b)=>a.saida-b.saida)];
-  const itP=p=>`<div class="pp-i"><div class="pp-p"><b>${esc(p.n)}</b>${p.apr?' <span class="pp-promo">aprendiz 4h</span>':''}<div class="small muted">batidas: ${p.v.map(ptHm).join(' · ')}</div><div class="small">${esc(p.txt)}</div>${situ(p)}</div>
-      <div class="pp-n">${p.st==='saiu'?`<b>${ptHm(p.saida)}</b><span class="small muted">saiu</span>`:`<b style="font-size:18px">${ptHm(p.prev)}</b><span class="small muted">${p.st==='intervalo'?'sai (se voltar no limite)':'deve sair'}</span>${p.st==="trab"&&!p.apr&&p.saldoFech>0&&p.prev<R.FECH&&p.prev>=R.FECH-90?`<span class="small muted">se ficar até ${ptHm(R.FECH)}: +${ptH(p.saldoFech)}</span>`:''}`}</div></div>`;
+  const JT={folga:'folga',atestado:'atestado',ferias:'férias',dispensa:'dispensa',falta:'falta',outro:'justificado'};
+  const btCor=pis=>`<button class="btn" data-ptcor="${esc(pis)}" title="Corrigir o ponto" style="padding:3px 8px;font-size:12.5px;margin-top:4px">✏️ corrigir</button>`;
+  const itP=p=>`<div class="pp-i"><div class="pp-p"><b>${esc(p.n)}</b>${p.apr?' <span class="pp-promo">aprendiz 4h</span>':''}${p.man?' <span class="pp-promo">corrigido</span>':''}${p.just?` <span class="pp-promo">${JT[p.just.tipo]||p.just.tipo}</span>`:''}<div class="small muted">batidas: ${p.v.map(ptHm).join(' · ')}</div><div class="small">${esc(p.txt)}</div>${situ(p)}</div>
+      <div class="pp-n">${p.st==='saiu'?`<b>${ptHm(p.saida)}</b><span class="small muted">saiu</span>`:`<b style="font-size:18px">${ptHm(p.prev)}</b><span class="small muted">${p.st==='intervalo'?'sai (se voltar no limite)':'deve sair'}</span>${p.st==="trab"&&!p.apr&&p.saldoFech>0&&p.prev<R.FECH&&p.prev>=R.FECH-90?`<span class="small muted">se ficar até ${ptHm(R.FECH)}: +${ptH(p.saldoFech)}</span>`:''}`}${btCor(p.pis)}</div></div>`;
   // turno da noite
   const noite=naLoja.filter(p=>!p.apr && p.prev>=R.FECH-60).sort((a,b)=>a.prev-b.prev);
   const itN=p=>{ const d=p.prev-R.FECH; return `<div class="pp-i"><div class="pp-p"><b>${esc(p.n)}</b><div class="small">entrou ${ptHm(p.v[0])} · saída prevista ${ptHm(p.prev)}</div></div><div class="pp-n">${d>0?`<span class="pp-v warn">fecha ${ptH(d)} abaixo da jornada</span><span class="small muted">se sair no fechamento</span>`:d<0?`<span class="pp-v good">sai ${ptH(-d)} antes do fechamento</span>`:'<span class="pp-v good">sai no fechamento</span>'}</div></div>`; };
@@ -212,16 +291,17 @@ function renderPonto(app){
     </div>
     <div class="grid two pp-2" style="gap:12px;margin-top:12px">
       <div class="card"><h2>🌙 Turno da noite</h2><p class="small muted" style="margin-top:-4px">Quem sai perto do fechamento (${ptHm(R.FECH)}).</p><div class="pp-l">${noite.map(itN).join('')||'<div class="small muted" style="padding:6px 0">ninguém no fechamento</div>'}</div></div>
-      <div class="card"><h2>❔ Não bateram ponto ${hoje?'hoje':'neste dia'}</h2><p class="small muted" style="margin-top:-4px">Trabalharam nos últimos 7 dias. Folga ou falta?</p>${mais(R.faltou,10,f=>`<div class="pp-i"><div class="pp-p"><b>${esc(f.n)}</b>${f.apr?' <span class="pp-promo">aprendiz</span>':''}</div><div class="pp-n"><span class="small muted">último dia: ${fD(f.ult)}</span></div></div>`,'ptFl')||''}${R.faltou.length?'':'<div class="small muted" style="padding:6px 0">todo mundo bateu ✔</div>'}</div>
+      <div class="card"><h2>❔ Não bateram ponto ${hoje?'hoje':'neste dia'}</h2><p class="small muted" style="margin-top:-4px">Trabalharam nos últimos 7 dias. Folga ou falta?</p>${mais(R.faltou,10,f=>`<div class="pp-i"><div class="pp-p"><b>${esc(f.n)}</b>${f.apr?' <span class="pp-promo">aprendiz</span>':''}${f.just?` <span class="pp-promo">${JT[f.just.tipo]||f.just.tipo}</span>`:''}</div><div class="pp-n"><span class="small muted">último dia: ${fD(f.ult)}</span>${btCor(f.pis)}</div></div>`,'ptFl')||''}${R.faltou.length?'':'<div class="small muted" style="padding:6px 0">todo mundo bateu ✔</div>'}</div>
     </div>
-    <p class="small muted" style="margin-top:12px">Arquivo: ${esc(A.arquivo||'')} · lido só neste aparelho, não vai para o banco do site.</p>`;
+    <p class="small muted" style="margin-top:12px">Último arquivo: ${esc(A.arquivo||'')} · as batidas ficam salvas no site (só o gerente vê). ✏️ corrige batida que faltou ou está errada e justifica o dia.</p>`;
   ligarPonto();
   const dados={ordem,R};
   $('#ptDia')?.addEventListener('change',e=>{ S.ptDia=e.target.value; S.ptAgora=null; renderPonto(app); });
   $('#ptAgora')?.addEventListener('change',e=>{ const [h,m]=(e.target.value||'').split(':').map(Number); if(isFinite(h)&&isFinite(m)){ S.ptAgora=h*60+m; renderPonto(app); } });
   $('#ptAgoraJa')?.addEventListener('click',()=>{ S.ptAgora=null; renderPonto(app); });
+  const ligarCor=()=>app.querySelectorAll('[data-ptcor]').forEach(b=>b.onclick=()=>corrigirPonto(b.dataset.ptcor, S.ptDia, A, ()=>renderPonto(app))); ligarCor();
   app.querySelectorAll('[data-ptmais]').forEach(b=>b.onclick=()=>{ const id=b.dataset.ptmais, arr= id==='ptLs'? dados.ordem : dados.R.faltou;
-    $('#'+id).innerHTML = id==='ptLs'? arr.map(itP).join('') : arr.map(f=>`<div class="pp-i"><div class="pp-p"><b>${esc(f.n)}</b>${f.apr?' <span class="pp-promo">aprendiz</span>':''}</div><div class="pp-n"><span class="small muted">último dia: ${fD(f.ult)}</span></div></div>`).join(''); b.remove(); });
+    $('#'+id).innerHTML = id==='ptLs'? arr.map(itP).join('') : arr.map(f=>`<div class="pp-i"><div class="pp-p"><b>${esc(f.n)}</b>${f.apr?' <span class="pp-promo">aprendiz</span>':''}${f.just?` <span class="pp-promo">${JT[f.just.tipo]||f.just.tipo}</span>`:''}</div><div class="pp-n"><span class="small muted">último dia: ${fD(f.ult)}</span>${btCor(f.pis)}</div></div>`).join(''); b.remove(); ligarCor(); });
 }
 function ligarPonto(){
   const b=$('#ptAbrir'), i=$('#ptArq'); if(!b||!i) return;
