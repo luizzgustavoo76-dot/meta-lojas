@@ -225,7 +225,7 @@
       if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
       let m=t.match(/RENTABILIDADE DE (\d{2}\/\d{2}\/\d{2,4}) A (\d{2}\/\d{2}\/\d{2,4})/i);
       if(m){ if(!res.periodo.ini){ res.periodo.ini=dataBR(m[1]); res.periodo.fim=dataBR(m[2]); } const f=t.match(/FILIAL:?\s*(\d+)/i); if(f) res.filial=f[1]; continue; }
-      m=t.match(/PRODUTOS D[OA] (DEPTO|DEPARTAMENTO|SECAO|SUBGRUPO|SETOR|GRUPO|CLASSE):?\s*(\d+)\s*-?\s*(.+)$/i);
+      m=t.match(/PRODUTOS D[OA] (DEPTO|DEPARTAMENTO|SECAO|SEGMENTO|SUBGRUPO|SETOR|GRUPO|CLASSE):?\s*(\d+)\s*-?\s*(.+)$/i);
       if(m){ if(!res.nivel) res.nivel=m[1].toUpperCase(); m=[m[0],m[2],m[3]]; const cod=parseInt(m[1],10); dep=res.departamentos.find(d=>d.codigo===cod); if(!dep){ dep={codigo:cod, nome:m[2].trim(), produtos:[]}; res.departamentos.push(dep); } continue; }
       m=t.match(/^TOTAL GERAL:?\s*(.*)$/i);
       if(m){ const tk=m[1].split(' '); res.totalGeral={ itens:parseInt(tk[0],10)||null, qt:null, venda: tk.length>=7 ? numBR(tk[tk.length-6]) : numBR(tk[5]) }; dep=null; continue; }
@@ -255,7 +255,7 @@
     let sec=null;
     for(const t of textos){ if(!t) continue;
       if(!res.emitido){ const m=t.match(/EMITIDO EM:?\s*(\d{2}\/\d{2}\/\d{2,4})/i); if(m) res.emitido=dataBR(m[1]); }
-      let m=t.match(/^(SECAO|DEPTO|DEPARTAMENTO|GRUPO|SUBGRUPO):?\s*(\d+)\s*-\s*(.+)$/i);
+      let m=t.match(/^(SECAO|SEGMENTO|DEPTO|DEPARTAMENTO|GRUPO|SUBGRUPO):?\s*(\d+)\s*-?\s*(.+)$/i);
       if(m){ const cod=+m[2]; sec=res.secoes.find(x=>x.codigo===cod); if(!sec){ sec={codigo:cod, nome:m[3].trim(), nivel:m[1].toUpperCase(), itens:[]}; res.secoes.push(sec); } continue; }
       m=t.match(/^TOTAL:?\s+(.+)$/i); if(m){ const n=m[1].split(' ').map(numBR); if(n.length>=4) res.total={ent:n[0],sai:n[1],ven:n[2],q:n[3]}; continue; }
       if(sec && /^\d+\s+\S/.test(t)){

@@ -16,6 +16,7 @@ async function importarRelatorioPerdas(f, setorAtual){
   try{
     r=Parser.analisarRelatorioPerdas(await linhasDoArquivo(f));
     if(r){ mapa=await q(S.sb.from('departamentos').select('codigo,nome,setor_id'));
+      try{ var segs=new Map(((await q(S.sb.from('segmentos').select('codigo,setor_id,pct_propria')))||[]).map(x=>[+x.codigo,x])); }catch(_){ var segs=new Map(); }
       for(let i=0;;i+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(i,i+999)); (pg||[]).forEach(x=>prod.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; } }
   }catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
   if(!r){ closeModal(); toast('Esse arquivo não parece o relatório “Perdas da filial” do sistema.', 6000); return null; }
@@ -23,9 +24,15 @@ async function importarRelatorioPerdas(f, setorAtual){
   const normN=t=>String(t||'').toUpperCase().replace(/\s+/g,' ').trim();
   const grupos=[];
   for(const sec of r.secoes){
-    const pad=(mapa.find(x=>x.codigo===sec.codigo && normN(x.nome)===normN(sec.nome))||{}).setor_id || Parser.matchSector(sec.nome) || (r.secoes.length===1?setorAtual:'') || '';
-    const por=new Map();
-    for(const it of sec.itens){ const s=prod.get(String(it.c)) || setorPorRegra(sec.codigo, it.d.replace(/^[FV] /,'')) || pad; if(!por.has(s)) por.set(s,[]); por.get(s).push(it); }
+    // relatório por segmento: o setor vem da lista de segmentos do comprador (com a divisão própria/terceiros)
+    const sg = sec.nivel==='SEGMENTO' ? (typeof segs!=='undefined' ? segs.get(+sec.codigo) : null) : null;
+    const pad=(sg && sg.setor_id) || (mapa.find(x=>x.codigo===sec.codigo && normN(x.nome)===normN(sec.nome))||{}).setor_id || Parser.matchSector(sec.nome) || (r.secoes.length===1?setorAtual:'') || '';
+    const pct = sg && sg.pct_propria!=null && +sg.pct_propria<1 ? +sg.pct_propria : null;
+    const por=new Map(); const poe=(s,it)=>{ if(!por.has(s)) por.set(s,[]); por.get(s).push(it); };
+    for(const it of sec.itens){
+      if(pct!=null){ const vp=round2(it.val*pct), qp=Math.round(it.q*pct*1000)/1000;
+        poe('padaria',{...it, q:qp, val:vp, parte:Math.round(pct*100)}); poe('panif_terc',{...it, q:Math.round((it.q-qp)*1000)/1000, val:round2(it.val-vp), parte:Math.round(100-pct*100)}); continue; }
+      const s=(sg && sg.setor_id) || prod.get(String(it.c)) || setorPorRegra(sec.codigo, it.d.replace(/^[FV] /,'')) || pad; poe(s,it); }
     for(const [s,its] of por) grupos.push({sec, itens:its, setor:s});
   }
   const lanc={}; try{ for(const id of new Set(grupos.map(g=>g.setor).filter(Boolean))) lanc[id]=await perdaLancada(id, r.periodo.ini, r.periodo.fim); }catch(_){}
