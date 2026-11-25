@@ -1232,7 +1232,7 @@ async function iniciarSessao(){
   let session=null;
   try{ const g=await Promise.race([ S.sb.auth.getSession(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('tempo')),12000)) ]); session=g?.data?.session||null; if(g?.error) session=null; }catch(_){ session=null; }
   // sessão vencida/derrubada (token não existe mais): limpa e pede login em vez de ficar carregando
-  if(session){ try{ const u=await Promise.race([ S.sb.auth.getUser(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('tempo')),12000)) ]); if(u?.error || !u?.data?.user){ try{ Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k)); }catch(_){ } session=null; } }catch(_){ } }
+  if(session){ try{ const u=await Promise.race([ S.sb.auth.getUser(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('tempo')),12000)) ]); if((u?.error && [400,401,403].includes(+u.error.status)) || (!u?.error && !u?.data?.user)){ try{ Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k)); }catch(_){ } session=null; } }catch(_){ } }
   if(!session) return telaLogin();
   let ult=0; try{ ult=+localStorage.getItem('metas_ultima_atividade')||0; }catch(_){ }
   if(ult && Date.now()-ult>LIMITE_INATIVO && !aparelhoCelular()){ return sair('Sua sessão expirou por inatividade. Entre novamente.'); }
