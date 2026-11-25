@@ -286,7 +286,8 @@ async function importarRelatorioVendas(f, setorAtual, opts={}){
   // a tabela depende do relatório (embandeijados ou vendas), não da aba que está aberta na tela
   const tabRel = r._bandeja ? 'analise_bandeja' : 'analise_vendas';
   let existentes=[]; try{ existentes=await q(S.sb.from(tabRel).select('setor_id').eq('periodo_inicio',r.periodo.ini).eq('periodo_fim',r.periodo.fim)); }catch(_){}
-  const opcoesSetor=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
+  // embandeijados só existem no Açougue e no Hortifrúti
+  const opcoesSetor=sel=>`<option value="">— escolha o setor —</option>${S.setoresAll.filter(x=>!r._bandeja || x.id==='acougue' || x.id==='hortifruti').map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('')}`;
   // relatório tirado no mesmo dia vem "até hoje", mas a venda de hoje ainda não fechou: considera até ontem
   const ontem = isoOf(new Date(Date.now()-864e5));
   const fimSugerido = (r.periodo.fim>=todayIso() && r.periodo.ini<=ontem) ? ontem : r.periodo.fim;
