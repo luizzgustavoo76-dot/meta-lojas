@@ -1235,6 +1235,13 @@ async function iniciarSessao(){
   if(ult && Date.now()-ult>LIMITE_INATIVO && !aparelhoCelular()){ return sair('Sua sessão expirou por inatividade. Entre novamente.'); }
   S.user=session.user;
   $('#app').innerHTML='<div class="empty"><span class="spin"></span> Carregando dados…</div>';
+  // se travar, em vez de ficar girando para sempre, oferece recarregar ou entrar de novo
+  clearTimeout(S._vigia); S._vigia=setTimeout(()=>{ if(S.loaded) return; const a=$('#app'); if(!a) return;
+    a.innerHTML=`<div class="card empty"><h2>Está demorando para carregar</h2><p>A internet pode estar lenta, ou a sessão ficou presa neste navegador.</p>
+      <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><button class="btn p" id="vgRec">🔄 Recarregar</button><button class="btn" id="vgSair">Sair e entrar de novo</button></div></div>`;
+    $('#vgRec').onclick=()=>location.reload();
+    $('#vgSair').onclick=async()=>{ try{ Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k)); }catch(_){ } try{ await S.sb.auth.signOut({scope:'local'}); }catch(_){ } location.reload(); };
+  }, 20000);
   try{
     const p=await q(S.sb.from('perfis').select('*').eq('id',S.user.id));
     if(!p.length){ await S.sb.auth.signOut(); return telaLogin('Seu usuário ainda não foi liberado pelo gerente.'); }
@@ -1251,7 +1258,8 @@ async function iniciarSessao(){
 
 (function init(){
   if(!window.supabase){ $('#app').innerHTML='<div class="note err">Não foi possível carregar o site. Verifique a internet e recarregue.</div>'; return; }
-  S.sb = window.supabase.createClient(METAS_CONFIG.url, METAS_CONFIG.anonKey, { auth:{ persistSession:true, autoRefreshToken:true } });
+  // lock simples: o Safari (Mac/iPhone) às vezes trava a sessão em "Carregando dados" com o lock padrão entre abas
+  S.sb = window.supabase.createClient(METAS_CONFIG.url, METAS_CONFIG.anonKey, { auth:{ persistSession:true, autoRefreshToken:true, lock: async (_nome, _espera, fn) => await fn() } });
   window.addEventListener('hashchange',()=>{ if(S.loaded) route(); });
   $('#selMes').addEventListener('change',e=>trocarMes(e.target.value));
   S.sb.auth.onAuthStateChange((ev)=>{ if(ev==='SIGNED_OUT' && !S._saindo){ S.loaded=false; telaLogin(); } });
@@ -1352,8 +1360,8 @@ function limparTextoOcr(t){
   return t.split(/\r?\n/).map(l=>l
     .replace(/(\d)\s+(?=\d{3}[,.]\d{2}\b)/g,'$1')      // "20 841,31" -> "20841,31"
     .replace(/(\d)[.,]\s+(\d{2})\b/g,'$1,$2')            // "841, 31" -> "841,31"
-    .replace(/(?<=\d)[Oo](?=\d)|(?<=\d)[Oo]\b/g,'0')     // O lido no lugar de 0
-    .replace(/(?<=\d)[lI|](?=\d)/g,'1')
+    .replace(/(\d)[Oo](?=\d)/g,'$10').replace(/(\d)[Oo]\b/g,'$10')     // O lido no lugar de 0
+    .replace(/(\d)[lI|](?=\d)/g,'$11')
   ).filter(l=>l.trim());
 }
 async function ocrParaRevisao(fontes, nome){
