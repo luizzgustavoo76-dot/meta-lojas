@@ -87,7 +87,9 @@ async function renderPrecos(app){
   // curva ABC pela venda do mês (da loja toda ou do setor escolhido): A = 80% da venda, B = até 95%, C = o resto
   const vAgg=new Map(); for(const v of (vendas||[])){ const k=String(v.c); const o=vAgg.get(k)||{c:k, d:v.d||'', v:0, q:0, setor:v.setor_id, vs:0}; o.v+=+v.v||0; o.q+=+v.q||0; if((+v.v||0)>o.vs){ o.vs=+v.v||0; o.setor=v.setor_id; } vAgg.set(k,o); }
   const diasV=Math.max(1,...(vendas||[]).map(x=>x.dias||1));
-  const baseCurva=[...vAgg.values()].filter(x=>x.v>0 && (!S.ppSet || x.setor===S.ppSet)).sort((a,b)=>b.v-a.v);
+  // a pesquisa ainda não pega produto de quilo: a curva é feita só com os de unidade
+  const ehQuilo=x=>/(^|\s)KG(\s|$)/i.test(x.d||'') || Math.abs((+x.q||0)-Math.round(+x.q||0))>0.001;
+  const baseCurva=[...vAgg.values()].filter(x=>x.v>0 && !ehQuilo(x) && (!S.ppSet || x.setor===S.ppSet)).sort((a,b)=>b.v-a.v);
   const totV=baseCurva.reduce((a,x)=>a+x.v,0); let acum=0; const curva=new Map();
   baseCurva.forEach((x,i)=>{ acum+=x.v; x.rank=i+1; x.cv = acum<=totV*0.80 || i===0 ? 'A' : acum<=totV*0.95 ? 'B' : 'C'; x.vMes=x.v/diasV*30; curva.set(x.c,x); });
   for(const x of A.ls){ const cc=curva.get(String(x.c)); x.cv=cc?.cv||null; x.rank=cc?.rank||null; }
@@ -144,11 +146,11 @@ async function renderPrecos(app){
   const C={
     curva: n=>`<div class="card"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><h2 style="margin:0">⭐ Curva ${S_CV}: os produtos que mais vendem${S.ppSet?' em '+esc(nomeSetor(S.ppSet)):' na loja'}</h2><div class="sp"></div><span class="tl-chips" style="display:flex;gap:6px">${['A','B','C'].map(k=>`<button class="chip ${S_CV===k?'on':''}" data-ppcv="${k}">Curva ${k}</button>`).join('')}</span></div>
       <div class="grid kpis" style="margin-top:10px">
-        <div class="kpi"><div class="l">Produtos da curva ${S_CV}</div><div class="v">${daCurva.length}</div><div class="d">${totV?pctBR(vendaCurva/totV,0):'—'} da venda${S.ppSet?' do setor':' da loja'}</div></div>
+        <div class="kpi"><div class="l">Produtos da curva ${S_CV}</div><div class="v">${daCurva.length}</div><div class="d">${totV?pctBR(vendaCurva/totV,0):'—'} da venda de unidade${S.ppSet?' do setor':' da loja'}</div></div>
         <div class="kpi"><div class="l">Pesquisados</div><div class="v">${curvaPesq.length}</div><div class="d">${daCurva.length?pctBR(curvaPesq.length/daCurva.length,0):'—'} dos produtos · ${vendaCurva?pctBR(vendaPesq/vendaCurva,0):'—'} da venda da curva</div></div>
         <div class="kpi"><div class="l">Nosso preço na curva ${S_CV}</div><div class="v" style="color:${idxCor(cvIdx)}">${cvIdx==null?'—':cvIdx.toFixed(1).replace('.',',')}</div><div class="d">${idxTxt(cvIdx)} · ${cvComp.filter(x=>x.dif>=PP.caroMin).length} mais caros, ${cvComp.filter(x=>x.dif<=-PP.caroMin).length} mais baratos</div></div>
       </div>
-      <p class="small muted" style="margin:10px 0 6px">Do que mais vende para o que menos vende (#1 = o mais vendido do mês). Curva A = os produtos que fazem 80% da venda: são os que o cliente compara.</p>
+      <p class="small muted" style="margin:10px 0 6px">Do que mais vende para o que menos vende (#1 = o mais vendido do mês). Curva A = os produtos que fazem 80% da venda: são os que o cliente compara. Só produtos de unidade: os de quilo ficam de fora porque a pesquisa ainda não pega.</p>
       ${mostrar(curvaPesq,n,itCv,'ppCv')}
       <details style="margin-top:12px"><summary class="btn" style="display:inline-block">🔍 Ver os ${curvaNao.length} da curva ${S_CV} que não foram pesquisados</summary><p class="small muted" style="margin:8px 0 4px">Esses vendem muito e ficaram fora da pesquisa: vale incluir na próxima.</p>${mostrar(curvaNao,n,itCvN,'ppCvN')}</details></div>`,
     caros: n=>`<div class="card" style="border-color:#f1b5b5"><h2>🚨 Onde estou perdendo <span class="small muted" style="font-weight:400">(${A.caros.length})</span></h2><p class="small muted" style="margin:-4px 0 8px">Mais caros que o concorrente, dos que mais vendem para os que menos vendem. O veredito diz se dá para igualar mantendo a margem alvo.</p>${mostrar(A.caros,n,itCaro,'ppCaros')}</div>`,
