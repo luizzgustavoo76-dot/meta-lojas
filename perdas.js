@@ -183,6 +183,13 @@ function setorPorDescricao(d){ d=String(d||'').toUpperCase().trim();
   if(/^(SALG|TORTA|PAO|BOLO|BISC|ROSCA|CUCA|SONHO|BOLINHO|CHURROS|LANCHE|FOCACCIA|ESFIHA)/.test(d)) return 'padaria';
   return ''; }
 
+/* produto fora do cadastro: o banco sugere o setor pelo histórico de vendas ou pela descrição (CAFE…, AZEIT…, CEREAL…) */
+async function sugerirSetores(itens, prod){
+  const falta=itens.filter(it=>!prod.get(String(it.c)) && !setorPorDescricao(it.d||'')).map(it=>({c:String(it.c), d:it.d||''}));
+  if(!falta.length) return 0; let n=0;
+  for(let i=0;i<falta.length;i+=400){ try{ const r=await q(S.sb.rpc('sugerir_setor_produtos',{p_itens:falta.slice(i,i+400)})); for(const x of (r||[])) if(x.setor_id){ prod.set(String(x.c), x.setor_id); n++; } }catch(_){ } }
+  return n;
+}
 async function importarRelatorioAcertos(f){
   busy('Lendo o resumo de acertos do balanço…');
   let r=null, prod=new Map();
@@ -194,6 +201,7 @@ async function importarRelatorioAcertos(f){
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
   closeModal();
   if(!r){ toast('Esse arquivo não parece o “Resumo de acertos/perdas por produto” do sistema.', 6000); return null; }
+  await sugerirSetores(r.itens, prod);
   const por=new Map(); let porDesc=0;
   for(const it of r.itens){ let s=prod.get(String(it.c)); if(!s){ s=setorPorDescricao(it.d); if(s) porDesc++; } s=s||''; if(!por.has(s)) por.set(s,[]); por.get(s).push(it); }
   // produto sem setor: uma linha para cada, no topo, para escolher o setor de cada um
@@ -271,6 +279,7 @@ async function importarRelatorioTrocas(f){
   catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
   closeModal();
   if(!r){ toast('Esse arquivo não parece o “Resumo de produtos transferidos” do sistema.', 6000); return null; }
+  await sugerirSetores(r.deps.flatMap(dp=>dp.itens), prod);
   const por=new Map();
   for(const dp of r.deps) for(const it of dp.itens){ const s=prod.get(String(it.c)) || setorPorDescricao(it.d) || DEP_TROCA[normN2(dp.nome)] || ''; if(!por.has(s)) por.set(s,[]); por.get(s).push({...it, dep:dp.nome}); }
   const grupos=[...por.entries()].flatMap(([setor,itens])=> setor? [{setor, itens}] : itens.map(it=>({setor:'', itens:[it], um:it}))).map(g=>({...g, c:round2(g.itens.reduce((a,i)=>a+i.tc,0))})).sort((a,b)=>(a.setor?1:0)-(b.setor?1:0) || b.c-a.c);
