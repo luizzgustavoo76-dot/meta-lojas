@@ -472,3 +472,8 @@ tr.an-sub td{background:#fafaf7;font-size:12.5px}
 .pp-v.good{background:var(--good-bg);color:#1f6b3a}.pp-v.warn{background:#fff1cc;color:#7a5200}.pp-v.bad{background:var(--bad-bg);color:var(--bad)}
 .pp-promo{font-size:10.5px;font-weight:700;color:#7a5200;background:#fff1cc;border-radius:6px;padding:1px 5px}
 .tl-chips .chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer;color:var(--ink)}
+
+/* tabelas ordenáveis */
+table.ord thead th{cursor:pointer;user-select:none;white-space:nowrap}
+table.ord thead th:hover{color:var(--red,#c00)}
+table.ord thead th:not([data-ord])::after{content:' ⇅';opacity:.35;font-size:.85em}

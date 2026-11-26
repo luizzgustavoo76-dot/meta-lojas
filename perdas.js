@@ -157,7 +157,7 @@ async function renderPerdasSetor(box, s){
         <select id="pdTipo" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px"><option value="">A quilo e unidade/pacote</option><option value="kg">Só a quilo</option><option value="un">Só unidade/pacote</option></select>
         <input id="pdBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:160px">
         <label class="small" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="pdSo" checked> só com perda</label></div>
-      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="n">Entrou</th><th class="n">Vendeu</th><th class="n">Perdeu</th><th class="n m-hide">Custo méd.</th><th class="n">Perda R$</th>${LY?'<th class="n">Ano pass.</th><th class="n">Var.</th>':''}<th class="n">% da entrada</th><th class="n">% da saída</th><th class="n m-hide">Part.</th><th></th></tr></thead><tbody id="pdBody"></tbody></table></div>
+      <div class="tw" style="max-height:60vh"><table class="ord"><thead><tr><th>Produto</th><th class="n">Entrou</th><th class="n">Vendeu</th><th class="n">Perdeu</th><th class="n m-hide">Custo méd.</th><th class="n">Perda R$</th>${LY?'<th class="n">Ano pass.</th><th class="n">Var.</th>':''}<th class="n">% da entrada</th><th class="n">% da saída</th><th class="n m-hide">Part.</th><th></th></tr></thead><tbody id="pdBody"></tbody></table></div>
     </div>`;
   const desenha=()=>{ const t=normN2($('#pdBusca').value), so=$('#pdSo').checked, tp=$('#pdTipo').value;
     const ls=(so?comPerda:[...itens].sort((a,b)=>b.val-a.val||b.v-a.v)).filter(i=>(!t || normN2(i.d).includes(t) || String(i.c)===t || (i.grupo||[]).some(g=>String(g.c)===t)) && (!tp || (tp==='kg')===perdaAQuilo(i)));
@@ -259,7 +259,7 @@ async function cardAcertos(box, sid){
       <div class="kpi"><div class="l">Resultado ${fD(a.periodo_inicio)} a ${fD(a.periodo_fim)}</div><div class="v" style="color:${cor(+a.diferenca)}">${brl0(+a.diferenca)}</div><div class="d">faltas ${brl0(+a.faltas)} · sobras ${brl0(+a.sobras)}</div></div>
       <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v" style="${ly?'color:'+cor(+ly.diferenca):''}">${ly?brl0(+ly.diferenca):'—'}</div><div class="d">${ly?`faltas ${brl0(+ly.faltas)} · sobras ${brl0(+ly.sobras)}`:'importe o mesmo relatório do ano passado para comparar'}</div></div>
     </div>
-    <div class="tw" style="max-height:45vh;margin-top:10px"><table><thead><tr><th>Produto</th><th class="n">Sobrou</th><th class="n">Faltou</th><th class="n">Diferença qtd</th><th class="n">Resultado R$</th>${ly?'<th class="n">Ano pass.</th>':''}</tr></thead><tbody>
+    <div class="tw" style="max-height:45vh;margin-top:10px"><table class="ord"><thead><tr><th>Produto</th><th class="n">Sobrou</th><th class="n">Faltou</th><th class="n">Diferença qtd</th><th class="n">Resultado R$</th>${ly?'<th class="n">Ano pass.</th>':''}</tr></thead><tbody>
       ${its.slice(0,300).map(i=>{ const o=lyMap.get(String(i.c)); return `<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${i.ve?brl(i.ve):'—'}</td><td class="n">${i.vs?brl(i.vs):'—'}</td><td class="n">${qtBR(i.qd)}</td><td class="n" style="color:${cor(i.vd)};font-weight:600">${brl(i.vd)}</td>${ly?`<td class="n">${o?brl(o.vd):'—'}</td>`:''}</tr>`; }).join('')}
     </tbody></table></div></div>`;
   $('#acSel').onchange=e=>{ S.acSel[sid]=+e.target.value; cardAcertos(box,sid); };
@@ -332,7 +332,7 @@ async function cardTrocas(box, sid){
       <div class="kpi"><div class="l">Trocas ${fD(a.periodo_inicio)} a ${fD(a.periodo_fim)} (custo)</div><div class="v">${brl0(+a.custo)}</div><div class="d">${its.length} produtos · a preço de venda ${brl0(+a.venda)} · filial ${esc(a.dados.origem||'')} → ${esc(a.dados.destino||'')}</div></div>
       <div class="kpi"><div class="l">Ano passado, mesmo período</div><div class="v">${ly?brl0(+ly.custo):'—'}</div><div class="d">${ly?'':'importe o mesmo relatório do ano passado para comparar'}</div></div>
     </div>
-    <div class="tw" style="max-height:45vh;margin-top:10px"><table><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th><th class="n m-hide">Preço de venda</th></tr></thead><tbody>
+    <div class="tw" style="max-height:45vh;margin-top:10px"><table class="ord"><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th><th class="n m-hide">Preço de venda</th></tr></thead><tbody>
       ${its.slice(0,300).map(i=>`<tr><td><span class="muted small">${esc(i.c)}</span> ${esc(cap1(i.d))}</td><td class="n">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.tc)}</b></td><td class="n m-hide">${brl(i.tv)}</td></tr>`).join('')}
     </tbody></table></div></div>`;
   $('#trSel').onchange=e=>{ S.trSel[sid]=+e.target.value; cardTrocas(box,sid); };
@@ -385,7 +385,7 @@ async function renderTrocasSetor(box, s){
     </ul></div>
     <div class="card" style="margin-top:12px">
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Produtos</h2><div class="sp"></div><input id="trBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:150px"></div>
-      <div class="tw" style="max-height:60vh"><table><thead><tr><th class="m-hide">#</th><th>Produto</th><th class="n m-hide">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th><th class="n m-hide">Preço venda</th>${ly?'<th class="n m-hide">Ano pass.</th>':''}<th class="n">Part.</th></tr></thead><tbody id="trBody"></tbody></table></div>
+      <div class="tw" style="max-height:60vh"><table class="ord"><thead><tr><th class="m-hide">#</th><th>Produto</th><th class="n m-hide">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th><th class="n m-hide">Preço venda</th>${ly?'<th class="n m-hide">Ano pass.</th>':''}<th class="n">Part.</th></tr></thead><tbody id="trBody"></tbody></table></div>
     </div>`;
   const desenha=()=>{ const t=normN2($('#trBusca').value);
     $('#trBody').innerHTML=its.map((i,k)=>({i,k})).filter(({i})=>!t||normN2(i.d).includes(t)||String(i.c)===t).slice(0,400).map(({i,k})=>{ const o=lyMap.get(String(i.c)); return `<tr><td class="muted m-hide">${k+1}</td><td><span class="muted small">${k+1}º · ${esc(i.c)}</span> ${esc(cap1(i.d))}<div class="small muted m-only">${qtBR(i.q)} un/kg · ${brl(i.cu)}/un · venda ${brl(i.tv)}${ly?` · ano pass. ${o?brl(o.tc):'—'}`:''}</div></td><td class="n m-hide">${qtBR(i.q)}</td><td class="n m-hide">${brl(i.cu)}</td><td class="n"><b>${brl(i.tc)}</b></td><td class="n m-hide">${brl(i.tv)}</td>${ly?`<td class="n m-hide">${o?brl(o.tc)+`<div class="small muted">${qtBR(o.q)} un/kg</div>`:'—'}</td>`:''}<td class="n" style="min-width:70px">${pctBR(i.tc/tot,1)}${barraPct(i.tc/its[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>'; };

@@ -21,6 +21,17 @@ async function identificarArquivo(f){
   return { tipo:null };
 }
 
+/* ---------- tabelas com ▲▼: clicar no título da coluna ordena (maior primeiro, depois menor) ---------- */
+function numCel(t){ t=String(t||'').replace(/\s/g,'').replace('R$','').replace(/[%]/g,'').replace(/[−–]/g,'-'); if(!/^-?[\d.,]+-?$/.test(t)) return null; const neg=t.endsWith('-')||t.startsWith('-'); t=t.replace(/-/g,''); const n=parseFloat(t.replace(/\./g,'').replace(',','.')); return isNaN(n)?null:(neg?-n:n); }
+document.addEventListener('click',ev=>{ const th=ev.target.closest('table.ord thead th'); if(!th) return; const tab=th.closest('table'), tb=tab.tBodies[0]; if(!tb) return;
+  const col=[...th.parentNode.children].indexOf(th); const dir = th.dataset.ord==='desc' ? 'asc' : 'desc';
+  tab.querySelectorAll('thead th').forEach(x=>{ delete x.dataset.ord; x.querySelector('.ord-i')?.remove(); });
+  th.dataset.ord=dir; th.insertAdjacentHTML('beforeend',`<span class="ord-i"> ${dir==='desc'?'▼':'▲'}</span>`);
+  const rows=[...tb.rows]; const val=r=>{ const c=r.cells[col]; if(!c) return null; const n=numCel(c.innerText.split('\n')[0]); return n; };
+  const nums=rows.filter(r=>val(r)!=null).length>=rows.length/2;
+  rows.sort((a,b)=>{ if(nums){ const x=val(a), y=val(b); if(x==null||y==null) return (x==null)-(y==null); /* sem número sempre no fim */ return dir==='desc'? y-x : x-y; } const x=(a.cells[col]?.innerText||''), y=(b.cells[col]?.innerText||''); return dir==='desc'? y.localeCompare(x,'pt-BR') : x.localeCompare(y,'pt-BR'); });
+  rows.forEach(r=>tb.appendChild(r)); });
+
 /* ---------- importação: nada fica sem setor ---------- */
 // linhas sem setor sobem para o topo da lista
 function pendentesNoTopo(m, sel){ m.querySelectorAll('tr.st-prods').forEach(x=>{ x.previousElementSibling?.querySelector('.st-tog') && (x.previousElementSibling.querySelector('.st-tog').textContent='▸'); x.remove(); }); const sem=[...m.querySelectorAll(sel)].filter(s=>!s.value); for(const s of sem.reverse()){ const tr=s.closest('tr'); if(tr?.parentNode) tr.parentNode.prepend(tr); } }
@@ -258,7 +269,7 @@ async function renderPerdasLoja(app, doc){
       <select id="plSet" style="border:1px solid var(--line);border-radius:8px;padding:5px 6px"><option value="">Todos os setores</option>${ids.map(id=>`<option value="${id}" ${S.plSet===id?'selected':''}>${esc(nomeSetor(id))}</option>`).join('')}</select>
       <input id="plBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:150px"></div>
       <p class="small muted" style="margin:6px 0 8px">Soma o que o produto perdeu (relatório de perdas) com o que faltou no balanço ${temAcertos?'(resumo de acertos)':'(balanços lançados no período)'}, e compara com o que ele vendeu${V.length?'':' — importe o relatório de vendas desse período para ver a venda'}.${nSem?` ${nSem} produto(s) com perda não tiveram venda no período.`:''}</p>
-      <div class="tw" style="max-height:65vh"><table><thead><tr><th>#</th><th>Produto</th><th class="m-hide">Setor</th><th class="n m-hide">Venda</th><th class="n m-hide">Perda</th><th class="n m-hide">Falta balanço</th><th class="n">Total</th><th class="n">% venda</th></tr></thead><tbody id="plBody"></tbody></table></div></div>`;
+      <div class="tw" style="max-height:65vh"><table class="ord"><thead><tr><th>#</th><th>Produto</th><th class="m-hide">Setor</th><th class="n m-hide">Venda</th><th class="n m-hide">Perda</th><th class="n m-hide">Falta balanço</th><th class="n">Total</th><th class="n">% venda</th></tr></thead><tbody id="plBody"></tbody></table></div></div>`;
   const desenha=()=>{ const t=normN2($('#plBusca').value), s=$('#plSet').value; S.plSet=s;
     const ls=lista.filter(x=>(!s||x.setor===s) && (!t||normN2(x.d).includes(t)||x.c===t)).slice(0,150);
     $('#plBody').innerHTML = ls.map((x,i)=>{ const pc=x.venda? x.total/x.venda : null; return `<tr><td class="muted">${i+1}</td><td><span class="muted small">${esc(x.c)}</span> ${esc(cap1(x.d))}<div class="small muted m-only">${esc(nomeSetor(x.setor))} · venda ${x.venda?brl0(x.venda):'—'} · perda ${x.perda?brl0(x.perda):'—'} · falta ${x.falta?brl0(x.falta):'—'}</div></td><td class="small m-hide">${esc(nomeSetor(x.setor))}</td><td class="n m-hide">${x.venda?brl0(x.venda):'<span class="muted">sem venda</span>'}</td><td class="n m-hide">${x.perda?brl0(x.perda):'—'}</td><td class="n m-hide">${x.falta?brl0(x.falta):'—'}</td><td class="n"><b>${brl0(x.total)}</b></td><td class="n" style="${pc!=null&&pc>=0.1?'color:var(--bad);font-weight:600':''}">${pc==null?'—':pctBR(pc,1)}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Nada encontrado.</td></tr>'; };
@@ -324,7 +335,7 @@ async function renderTrocasLoja(app, doc){
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="margin:0">Todos os produtos</h2><div class="sp"></div>
         <select id="tlSet" style="border:1px solid var(--line);border-radius:8px;padding:5px 6px"><option value="">Todos os setores</option>${set.map(x=>`<option value="${x.id}">${esc(nomeSetor(x.id))}</option>`).join('')}</select>
         <input id="tlBusca" placeholder="Buscar produto…" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:150px"></div>
-      <div class="tw" style="max-height:60vh"><table><thead><tr><th>Produto</th><th class="m-hide">Setor</th><th class="n m-hide">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th>${TL.length?'<th class="n m-hide">Ano pass.</th>':''}<th class="n">Part.</th></tr></thead><tbody id="tlBody"></tbody></table></div></div>`;
+      <div class="tw" style="max-height:60vh"><table class="ord"><thead><tr><th>Produto</th><th class="m-hide">Setor</th><th class="n m-hide">Qtd</th><th class="n m-hide">Custo un.</th><th class="n">Custo</th>${TL.length?'<th class="n m-hide">Ano pass.</th>':''}<th class="n">Part.</th></tr></thead><tbody id="tlBody"></tbody></table></div></div>`;
   const desenha=()=>{ const t=normN2($('#tlBusca').value), st=$('#tlSet').value;
     $('#tlBody').innerHTML=prods.map((p,k)=>({p,k})).filter(({p})=>(!st||p.setor===st)&&(!t||normN2(p.d).includes(t)||String(p.c)===t)).slice(0,500).map(({p,k})=>{ const o=lyP.get(String(p.c)); return `<tr><td><span class="muted small">${k+1}º · ${esc(p.c)}</span> ${esc(cap1(p.d))}<div class="small muted m-only">${esc(nomeSetor(p.setor))} · ${qtBR(p.q)} un/kg · ${brl(p.cu)}/un</div></td><td class="small m-hide">${esc(nomeSetor(p.setor))}</td><td class="n m-hide">${qtBR(p.q)}</td><td class="n m-hide">${brl(p.cu)}</td><td class="n"><b>${brl(p.tc)}</b></td>${TL.length?`<td class="n m-hide">${o?brl(o.tc):'—'}</td>`:''}<td class="n" style="min-width:64px">${pctBR(p.tc/tot,1)}${barraPct(p.tc/prods[0].tc)}</td></tr>`; }).join('')||'<tr><td colspan="7" class="muted">Nada encontrado.</td></tr>'; };
   $('#tlBusca').oninput=desenha; $('#tlSet').onchange=desenha; desenha();

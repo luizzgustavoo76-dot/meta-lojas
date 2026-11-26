@@ -330,7 +330,7 @@ async function imprimirFolhaPerdas(s, reg, itens, LY, lyMap, venda){
     <div class="fi-h"><div><div class="fi-loja">Bom Dia São Luiz · Araruna</div><h1>Folha de perdas — ${esc(F.setor)}</h1><div class="fi-sub">Período ${F.periodo} · impresso em ${fD(F.hoje)}</div></div><img src="logo.png" alt=""></div>
     <div class="fi-k">${F.kpis.map(k=>`<div><span>${esc(k[0])}</span><b>${esc(k[1])}</b><small>${esc(k[2])||'&nbsp;'}</small></div>`).join('')}</div>
     <h2>Produtos que mais perdem</h2>
-    <table><thead><tr><th>#</th><th>Produto</th><th class="n">Entrou</th><th class="n">Perdeu</th><th class="n">R$</th><th class="n">% do que sai</th>${F.temLy?'<th class="n">Ano pass.</th>':''}<th>O que fazer</th></tr></thead><tbody>
+    <table class="ord"><thead><tr><th>#</th><th>Produto</th><th class="n">Entrou</th><th class="n">Perdeu</th><th class="n">R$</th><th class="n">% do que sai</th>${F.temLy?'<th class="n">Ano pass.</th>':''}<th>O que fazer</th></tr></thead><tbody>
       ${F.prods.map(p=>`<tr><td>${p.n}</td><td>${esc(p.d)} <small>${esc(p.c)}</small></td><td class="n">${p.e}</td><td class="n">${p.q}</td><td class="n"><b>${p.val}</b></td><td class="n">${p.sai}</td>${F.temLy?`<td class="n">${p.ly}</td>`:''}<td>${esc(p.dica)}</td></tr>`).join('')}
     </tbody></table>
     <h2>Plano de ação em aberto</h2>
