@@ -182,7 +182,7 @@ function detalheSetorHtml(doc, sid){
     </div>
     ${alertasPainel(doc, loja, [s], true)}
     ${cardComparativos(c, s.nome)}
-    <div class="card" style="margin-top:12px"><h2>Dia a dia</h2>${listaDiasCelular(s.daily, S.cutoff, true)}<div class="tw d-only" style="max-height:420px"><table><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th></tr></thead><tbody>
+    <div class="card" style="margin-top:12px"><h2>Dia a dia</h2>${listaDiasCelular(s.daily, S.cutoff, true)}<div class="tw d-only" style="max-height:420px"><table class="ord"><thead><tr><th>Dia</th><th class="n">Meta</th><th class="n">Realizado</th><th>% atingido</th><th class="n">Acum. real</th><th class="n">% acum.</th><th class="n">Perda</th></tr></thead><tbody>
       ${(()=>{ let am=0,ar=0; return dias.map(d=>{ am+=d.meta; ar+=d.real; return `<tr><td>${fDateL(d.k)}${marcaData(d.k)}</td><td class="n">${brl0(d.meta)}</td><td class="n">${d.real?brl(d.real):'—'}</td><td>${d.real?badge(d.real/d.meta):''}</td><td class="n">${brl0(ar)}</td><td class="n">${pct(ar/(am||1))}</td><td class="n">${d.perda?brl(d.perda):'—'}${d.bal?' 📦':''}</td></tr>`; }).join(''); })()}
     </tbody></table></div></div>
   </div>`;
