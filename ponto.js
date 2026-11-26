@@ -130,7 +130,7 @@ function corrigirPonto(pis, dia, A, depois){
 const ehArquivoPonto = f => /^AFD.*\.txt$/i.test(f?.name||'');
 
 /* analisa um dia: devolve pessoas, alertas, extras etc. */
-function conferirDia(A, dia, NOW){
+function conferirDia(A, dia, NOW, passado){
   const dom = new Date(dia+'T12:00:00Z').getUTCDay()===0;
   const FECH = dom? PT.fechDom : PT.fech;
   let ultima=-1; for(const p in A.bat) for(const x of (A.bat[p][dia]||[])) ultima=Math.max(ultima,x);
@@ -173,6 +173,11 @@ function conferirDia(A, dia, NOW){
         if(!dom && !apr && ex<-PT.tol && !(tarde && trab<=4*60+15)) add('PERDA: SAIU ANTES / HORAS A MENOS',n,`trabalhou ${ptH(trab)} — ${ptH(-ex)} abaixo da jornada (saída ${ptHm(P.saida)})`,{tipo:'perda'});
         if(apr && ex<-PT.tol && !dom) add('PERDA: SAIU ANTES / HORAS A MENOS',n,`aprendiz trabalhou ${ptH(trab)} — ${ptH(-ex)} abaixo das 4h`,{tipo:'perda'});
       }
+    } else if(passado){
+      // dia que já terminou: número ímpar de batidas = falta a batida de saída (não é hora extra)
+      const ini=v[v.length-1]; P.st='aberto'; P.saida=ini; P.saldo=trab-J;
+      P.txt=`sem a batida de saída · última batida ${ptHm(ini)} · ${ptH(trab)} contados`;
+      add('PERDA: NÃO VOLTOU / BATIDA FALTANDO',n,`última batida ${ptHm(ini)} e não tem a saída: esqueceu de bater? Use ✏️ corrigir para lançar.`,{tipo:'perda'});
     } else {
       const ini=v[v.length-1], agoraTrab=trab+Math.max(0,NOW-ini), trecho=Math.max(0,NOW-ini);
       const prev=ini+(J-trab); P.st='trab'; P.prev=prev; P.agoraTrab=agoraTrab;
@@ -204,7 +209,7 @@ function conferirDia(A, dia, NOW){
     pessoas.push(P);
   }
   // quem trabalhou nos últimos 7 dias e não bateu neste dia
-  const faltou=[]; if(dia<=A.maxDia) for(const pis in A.bat){ if(A.bat[pis][dia]?.length) continue;
+  const faltou=[]; if(dia<=A.maxDia || dia===ptAgoraBR().dia) for(const pis in A.bat){ if(A.bat[pis][dia]?.length) continue;
     let ult=null; for(let k=1;k<=7;k++){ const d=ptAddDia(dia,-k); if(A.bat[pis][d]?.length){ ult=d; break; } }
     if(ult) faltou.push({pis, n:ptNome(A.nomes[pis]), ult, apr:(A.apr&&A.apr[pis])||ptAprendiz(A.nomes[pis]), just:A.just?.[pis]?.[dia]?.j||null}); }
   faltou.sort((a,b)=>b.ult.localeCompare(a.ult)||a.n.localeCompare(b.n));
@@ -222,7 +227,7 @@ async function renderPonto(app){
   if(!S.gerente){ app.innerHTML='<div class="card empty">Só o gerente vê a conferência de ponto.</div>'; return; }
   const agora0=ptAgoraBR();
   if(!S._ptDias){ app.innerHTML='<div class="empty"><span class="spin"></span> Carregando o ponto…</div>'; try{ S._ptDias=(await q(S.sb.rpc('ponto_dias')))||[]; }catch(e){ app.innerHTML=`<div class="note err">Erro ao carregar o ponto: ${esc(e.message||e)}</div>`; return; } }
-  const diasDb=S._ptDias.map(x=>x.dia);
+  const diasDb=S._ptDias.map(x=>x.dia); if(diasDb.length && !diasDb.includes(agora0.dia) && agora0.dia>diasDb[0]) diasDb.unshift(agora0.dia); // virou o dia: abre no dia de hoje
   if(!S.ptDia || !diasDb.includes(S.ptDia)) S.ptDia = diasDb.includes(agora0.dia)? agora0.dia : diasDb[0];
   let A=null;
   if(S.ptDia){ if(!S._ptCache || S._ptCache.dia!==S.ptDia){ app.innerHTML='<div class="empty"><span class="spin"></span> Carregando o ponto…</div>';
@@ -238,7 +243,7 @@ async function renderPonto(app){
   const dias=diasDb;
   const hoje = S.ptDia===agora.dia;
   const NOW = S.ptAgora!=null && hoje? S.ptAgora : (hoje? agora.min : 1440);
-  const R=conferirDia(A, S.ptDia, NOW);
+  const R=conferirDia(A, S.ptDia, NOW, !hoje);
   const geradoTxt = A.gerado? `${fD(A.gerado.dia)} ${ptHm(A.gerado.min)}` : '—';
   const velho = hoje && (!A.gerado || A.gerado.dia!==agora.dia || agora.min-A.gerado.min>90);
   const nomeDia = d => new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',timeZone:'UTC'}).replace('.','');
@@ -258,15 +263,16 @@ async function renderPonto(app){
   // parecer: quem sai a que horas
   const alDe=n=>R.al.filter(a=>a.n===n && PT_COR[a.k]);
   const situ=p=>{ const a=alDe(p.n);
+    if(p.st==='aberto') return `<span class="pp-v bad">sem a batida de saída</span>`;
     if(p.st==='saiu') return `<span class="pp-v good">✔ saiu ${ptHm(p.saida)}</span>`;
     if(p.st==='intervalo') return `<span class="pp-v ${a.length?PT_COR[a[0].k]:'warn'}">🍽 almoço · volta até ${ptHm(p.volta)}</span>`;
     if(a.length) return `<span class="pp-v ${PT_COR[a[0].k]}">${esc(PT_ROT[a[0].k])}</span>`;
     return `<span class="pp-v good">no horário</span>`; };
-  const ordem=[...naLoja.sort((a,b)=>a.prev-b.prev), ...inter.sort((a,b)=>a.prev-b.prev), ...sairam.sort((a,b)=>a.saida-b.saida)];
+  const ordem=[...P.filter(p=>p.st==='aberto'), ...naLoja.sort((a,b)=>a.prev-b.prev), ...inter.sort((a,b)=>a.prev-b.prev), ...sairam.sort((a,b)=>a.saida-b.saida)];
   const JT={folga:'folga',atestado:'atestado',ferias:'férias',dispensa:'dispensa',falta:'falta',outro:'justificado'};
   const btCor=pis=>`<button class="btn" data-ptcor="${esc(pis)}" title="Corrigir o ponto" style="padding:3px 8px;font-size:12.5px;margin-top:4px">✏️ corrigir</button>`;
   const itP=p=>`<div class="pp-i"><div class="pp-p"><b>${esc(p.n)}</b>${p.apr?' <span class="pp-promo">aprendiz 4h</span>':''}${p.man?' <span class="pp-promo">corrigido</span>':''}${p.just?` <span class="pp-promo">${JT[p.just.tipo]||p.just.tipo}</span>`:''}<div class="small muted">batidas: ${p.v.map(ptHm).join(' · ')}</div><div class="small">${esc(p.txt)}</div>${situ(p)}</div>
-      <div class="pp-n">${p.st==='saiu'?`<b>${ptHm(p.saida)}</b><span class="small muted">saiu</span>`:`<b style="font-size:18px">${ptHm(p.prev)}</b><span class="small muted">${p.st==='intervalo'?'sai (se voltar no limite)':'deve sair'}</span>${p.st==="trab"&&!p.apr&&p.saldoFech>0&&p.prev<R.FECH&&p.prev>=R.FECH-90?`<span class="small muted">se ficar até ${ptHm(R.FECH)}: +${ptH(p.saldoFech)}</span>`:''}`}${btCor(p.pis)}</div></div>`;
+      <div class="pp-n">${p.st==='aberto'?`<b style="color:var(--bad)">—</b><span class="small muted">sem saída</span>`:p.st==='saiu'?`<b>${ptHm(p.saida)}</b><span class="small muted">saiu</span>`:`<b style="font-size:18px">${ptHm(p.prev)}</b><span class="small muted">${p.st==='intervalo'?'sai (se voltar no limite)':'deve sair'}</span>${p.st==="trab"&&!p.apr&&p.saldoFech>0&&p.prev<R.FECH&&p.prev>=R.FECH-90?`<span class="small muted">se ficar até ${ptHm(R.FECH)}: +${ptH(p.saldoFech)}</span>`:''}`}${btCor(p.pis)}</div></div>`;
   // turno da noite
   const noite=naLoja.filter(p=>!p.apr && p.prev>=R.FECH-60).sort((a,b)=>a.prev-b.prev);
   const itN=p=>{ const d=p.prev-R.FECH; return `<div class="pp-i"><div class="pp-p"><b>${esc(p.n)}</b><div class="small">entrou ${ptHm(p.v[0])} · saída prevista ${ptHm(p.prev)}</div></div><div class="pp-n">${d>0?`<span class="pp-v warn">fecha ${ptH(d)} abaixo da jornada</span><span class="small muted">se sair no fechamento</span>`:d<0?`<span class="pp-v good">sai ${ptH(-d)} antes do fechamento</span>`:'<span class="pp-v good">sai no fechamento</span>'}</div></div>`; };
