@@ -54,6 +54,9 @@ function analisarPesquisa(P, vendas, prodSetor, conc){
     perdeuMes: caros.reduce((a,x)=>a+x.vMes,0), ganhoMes: baratos.reduce((a,x)=>a+x.ganho,0) };
 }
 
+// venda do mês por produto: o banco devolve no máximo 1.000 linhas por vez, então busca em páginas (são ~7.500 produtos)
+async function vendasProdutoMes(){ const out=[]; for(let i=0;;i+=1000){ const pg=await q(S.sb.rpc('vendas_produto_mes',{p_ref:todayIso()}).range(i,i+999)); out.push(...(pg||[])); if(!pg||pg.length<1000) break; } return out; }
+
 async function renderPrecos(app){
   if(!S.gerente){ app.innerHTML='<div class="card empty">Só o gerente vê a pesquisa de preço.</div>'; return; }
   app.innerHTML=`<div class="row" style="align-items:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap"><div><h1>💲 Pesquisa de preço</h1><p class="sub" style="margin:0">Nosso preço contra o concorrente, cruzado com a venda do mês: onde estamos perdendo e onde dá para ganhar margem.</p></div><div class="sp"></div><span id="ppSelBox"></span>${botaoImportarVarios('bVP')}</div><div id="ppBox"><div class="empty"><span class="spin"></span> Carregando…</div></div>`;
@@ -72,7 +75,7 @@ async function renderPrecos(app){
     [P, ant, vendas]=await Promise.all([
       q(S.sb.from('pesquisas_preco').select('*').eq('id',S._ppSel)).then(r=>r[0]),
       lista[i+1]? q(S.sb.from('pesquisas_preco').select('*').eq('id',lista[i+1].id)).then(r=>r[0]) : null,
-      q(S.sb.rpc('vendas_produto_mes',{p_ref:todayIso()})).catch(()=>[]) ]);
+      vendasProdutoMes().catch(()=>[]) ]);
     for(let k=0;;k+=1000){ const pg=await q(S.sb.from('produtos_setor').select('codigo,setor_id').range(k,k+999)); (pg||[]).forEach(x=>prodSetor.set(String(x.codigo),x.setor_id)); if(!pg||pg.length<1000) break; }
   }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
@@ -191,7 +194,7 @@ async function cardPrecosPainel(el){
   if(!el || !S.gerente) return;
   let P; try{ P=(await q(S.sb.from('pesquisas_preco').select('*').order('periodo_fim',{ascending:false}).order('numero',{ascending:false}).limit(1)))[0]; }catch(_){ return; }
   if(!P || !el.isConnected) return;
-  let vendas=[]; try{ vendas=await q(S.sb.rpc('vendas_produto_mes',{p_ref:todayIso()})); }catch(_){ }
+  let vendas=[]; try{ vendas=await vendasProdutoMes(); }catch(_){ }
   const A=analisarPesquisa(P, vendas, new Map(), 'min'); if(!el.isConnected) return;
   const top=A.caros.slice(0,3);
   el.innerHTML=`<div class="card" style="margin-top:12px"><div class="row" style="flex-wrap:wrap;gap:6px"><h2 style="margin:0">💲 Pesquisa de preço</h2><span class="small muted">nº ${P.numero??'—'} de ${fD(P.periodo_fim)}</span><div class="sp"></div><a class="btn" href="#precos">Ver a pesquisa</a></div>
