@@ -80,13 +80,6 @@ async function renderPrecos(app){
   }catch(e){ box.innerHTML=`<div class="note err">Erro: ${esc(e.message)}</div>`; return; }
   if(!vivo()) return;
   S.ppConc = S.ppConc ?? 'min';
-  const A0=analisarPesquisa(P, vendas, prodSetor, S.ppConc);
-  const setoresP=[...new Set(A0.ls.filter(x=>x.nosso).map(x=>x.setor).filter(Boolean))].sort((a,b)=>nomeSetor(a).localeCompare(nomeSetor(b)));
-  if(S.ppSet && !setoresP.includes(S.ppSet)) S.ppSet=null;
-  const filtra=A=>{ if(!S.ppSet) return A; const f=arr=>arr.filter(x=>x.setor===S.ppSet); const B={...A}; for(const k of ['ls','comp','caros','baratos','iguais','promo','margBaixa','abaixoCusto','semPreco','semCusto']) B[k]=f(A[k]);
-    const pond=B.comp.filter(x=>x.qMes>0), sN=pond.reduce((a,x)=>a+x.nosso*x.qMes,0), sC=pond.reduce((a,x)=>a+x.alvo.p*x.qMes,0); B.indice=sC? sN/sC*100 : (B.comp.length? B.comp.reduce((a,x)=>a+(1+x.dif),0)/B.comp.length*100 : null);
-    B.perdeuMes=B.caros.reduce((a,x)=>a+x.vMes,0); B.ganhoMes=B.baratos.reduce((a,x)=>a+x.ganho,0); return B; };
-  const A=filtra(A0);
   // curva ABC pela venda do mês (da loja toda ou do setor escolhido): A = 80% da venda, B = até 95%, C = o resto
   const vAgg=new Map(); for(const v of (vendas||[])){ const k=String(v.c); const o=vAgg.get(k)||{c:k, d:v.d||'', v:0, q:0, setor:v.setor_id, vs:0}; o.v+=+v.v||0; o.q+=+v.q||0; if((+v.v||0)>o.vs){ o.vs=+v.v||0; o.setor=v.setor_id; } vAgg.set(k,o); }
   const diasV=Math.max(1,...(vendas||[]).map(x=>x.dias||1));
@@ -95,7 +88,14 @@ async function renderPrecos(app){
   const baseCurva=[...vAgg.values()].filter(x=>x.v>0 && !ehQuilo(x) && (!S.ppSet || x.setor===S.ppSet)).sort((a,b)=>b.v-a.v);
   const totV=baseCurva.reduce((a,x)=>a+x.v,0); let acum=0; const curva=new Map();
   baseCurva.forEach((x,i)=>{ acum+=x.v; x.rank=i+1; x.cv = acum<=totV*0.80 || i===0 ? 'A' : acum<=totV*0.95 ? 'B' : 'C'; x.vMes=x.v/diasV*30; curva.set(x.c,x); });
-  for(const x of A.ls){ const cc=curva.get(String(x.c)); x.cv=cc?.cv||null; x.rank=cc?.rank||null; }
+  for(const it of P.itens){ const cc=curva.get(String(it.c)); it.cv=cc?.cv||null; it.rank=cc?.rank||null; } // a etiqueta da curva vai junto para todas as listas
+  const A0=analisarPesquisa(P, vendas, prodSetor, S.ppConc);
+  const setoresP=[...new Set(A0.ls.filter(x=>x.nosso).map(x=>x.setor).filter(Boolean))].sort((a,b)=>nomeSetor(a).localeCompare(nomeSetor(b)));
+  if(S.ppSet && !setoresP.includes(S.ppSet)) S.ppSet=null;
+  const filtra=A=>{ if(!S.ppSet && !S.ppSoA) return A; const f=arr=>arr.filter(x=>(!S.ppSet || x.setor===S.ppSet) && (!S.ppSoA || x.cv==='A')); const B={...A}; for(const k of ['ls','comp','caros','baratos','iguais','promo','margBaixa','abaixoCusto','semPreco','semCusto']) B[k]=f(A[k]);
+    const pond=B.comp.filter(x=>x.qMes>0), sN=pond.reduce((a,x)=>a+x.nosso*x.qMes,0), sC=pond.reduce((a,x)=>a+x.alvo.p*x.qMes,0); B.indice=sC? sN/sC*100 : (B.comp.length? B.comp.reduce((a,x)=>a+(1+x.dif),0)/B.comp.length*100 : null);
+    B.perdeuMes=B.caros.reduce((a,x)=>a+x.vMes,0); B.ganhoMes=B.baratos.reduce((a,x)=>a+x.ganho,0); return B; };
+  const A=filtra(A0);
   // por concorrente (índice) e contra a pesquisa anterior
   const porConc=P.concorrentes.map((n,i)=>{ const B=filtra(analisarPesquisa(P, vendas, prodSetor, i)); return {n:nomeConc(n), i, indice:B.indice, n2:B.comp.length, caros:B.caros.length, baratos:B.comp.filter(x=>x.dif<=-PP.caroMin).length}; });
   let mud=[]; if(ant){ const am=new Map(ant.itens.map(x=>[String(x.c),x]));
@@ -124,7 +124,7 @@ async function renderPrecos(app){
   // por setor
   const porSet=setoresP.map(sid=>{ const c=A0.comp.filter(x=>x.setor===sid), pond=c.filter(x=>x.qMes>0), sN=pond.reduce((a,x)=>a+x.nosso*x.qMes,0), sC=pond.reduce((a,x)=>a+x.alvo.p*x.qMes,0);
     return {sid, n:c.length, idx: sC? sN/sC*100 : (c.length? c.reduce((a,x)=>a+(1+x.dif),0)/c.length*100 : null), caros:A0.caros.filter(x=>x.setor===sid).length, baratos:A0.baratos.filter(x=>x.setor===sid).length, perde:A0.caros.filter(x=>x.setor===sid).reduce((a,x)=>a+x.vMes,0)}; }).filter(x=>x.n).sort((a,b)=>(b.idx||0)-(a.idx||0));
-  const chips=`<div class="tl-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px"><button class="chip ${!S.ppSet?'on':''}" data-ppset="">🏪 Geral</button>${setoresP.map(s=>`<button class="chip ${S.ppSet===s?'on':''}" data-ppset="${s}">${esc(nomeSetor(s))}</button>`).join('')}</div>
+  const chips=`<div class="tl-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px"><button class="chip ${S.ppSoA?'on':''}" data-ppsoa="1" title="Liga/desliga: analisar só os produtos da curva A">${S.ppSoA?'✔ ':''}⭐ Só curva A</button><span style="width:8px"></span><button class="chip ${!S.ppSet?'on':''}" data-ppset="">🏪 Geral</button>${setoresP.map(s=>`<button class="chip ${S.ppSet===s?'on':''}" data-ppset="${s}">${esc(nomeSetor(s))}</button>`).join('')}</div>
     <div class="tl-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px"><span class="small muted" style="align-self:center">comparar com:</span><button class="chip ${S.ppConc==='min'?'on':''}" data-ppc="min">o mais barato</button>${P.concorrentes.map((n,i)=>`<button class="chip ${String(S.ppConc)===String(i)?'on':''}" data-ppc="${i}">${esc(nomeConc(n))}</button>`).join('')}</div>`;
   box.innerHTML=`${chips}
     <div class="grid kpis">
@@ -182,6 +182,7 @@ async function renderPrecos(app){
   box.querySelectorAll('[data-ppv]').forEach(b=>b.onclick=()=>{ S.ppVista=b.dataset.ppv; renderPrecos(app); });
   box.querySelectorAll('[data-ppvk]').forEach(b=>b.onclick=()=>{ S.ppVista=b.dataset.ppvk; renderPrecos(app); });
   box.querySelectorAll('[data-ppset]').forEach(b=>b.onclick=()=>{ S.ppSet=b.dataset.ppset||null; renderPrecos(app); });
+  box.querySelectorAll('[data-ppsoa]').forEach(b=>b.onclick=()=>{ S.ppSoA=!S.ppSoA; renderPrecos(app); });
   box.querySelectorAll('[data-ppc]').forEach(b=>b.onclick=()=>{ S.ppConc=b.dataset.ppc==='min'?'min':+b.dataset.ppc; renderPrecos(app); });
   box.querySelectorAll('[data-ppcv]').forEach(b=>b.onclick=()=>{ S.ppCurva=b.dataset.ppcv; renderPrecos(app); });
   const fontes={ppCv:[curvaPesq,itCv], ppCvN:[curvaNao,itCvN], ppCaros:[A.caros,itCaro], ppBar:[A.baratos,itBar], ppPromo:[A.promo,itPromo], ppMarg:[listaMarg,itMarg], ppMud:[mud,itMud]};
