@@ -228,7 +228,7 @@ async function pdfDaTela(el, R){
   const msg=t=>{ const e=$('#ptMsg',aviso); if(e) e.textContent=t; };
   const LARG=860, fr=document.createElement('iframe');
   try{
-    await carregarHtmlToImage();
+    await Promise.all([carregarHtmlToImage(), carregarPdfLib()]);
     fr.style.cssText=`position:fixed;left:-20000px;top:0;width:${LARG}px;height:1400px;border:0;visibility:hidden`;
     document.body.appendChild(fr);
     const d=fr.contentDocument, estilos=[...document.querySelectorAll('link[rel=stylesheet],style')].map(n=>n.outerHTML.replace(/href="(?!https?:)([^"]+)"/, (_,h)=>`href="${new URL(h,location.href).href}"`)).join('');
