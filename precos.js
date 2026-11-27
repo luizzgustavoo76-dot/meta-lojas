@@ -169,7 +169,38 @@ async function renderPrecos(app){
       <div class="fc-wrap" style="margin-top:8px;max-height:520px;overflow:auto"><table class="fc-t ord"><thead><tr><th>Produto</th><th class="n">Nosso</th>${P.concorrentes.map(n=>`<th class="n">${esc(nomeConc(n))}</th>`).join('')}<th class="n">Dif.</th><th class="n m-hide">Custo</th><th class="n m-hide">Margem</th><th class="n m-hide">Venda/mês</th></tr></thead><tbody id="ppTb"></tbody></table></div></div>` };
   const V=S.ppVista||'resumo', N=V==='resumo'?10:30;
   const vistas=[['resumo','📋 Resumo'],['curva',`⭐ Curva A (${curvaPesq.length&&S_CV==='A'?curvaPesq.length:baseCurva.filter(x=>x.cv==='A'&&pesqSet.has(x.c)).length})`],['caros',`🚨 Onde estou perdendo (${A.caros.length})`],['baratos',`💰 Oportunidades (${A.baratos.length})`],['promo',`🏷️ Em promoção (${A.promo.length})`],['marg',`📉 Margem abaixo do alvo (${listaMarg.length})`],...(ant?[['mud',`🔁 Mudou de preço (${mud.length})`]]:[]),['todos','🔎 Todos os produtos']];
-  const chipsVista=`<div class="tl-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 0"><span class="small muted" style="align-self:center">ver:</span>${vistas.map(([k,t])=>`<button class="chip ${V===k?'on':''}" data-ppv="${k}">${t}</button>`).join('')}</div>`;
+  const chipsVista=`<div class="tl-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 0"><span class="small muted" style="align-self:center">ver:</span>${vistas.map(([k,t])=>`<button class="chip ${V===k?'on':''}" data-ppv="${k}">${t}</button>`).join('')}<span style="flex:1"></span><button class="btn p" id="ppPdf" title="Gera um PDF do que está na tela para compartilhar">📄 PDF desta tela</button></div>`;
+  /* ---------- PDF do que está na tela (mesma aba, setor, concorrente e filtro de curva) ---------- */
+  const relPrecos=()=>{
+    const t=v=>v==null?'':String(v), nm=x=>`${x.c} ${cap1(x.d)}`, pcN=v=>v==null?'—':`${v>=0?'+':'-'}${pctBR(Math.abs(v),1)}`;
+    const cN=P.concorrentes.map(nomeConc);
+    const precoConc=(x,i)=>{ const c=x.conc?.[i]; return c&&c.p>0? brl(c.p)+(c.promo?' (P)':'') : '—'; };
+    const media=x=>{ const sp=(x.conc||[]).filter(c=>c&&c.p>0&&!c.promo); return sp.length>1? brl(sp.reduce((a,c)=>a+c.p,0)/sp.length) : '—'; };
+    const mg=v=>v.toFixed(1).replace('.',',')+'%'; const ver=x=>{ if(x.custo>0 && x.alvo && x.alvo.p<x.custo) return 'abaixo do custo'; if(x.margemIgual!=null && x.mgAlvo!=null && x.margemIgual>=x.mgAlvo) return `iguala: mg ${mg(x.margemIgual)}`; if(x.margemIgual!=null) return `mg ${mg(x.margemIgual)} (baixa)`; return 'sem custo'; };
+    const colsProd=(ult)=>[['Produto',cN.length>2?100:124,'l'],['Setor',S.ppSet?30:48,'l'],['Nosso',38,'r'],...cN.map(n=>[n.slice(0,9),44,'r']),['Média',38,'r'],['Dif.',38,'r'],['Venda mês',40,'r'],[ult,0,'l']];
+    const linha=(x,ult)=>[nm(x), x.setor?nomeSetor(x.setor):'', brl(x.nosso), ...cN.map((_,i)=>precoConc(x,i)), media(x), pcN(x.dif), x.vMes?brl0(x.vMes):'—', ult];
+    const sec=(titulo, arr, ultNome, ultFn, vazio)=>({ titulo:`${titulo} (${arr.length})`, cols:colsProd(ultNome), rows:arr.map(x=>linha(x, ultFn(x))), vazio:vazio||'Nada por aqui.' });
+    const secoes=[];
+    const caros=()=>sec('Onde estou perdendo', A.caros, 'Veredito', ver);
+    const bar=()=>sec('Oportunidades de margem', A.baratos, 'Sugestão', x=>`${brl(x.sug)} +${brl0(x.ganho)}`);
+    const promo=()=>({ titulo:`Concorrente em promoção (${A.promo.length})`, cols:[['Produto',190,'l'],['Concorrente',70,'l'],['Promoção',50,'r'],['Nosso',50,'r'],['Dif.',40,'r'],['Venda/mês',0,'r']], rows:A.promo.map(x=>[nm(x), x.cp.nome, brl(x.cp.p), brl(x.nosso), pcN(x.nosso/x.cp.p-1), x.vMes?brl0(x.vMes):'—']) });
+    const marg=()=>({ titulo:`Margem abaixo do alvo (${listaMarg.length})`, cols:[['Produto',200,'l'],['Preço',50,'r'],['Custo',50,'r'],['Margem',45,'r'],['Alvo',40,'r'],['Venda/mês',0,'r']], rows:listaMarg.map(x=>[nm(x), brl(x.nosso), brl(x.custo), x.mgAtual.toFixed(1).replace('.',',')+'%', x.mgAlvo.toFixed(0)+'%', x.vMes?brl0(x.vMes):'—']) });
+    if(V==='resumo'){ secoes.push(caros(), bar(), promo(), marg()); }
+    else if(V==='caros') secoes.push(caros());
+    else if(V==='baratos') secoes.push(bar());
+    else if(V==='promo') secoes.push(promo());
+    else if(V==='marg') secoes.push(marg());
+    else if(V==='mud') secoes.push({ titulo:`Concorrente mudou de preço (${mud.length})`, cols:[['Produto',200,'l'],['Concorrente',70,'l'],['Antes',50,'r'],['Agora',50,'r'],['Nosso',0,'r']], rows:mud.map(m=>[nm(m.x), m.nome, brl(m.de), brl(m.para), brl(m.x.nosso)]) });
+    else if(V==='curva'){ secoes.push(sec(`Curva ${S_CV} pesquisada`, curvaPesq, 'Posição', x=>'#'+x.rank));
+      secoes.push({ titulo:`Curva ${S_CV} que não foi pesquisada (${curvaNao.length})`, cols:[['Posição',40,'r'],['Código',50,'l'],['Produto',250,'l'],['Setor',80,'l'],['Venda/mês',0,'r']], rows:curvaNao.map(x=>['#'+x.rank, x.c, cap1(x.d||''), x.setor?nomeSetor(x.setor):'', brl0(x.vMes)]) }); }
+    else secoes.push(sec('Todos os produtos pesquisados', A.ls.filter(x=>x.nosso).sort((a,b)=>(b.vMes||0)-(a.vMes||0)), 'Situação', x=>x.dif==null?'sem concorrente':x.dif>=PP.caroMin?'mais caro':x.dif<=-PP.caroMin?'mais barato':'igual'));
+    const nomeV=V==='curva'?`Curva ${S_CV}`:(vistas.find(v=>v[0]===V)?.[1]||'Resumo').replace(/\s*\(\d+\)$/,'').replace(/^[^\wÀ-ú]+/,'');
+    const filtros=[S.ppSet?nomeSetor(S.ppSet):'Loja toda', S.ppSoA?'só curva A':'', `comparando com ${S.ppConc==='min'?'o mais barato':cN[S.ppConc]}`].filter(Boolean).join(' · ');
+    return { arquivo:`pesquisa-${P.numero}-${V}${S.ppSet?'-'+S.ppSet:''}${S.ppSoA?'-curvaA':''}`, titulo:`Pesquisa de preço nº ${P.numero} — ${nomeV}`,
+      sub:`${fD(P.periodo_inicio)} a ${fD(P.periodo_fim)} · ${filtros} · gerado em ${fD(todayIso())}`,
+      kpis:[['Nosso preço × concorrente', A.indice!=null?A.indice.toFixed(1).replace('.',','):'—', A.indice!=null?(A.indice>100?`${pctBR(A.indice/100-1,1)} mais caro`:`${pctBR(1-A.indice/100,1)} mais barato`):''], ['Onde estou perdendo', String(A.caros.length), 'produtos 3% ou mais caros'], ['Oportunidade de margem', brl0(A.ganhoMes)+'/mês', `${A.baratos.length} produtos`], ['Comparados', String(A.comp.length), `de ${A.ls.filter(x=>x.nosso).length} com nosso preço`]],
+      secoes };
+  };
   box.insertAdjacentHTML('beforeend', chipsVista + (V==='resumo' ? `
     <div class="grid two pp-2" style="gap:12px;margin-top:12px">${C.caros(N)}${C.baratos(N)}</div>
     <div class="grid two pp-2" style="gap:12px;margin-top:12px">${C.promo(6)}${C.marg(6)}</div>
@@ -182,6 +213,7 @@ async function renderPrecos(app){
   box.querySelectorAll('[data-ppv]').forEach(b=>b.onclick=()=>{ S.ppVista=b.dataset.ppv; renderPrecos(app); });
   box.querySelectorAll('[data-ppvk]').forEach(b=>b.onclick=()=>{ S.ppVista=b.dataset.ppvk; renderPrecos(app); });
   box.querySelectorAll('[data-ppset]').forEach(b=>b.onclick=()=>{ S.ppSet=b.dataset.ppset||null; renderPrecos(app); });
+  $('#ppPdf')?.addEventListener('click',()=>pdfRelatorio(relPrecos()));
   box.querySelectorAll('[data-ppsoa]').forEach(b=>b.onclick=()=>{ S.ppSoA=!S.ppSoA; renderPrecos(app); });
   box.querySelectorAll('[data-ppc]').forEach(b=>b.onclick=()=>{ S.ppConc=b.dataset.ppc==='min'?'min':+b.dataset.ppc; renderPrecos(app); });
   box.querySelectorAll('[data-ppcv]').forEach(b=>b.onclick=()=>{ S.ppCurva=b.dataset.ppcv; renderPrecos(app); });
