@@ -251,6 +251,7 @@ async function renderPonto(app){
       <label class="f" style="margin:0">Dia<select id="ptDia">${dias.slice(0,31).map(d=>`<option value="${d}" ${d===S.ptDia?'selected':''}>${nomeDia(d)}${d===agora.dia?' · hoje':''}</option>`).join('')}</select></label>
       ${hoje?`<label class="f" style="margin:0">Conferir como se fossem<input type="time" id="ptAgora" value="${ptHm(Math.min(NOW,1439))}"></label>${S.ptAgora!=null?'<button class="btn" id="ptAgoraJa">agora</button>':''}`:''}
     </div>`;
+  const buscaHtml=`<div class="row" style="gap:8px;align-items:center;margin:-2px 0 10px"><input id="ptBusca" type="search" placeholder="🔍 Pesquisar funcionário pelo nome…" value="${esc(S.ptBusca||'')}" style="flex:1;max-width:420px"><span class="small muted" id="ptBuscaN"></span></div>`;
   const aviso = velho? `<div class="note warn" style="margin-bottom:10px">⚠️ O arquivo foi gerado em <b>${geradoTxt}</b>${A.gerado&&A.gerado.dia===agora.dia?` (há ${ptH(agora.min-A.gerado.min)})`:''}. Batidas depois disso não aparecem: saídas e voltas do almoço podem estar faltando. Gere o AFD de novo no Gerenciador Inner Rep e abra aqui.</div>` : '';
   const P=R.pessoas;
   const naLoja=P.filter(p=>p.st==='trab'), inter=P.filter(p=>p.st==='intervalo'), sairam=P.filter(p=>p.st==='saiu');
@@ -277,7 +278,7 @@ async function renderPonto(app){
   const noite=naLoja.filter(p=>!p.apr && p.prev>=R.FECH-60).sort((a,b)=>a.prev-b.prev);
   const itN=p=>{ const d=p.prev-R.FECH; return `<div class="pp-i"><div class="pp-p"><b>${esc(p.n)}</b><div class="small">entrou ${ptHm(p.v[0])} · saída prevista ${ptHm(p.prev)}</div></div><div class="pp-n">${d>0?`<span class="pp-v warn">fecha ${ptH(d)} abaixo da jornada</span><span class="small muted">se sair no fechamento</span>`:d<0?`<span class="pp-v good">sai ${ptH(-d)} antes do fechamento</span>`:'<span class="pp-v good">sai no fechamento</span>'}</div></div>`; };
   const mais=(arr,n,fn,id)=>`<div class="pp-l" id="${id}">${arr.slice(0,n).map(fn).join('')}</div>${arr.length>n?`<button class="btn" data-ptmais="${id}" style="margin-top:8px">Ver todos (${arr.length})</button>`:''}`;
-  app.innerHTML = topo + seletor + aviso + `
+  app.innerHTML = topo + seletor + buscaHtml + aviso + `
     <div class="small muted" style="margin:-2px 0 10px">${esc(A.empresa||'')} · arquivo gerado ${geradoTxt} · última batida do dia ${R.ultima>=0?ptHm(R.ultima):'—'}${hoje?` · conferindo às ${ptHm(Math.min(NOW,1439))}`:''} · jornada ${ptH(PT.jornada)} · fechamento ${ptHm(R.FECH)}${R.dom?' (domingo)':''}</div>
     <div class="grid kpis">
       <div class="kpi hero"><div class="l">🚨 Alertas agora</div><div class="v" style="color:${agoraAl.length?'#ff8a8a':'#9be7b0'}">${agoraAl.length}</div><div class="d">${agoraAl.length?'veja abaixo quem precisa de atenção':'tudo em ordem neste momento'}</div></div>
@@ -305,6 +306,14 @@ async function renderPonto(app){
   $('#ptDia')?.addEventListener('change',e=>{ S.ptDia=e.target.value; S.ptAgora=null; renderPonto(app); });
   $('#ptAgora')?.addEventListener('change',e=>{ const [h,m]=(e.target.value||'').split(':').map(Number); if(isFinite(h)&&isFinite(m)){ S.ptAgora=h*60+m; renderPonto(app); } });
   $('#ptAgoraJa')?.addEventListener('click',()=>{ S.ptAgora=null; renderPonto(app); });
+  // pesquisa por nome: abre as listas inteiras e esconde quem não bate com o nome digitado
+  const normB=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const aplicaBusca=()=>{ const t=normB(S.ptBusca).trim(); let n=0;
+    if(t) app.querySelectorAll('[data-ptmais]').forEach(b=>b.click());
+    app.querySelectorAll('.pp-l .pp-i').forEach(el=>{ const nome=normB(el.querySelector('.pp-p b')?.textContent); const ok=!t || t.split(/\s+/).every(p=>nome.includes(p)); el.style.display=ok?'':'none'; if(ok&&t) n++; });
+    const lab=$('#ptBuscaN'); if(lab) lab.textContent = t ? (n? `${n} resultado(s)` : 'ninguém com esse nome neste dia') : ''; };
+  $('#ptBusca')?.addEventListener('input',e=>{ S.ptBusca=e.target.value; aplicaBusca(); });
+  setTimeout(aplicaBusca,0);
   const ligarCor=()=>app.querySelectorAll('[data-ptcor]').forEach(b=>b.onclick=()=>corrigirPonto(b.dataset.ptcor, S.ptDia, A, ()=>renderPonto(app))); ligarCor();
   app.querySelectorAll('[data-ptmais]').forEach(b=>b.onclick=()=>{ const id=b.dataset.ptmais, arr= id==='ptLs'? dados.ordem : dados.R.faltou;
     $('#'+id).innerHTML = id==='ptLs'? arr.map(itP).join('') : arr.map(f=>`<div class="pp-i"><div class="pp-p"><b>${esc(f.n)}</b>${f.apr?' <span class="pp-promo">aprendiz</span>':''}${f.just?` <span class="pp-promo">${JT[f.just.tipo]||f.just.tipo}</span>`:''}</div><div class="pp-n"><span class="small muted">último dia: ${fD(f.ult)}</span>${btCor(f.pis)}</div></div>`).join(''); b.remove(); ligarCor(); });
