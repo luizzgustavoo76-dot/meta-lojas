@@ -213,3 +213,68 @@ function mostrarPdfPronto(file, titulo){
   $('#mN',m).onclick=()=>{ closeModal(); setTimeout(()=>URL.revokeObjectURL(url),60000); };
   const sh=$('#fpShare',m); if(sh) sh.onclick=async()=>{ try{ await navigator.share({files:[file], title:titulo}); }catch(e){ if(e.name!=='AbortError') toast('Não deu para compartilhar: '+e.message,5000); } };
 }
+
+/* ---------- PDF "foto da tela": exporta a análise do jeito que aparece no site ----------
+   Monta uma cópia da tela num quadro de largura fixa (layout de computador, também no celular),
+   corta em páginas A4 sem partir linhas/cartões no meio e junta num PDF para compartilhar. */
+let _h2iCarregando=null;
+function carregarHtmlToImage(){
+  if(window.htmlToImage) return Promise.resolve();
+  return _h2iCarregando || (_h2iCarregando=new Promise((ok,err)=>{ const s=document.createElement('script'); s.src='vendor/html-to-image.js'; s.onload=ok; s.onerror=()=>{ _h2iCarregando=null; err(new Error('não carregou o gerador do PDF')); }; document.head.appendChild(s); }));
+}
+async function pdfDaTela(el, R){
+  /* R: {arquivo, titulo, sub, tirar:'seletores css a esconder', preparar:fn(copia)} */
+  const aviso=modal(`<h2>📄 Gerando o PDF…</h2><p class="small muted" style="margin:0" id="ptMsg">Montando as páginas, só um instante.</p>`);
+  const msg=t=>{ const e=$('#ptMsg',aviso); if(e) e.textContent=t; };
+  const LARG=860, fr=document.createElement('iframe');
+  try{
+    await carregarHtmlToImage();
+    fr.style.cssText=`position:fixed;left:-20000px;top:0;width:${LARG}px;height:1400px;border:0;visibility:hidden`;
+    document.body.appendChild(fr);
+    const d=fr.contentDocument, estilos=[...document.querySelectorAll('link[rel=stylesheet],style')].map(n=>n.outerHTML.replace(/href="(?!https?:)([^"]+)"/, (_,h)=>`href="${new URL(h,location.href).href}"`)).join('');
+    d.open(); d.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=${LARG}">${estilos}<style>
+      html,body{background:#fff!important;margin:0} #ptW{width:${LARG}px;overflow:hidden;background:#fff} #pt{padding:22px 26px 10px;box-sizing:border-box;width:${LARG}px}
+      .pt-cab{display:flex;align-items:center;gap:14px;border-bottom:3px solid #d71920;padding-bottom:10px;margin-bottom:14px}
+      .pt-cab img{height:54px} .pt-cab .l{font-size:12px;color:#666} .pt-cab h1{margin:2px 0 2px;font-size:24px} .pt-cab .s{font-size:12.5px;color:#555}
+      .pt-esc{display:none!important} *{animation:none!important;transition:none!important}
+    </style></head><body class="${esc(document.body.className.replace(/\bimprimindo\b/,''))}"><div id="ptW"><div id="pt">
+      <div class="pt-cab"><div style="flex:1"><div class="l">Bom Dia São Luiz · Araruna</div><h1>${esc(R.titulo)}</h1><div class="s">${esc(R.sub||'')}</div></div><img src="${new URL('logo.png',location.href).href}" alt=""></div>
+    </div></div></body></html>`); d.close();
+    const pt=d.getElementById('pt'), copia=el.cloneNode(true);
+    copia.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));
+    if(R.tirar) copia.querySelectorAll(R.tirar).forEach(n=>n.classList.add('pt-esc'));
+    copia.querySelectorAll('details').forEach(n=>n.open=true);
+    if(R.preparar) R.preparar(copia);
+    pt.appendChild(d.importNode(copia,true));
+    await new Promise(r=>{ let pend=[...d.querySelectorAll('link[rel=stylesheet],img')].filter(n=>!(n.tagName==='IMG'&&n.complete)); if(!pend.length) return r(); let k=pend.length; const um=()=>{ if(--k<=0) r(); }; pend.forEach(n=>{ n.addEventListener('load',um,{once:true}); n.addEventListener('error',um,{once:true}); }); setTimeout(r,4000); });
+    try{ await d.fonts.ready; }catch(_){ }
+    await new Promise(r=>setTimeout(r,120));
+
+    /* onde dá para quebrar a página: fim de cada linha, item, cartão ou título */
+    const topo=pt.getBoundingClientRect().top, altura=Math.ceil(pt.scrollHeight);
+    const pegar=sel=>{ const c=new Set([altura]); pt.querySelectorAll(sel).forEach(n=>{ const b=n.getBoundingClientRect(); if(b.height>0){ c.add(Math.round(b.bottom-topo)); c.add(Math.round(b.top-topo)); } }); return [...c].filter(v=>v>0&&v<=altura).sort((a,b)=>a-b); };
+    const fortes=pegar('.pp-i, tr, .card, h2, h3, .kpis, .kpi, .pt-cab, table, .note'), fracos=pegar('.row, p, li, .small, div');
+    const W=595.28, H=841.89, M=18, esc_=(W-2*M)/LARG, utilPx=Math.floor((H-2*M-12)/esc_);
+    const paginas=[]; let y0=0;
+    while(y0<altura-4){ const lim=y0+utilPx; let y1=lim>=altura? altura : (fortes.filter(v=>v>y0+utilPx*0.6 && v<=lim).pop() || fracos.filter(v=>v>y0+utilPx*0.45 && v<=lim).pop() || lim); paginas.push([y0,y1]); y0=y1; }
+
+    const {PDFDocument, StandardFonts, rgb}=window.PDFLib;
+    const pdf=await PDFDocument.create(), F=await pdf.embedFont(StandardFonts.Helvetica);
+    const wrap=d.getElementById('ptW'), fontCss=await htmlToImage.getFontEmbedCSS(wrap).catch(()=>'');
+    const pr=Math.min(2, window.devicePixelRatio>1?2:1.6);
+    for(let i=0;i<paginas.length;i++){
+      const [a,b]=paginas[i]; msg(`Página ${i+1} de ${paginas.length}…`);
+      wrap.style.height=(b-a)+'px'; pt.style.marginTop=(-a)+'px';
+      const cv=await htmlToImage.toCanvas(wrap,{pixelRatio:pr, backgroundColor:'#fff', width:LARG, height:b-a, fontEmbedCSS:fontCss, cacheBust:false});
+      const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.9));
+      const img=await pdf.embedJpg(await blob.arrayBuffer());
+      const pg=pdf.addPage([W,H]), h=(b-a)*esc_;
+      pg.drawImage(img,{x:M, y:H-M-h, width:W-2*M, height:h});
+      const rod=`${R.titulo} · página ${i+1} de ${paginas.length}`.replace(/[—–]/g,'-').replace(/[^\x20-\xff]/g,'');
+      pg.drawText(rod,{x:W-M-F.widthOfTextAtSize(rod,7.5), y:M-6, size:7.5, font:F, color:rgb(.45,.45,.45)});
+    }
+    const bytes=await pdf.save(), nome=(R.arquivo||'relatorio').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w-]+/g,'-')+'.pdf';
+    const file=new File([bytes], nome, {type:'application/pdf'});
+    fr.remove(); closeModal(); mostrarPdfPronto(file, R.titulo);
+  }catch(e){ fr.remove(); closeModal(); toast('Não deu para gerar o PDF: '+e.message, 6000); console.error(e); }
+}

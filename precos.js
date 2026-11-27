@@ -213,7 +213,7 @@ async function renderPrecos(app){
   box.querySelectorAll('[data-ppv]').forEach(b=>b.onclick=()=>{ S.ppVista=b.dataset.ppv; renderPrecos(app); });
   box.querySelectorAll('[data-ppvk]').forEach(b=>b.onclick=()=>{ S.ppVista=b.dataset.ppvk; renderPrecos(app); });
   box.querySelectorAll('[data-ppset]').forEach(b=>b.onclick=()=>{ S.ppSet=b.dataset.ppset||null; renderPrecos(app); });
-  $('#ppPdf')?.addEventListener('click',()=>pdfRelatorio(relPrecos()));
+  $('#ppPdf')?.addEventListener('click',()=>{ const R=relPrecos(); pdfDaTela(box, {arquivo:R.arquivo, titulo:R.titulo, sub:R.sub, tirar:'.tl-chips, button, [data-mais], select, input, .an-olmais'}); });
   box.querySelectorAll('[data-ppsoa]').forEach(b=>b.onclick=()=>{ S.ppSoA=!S.ppSoA; renderPrecos(app); });
   box.querySelectorAll('[data-ppc]').forEach(b=>b.onclick=()=>{ S.ppConc=b.dataset.ppc==='min'?'min':+b.dataset.ppc; renderPrecos(app); });
   box.querySelectorAll('[data-ppcv]').forEach(b=>b.onclick=()=>{ S.ppCurva=b.dataset.ppcv; renderPrecos(app); });
