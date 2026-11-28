@@ -9,7 +9,7 @@ async function importarPesquisaPrecos(f, pre){
   try{ if(!r) r=Parser.analisarPesquisaPrecos(await linhasDoArquivo(f)); }catch(e){ closeModal(); toast('Não consegui ler o arquivo: '+e.message, 6000); return null; }
   closeModal();
   if(!r){ toast('Esse arquivo não parece o “Relatório da pesquisa de preços” do sistema.', 6000); return null; }
-  const comC=r.itens.filter(i=>i.venda>0 && i.conc.some(Boolean)).length;
+  const comC=r.itens.filter(i=>i.cad>0 && i.conc.some(Boolean)).length;
   return await new Promise(res=>{
     const m=modal(`<h2>💲 Pesquisa de preços nº ${r.numero??'—'}</h2>
       <div class="grid kpis" style="margin:8px 0">
@@ -36,7 +36,10 @@ function analisarPesquisa(P, vendas, prodSetor, conc){
     const alvo = conc==='min' ? cs.filter(x=>x.p>0).sort((a,b)=>a.p-b.p)[0] : cs.find(x=>x.i===+conc && x.p>0);
     const v=V.get(String(it.c)); const setor=v?.setor_id || prodSetor.get(String(it.c)) || '';
     const qMes = v? (+v.q||0)/dias*30 : 0, vMes = v? (+v.v||0)/dias*30 : 0;
-    const x={ ...it, setor, alvo, qMes, vMes, nosso: it.venda>0? it.venda : null };
+    /* nosso preço = VDA.CAD (venda cadastrada desta loja). A coluna VENDA do relatório é da filial 18 (matriz) e é ignorada,
+       e a margem atual (MG.AP.) que vem no relatório também é calculada sobre ela, por isso é refeita aqui com o VDA.CAD */
+    const cad=it.cad>0? it.cad : null;
+    const x={ ...it, setor, alvo, qMes, vMes, nosso: cad, vendaMatriz: it.venda, mgAtual: cad && it.custo>0? (cad/it.custo-1)*100 : null };
     if(x.nosso && alvo){ x.dif=x.nosso/alvo.p-1; x.margemIgual = it.custo>0? (alvo.p/it.custo-1)*100 : null; }
     ls.push(x);
   }
