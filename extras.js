@@ -153,8 +153,11 @@ function compDetalheDias(c, campo){
   const ruim=campo==='perda'; const of=campo==='perda'?'cperda':'cacum';
   const cel=(arr,k,base)=>{ if(!arr) return '<td class="n muted">—</td><td></td>'; const v=val(arr,k); return `<td class="n">${v?brl0(v):'—'}<div class="small muted">${fDateL(k)}</div></td><td class="n">${v&&base!=null?varTxt(base,v,ruim):''}</td>`; };
   let html='';
+  const metaDe=k=>dA?.find(z=>z.k===k)?.meta||0, mTxt=k=>{ const m=metaDe(k); return campo==='real'&&m?`<div class="small muted">meta ${brl0(m)}</div>`:''; };
   for(let d=1; d<=c.dia; d++){ const kA=`${mes}-${String(d).padStart(2,'0')}`; const vA=val(dA,kA);
-    html+=`<tr class="cx-det hide" data-cx-of="${of}"><td class="small">${fDateL(kA)}${marcaData(kA)}</td><td class="n">${vA?brl0(vA):'—'}</td>${cel(dM, mesmoDiaEm(c.mp,d), vA)}${cel(dY, mesmoDiaEm(c.ma,d), vA)}</tr>`; }
+    html+=`<tr class="cx-det hide" data-cx-of="${of}"><td class="small">${fDateL(kA)}${marcaData(kA)}${mTxt(kA)}</td><td class="n">${vA?brl0(vA):'—'}</td>${cel(dM, mesmoDiaEm(c.mp,d), vA)}${cel(dY, mesmoDiaEm(c.ma,d), vA)}</tr>`; }
+  /* dias que ainda vão vir: só a data e a meta do dia */
+  if(campo==='real') for(const x of diasFuturosMeta(c)) html+=`<tr class="cx-det hide cx-fut" data-cx-of="${of}"><td class="small">${fDateL(x.k)}${marcaData(x.k)}<div class="small muted">meta <b>${brl0(x.meta)}</b></div></td><td class="n muted small">ainda não</td><td></td><td></td><td></td><td></td></tr>`;
   return html;
 }
 function compDetalheSetoresDia(c){
@@ -344,6 +347,11 @@ function listaDiasCelular(daily, cutoff, semFuturos){
     ${!semFuturos && fut.length?`<details class="dl dl-fut"><summary><span class="dl-d">Próximos ${fut.length} dia(s)</span><b class="dl-v small muted">ver metas</b><span></span></summary><div class="dl-c dl-c1">${fut.map(d=>`<div><span>${fDateL(d.k)}${marcaData(d.k)}</span><b>${brl0(d.meta)}</b></div>`).join('')}</div></details>`:''}</div>`;
 }
 /* comparativo em cartões (celular) */
+/* dias do mês depois do último dia com venda que têm meta (para ver a meta do dia no comparativo) */
+function diasFuturosMeta(c){
+  const dA=dailyDe(c.doc, c.atual.cut, c.sid)||[], mes=c.atual.cut.slice(0,7), ult=`${mes}-${String(c.dia).padStart(2,'0')}`;
+  return dA.filter(z=>z.k>ult && z.k.slice(0,7)===mes && z.meta>0).map(z=>({k:z.k, meta:z.meta}));
+}
 function linhasDias(c, campo){
   const mes=c.atual.cut.slice(0,7); const dA=dailyDe(c.doc, c.atual.cut, c.sid);
   const dM=c.pm? dailyDe(S.months[c.mp], c.pm.cut, c.sid) : null, dY=c.pa? dailyDe(S.months[c.ma], c.pa.cut, c.sid) : null;
@@ -354,7 +362,9 @@ function linhasDias(c, campo){
 function comparativoCelular(c){
   const a=c.atual, pm=c.pm, pa=c.pa;
   const vs=(rot, ref, campo, ruim)=> ref ? `<div class="cm-vs"><span>${rot}</span><b>${brl0(ref[campo])}</b>${varTxt(a[campo], ref[campo], ruim)}</div>` : `<div class="cm-vs muted"><span>${rot}</span><b>sem dados</b></div>`;
-  const lista=(campo)=> linhasDias(c,campo).reverse().map(x=>`<div class="cm-r"><span>${fDateL(x.kA)}${marcaData(x.kA)}</span><b>${x.vA?brl0(x.vA):'—'}</b><span class="small">${x.vM!=null?`m.p. ${x.vA&&x.vM?varTxt(x.vA,x.vM,campo==='perda'):'—'}`:''}</span><span class="small">${x.vY!=null?`a.p. ${x.vA&&x.vY?varTxt(x.vA,x.vY,campo==='perda'):'—'}`:''}</span></div>`).join('');
+  const dAm=dailyDe(c.doc, c.atual.cut, c.sid)||[], metaCel=k=>{ const m=dAm.find(z=>z.k===k)?.meta; return m?`<small class="muted" style="display:block;font-weight:500;white-space:nowrap">meta ${brl0(m)}</small>`:''; };
+  const futuros=campo=> campo!=="real"?"" : diasFuturosMeta(c).reverse().map(x=>`<div class="cm-r cx-fut"><span>${fDateL(x.k)}${marcaData(x.k)}<small class="muted" style="display:block;font-weight:500;white-space:nowrap">meta <b>${brl0(x.meta)}</b></small></span><b class="muted small">ainda não</b><span></span><span></span></div>`).join('');
+  const lista=(campo)=> futuros(campo) + linhasDias(c,campo).reverse().map(x=>`<div class="cm-r"><span>${fDateL(x.kA)}${marcaData(x.kA)}${campo==='real'?metaCel(x.kA):''}</span><b>${x.vA?brl0(x.vA):'—'}</b><span class="small">${x.vM!=null?`m.p. ${x.vA&&x.vM?varTxt(x.vA,x.vM,campo==='perda'):'—'}`:''}</span><span class="small">${x.vY!=null?`a.p. ${x.vA&&x.vY?varTxt(x.vA,x.vY,campo==='perda'):'—'}`:''}</span></div>`).join('');
   const setoresDia=()=>{ const rA=calc(c.doc, a.cut).setores; const rM=pm?.diaK? calc(S.months[c.mp], pm.diaK).setores : null; const rY=pa?.diaK? calc(S.months[c.ma], pa.diaK).setores : null;
     const dia=(l,id,k)=> l?.find(x=>x.id===id)?.daily.find(z=>z.k===k)?.real || 0;
     return rA.map(s=>({s,a:dia(rA,s.id,a.cut),m:rM?dia(rM,s.id,pm.diaK):null,y:rY?dia(rY,s.id,pa.diaK):null})).sort((x,y)=>y.a-x.a).map(x=>`<div class="cm-r"><span><b>${esc(x.s.nome)}</b></span><b>${x.a?brl0(x.a):'—'}</b><span class="small">${x.m!=null&&x.a&&x.m?`m.p. ${varTxt(x.a,x.m)}`:''}</span><span class="small">${x.y!=null&&x.a&&x.y?`a.p. ${varTxt(x.a,x.y)}`:''}</span></div>`).join(''); };

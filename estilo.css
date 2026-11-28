@@ -477,3 +477,4 @@ tr.an-sub td{background:#fafaf7;font-size:12.5px}
 table.ord thead th{cursor:pointer;user-select:none;white-space:nowrap}
 table.ord thead th:hover{color:var(--red,#c00)}
 table.ord thead th:not([data-ord])::after{content:' ⇅';opacity:.35;font-size:.85em}
+tr.cx-fut td,.cm-r.cx-fut{background:#f7f6f2} tr.cx-fut td{color:var(--muted)}
