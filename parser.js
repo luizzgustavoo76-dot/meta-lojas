@@ -336,7 +336,10 @@
       if(!/^\d+\s+\S/.test(t)) continue;
       const tk=t.split(' '); const iv=tk.findIndex((x,k)=>k>1 && /^[\d*]+,[\d*]{4}$/.test(x)); if(iv<0) continue;
       const r=tk.slice(iv+1); if(r.length<9 || r[6]!=='X') continue;
-      const it={ c:tk[0], d:tk.slice(1,iv).join(' '), cad:num(tk[iv]), custo:num(r[0]), mgAlvo:num(r[1]), mgAtual:num(r[2]), venda:num(r[3]), menor:num(r[4]), conc:[] };
+      /* preço da loja = 1ª coluna (VDA.CAD, venda cadastrada). A coluna VENDA é da filial 18 (matriz): fica guardada só como
+         vendaMatriz e não entra em nenhuma comparação; a margem atual é refeita sobre o VDA.CAD */
+      const cad=num(tk[iv]), custo=num(r[0]);
+      const it={ c:tk[0], d:tk.slice(1,iv).join(' '), cad, venda: cad>0? cad : null, vendaMatriz:num(r[3]), custo, mgAlvo:num(r[1]), mgAtual: cad>0&&custo>0? Math.round((cad/custo-1)*10000)/100 : null, menor:num(r[4]), conc:[] };
       let k=8;
       while(k<r.length){ if(r[k]==='---'){ it.conc.push(null); k+=2; continue; }
         const pr=num(r[k]), mg=num(r[k+1]); let promo=false; k+=2; if(r[k]==='P'){ promo=true; k++; }
