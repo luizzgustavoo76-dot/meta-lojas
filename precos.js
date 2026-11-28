@@ -204,6 +204,24 @@ async function renderPrecos(app){
       kpis:[['Nosso preço × concorrente', A.indice!=null?A.indice.toFixed(1).replace('.',','):'—', A.indice!=null?(A.indice>100?`${pctBR(A.indice/100-1,1)} mais caro`:`${pctBR(1-A.indice/100,1)} mais barato`):''], ['Onde estou perdendo', String(A.caros.length), 'produtos 3% ou mais caros'], ['Oportunidade de margem', brl0(A.ganhoMes)+'/mês', `${A.baratos.length} produtos`], ['Comparados', String(A.comp.length), `de ${A.ls.filter(x=>x.nosso).length} com nosso preço`]],
       secoes };
   };
+  /* ---------- procurar produto (código ou descrição) em qualquer aba: procura na pesquisa inteira ---------- */
+  const buscaHtml=`<div class="card pp-busca" style="margin-top:12px;padding:10px 12px"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><b>🔎 Procurar produto</b><input id="ppQ" type="search" autocomplete="off" placeholder="código ou descrição (ex.: 1785, skol 350)" value="${esc(S.ppQ||'')}" style="flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px"><button class="btn" id="ppQx" title="Limpar">✕</button></div><div id="ppAchados"></div></div>`;
+  box.insertAdjacentHTML('beforeend', buscaHtml);
+  const bus={ bar:new Map(A0.baratos.map(x=>[String(x.c),x])) };
+  const itBusca=x=>{ const b=bus.bar.get(String(x.c)); const cs=todosConc(x);
+    const dir = !x.nosso ? '<span class="small muted">sem nosso preço</span>' : x.dif==null ? '<span class="small muted">sem preço do concorrente</span>' : x.dif>=PP.caroMin ? `<b style="color:var(--bad)">${pp(x.dif)}</b><span class="small muted">mais caro</span>` : x.dif<=-PP.caroMin ? `<b style="color:var(--good)">${pp(x.dif)}</b><span class="small muted">mais barato</span>` : `<b>${pp(x.dif)}</b><span class="small muted">no mesmo preço</span>`;
+    return `<div class="pp-i"><div class="pp-p">${cod(x)} <b>${esc(cap1(x.d))}</b>${x.cv?` <span class="pp-promo">${x.cv==='A'?'⭐ ':''}curva ${x.cv}${x.rank?' · #'+x.rank:''}</span>`:''}${x.setor?` <span class="small muted">· ${esc(nomeSetor(x.setor))}</span>`:''}
+      <div class="small">nosso <b>${x.nosso?pr(x.nosso):'—'}</b>${x.custo>0?` · custo ${pr(x.custo)}`:''}${x.mgAtual!=null?` · margem <b>${x.mgAtual.toFixed(1).replace('.',',')}%</b>${x.mgAlvo!=null?` (alvo ${x.mgAlvo.toFixed(0)}%)`:''}`:''} · venda ${x.vMes?brl0(x.vMes)+'/mês':'sem venda no mês'}</div>
+      <div class="small">${cs.lst}</div>${cs.media}${x.dif!=null&&x.dif>=PP.caroMin?veredito(x):''}${b?`<div class="small">sugestão <b>${pr(b.sug)}</b> (ainda abaixo do concorrente)${b.ganho>0?` · ganha <b style="color:var(--good)">${brl0(b.ganho)}/mês</b>`:''}</div>`:''}</div><div class="pp-n">${dir}</div></div>`; };
+  const procurar=()=>{ const raw=($('#ppQ').value||'').trim(); S.ppQ=raw; const out=$('#ppAchados'); if(!raw){ out.innerHTML=''; return; }
+    const t=normN2(raw), pal=t.split(/[^A-Z0-9]+/).filter(Boolean), soNum=/^\d+$/.test(raw);
+    const ach=A0.ls.filter(x=>{ const c=String(x.c); if(soNum && (c===raw || c.startsWith(raw))) return true; const ps=normN2(x.d).split(/[^A-Z0-9]+/).filter(Boolean); return pal.every(w=>c===w || ps.some(p=>p.startsWith(w))); })
+      .sort((a,b)=>((String(b.c)===raw)-(String(a.c)===raw)) || ((b.vMes||0)-(a.vMes||0)));
+    out.innerHTML = ach.length ? `<div class="small muted" style="margin:8px 0 2px">${ach.length} produto(s)${ach.length>40?' · mostrando os 40 que mais vendem':''}</div><div class="pp-l">${ach.slice(0,40).map(itBusca).join('')}</div>` : `<div class="small muted" style="margin-top:8px">Nenhum produto da pesquisa nº ${P.numero} com “${esc(raw)}”.</div>`; };
+  let _qT=null; $('#ppQ').oninput=()=>{ clearTimeout(_qT); _qT=setTimeout(procurar,180); };
+  $('#ppQ').onkeydown=e=>{ if(e.key==='Enter'){ clearTimeout(_qT); procurar(); } };
+  $('#ppQx').onclick=()=>{ $('#ppQ').value=''; procurar(); $('#ppQ').focus(); };
+  if(S.ppQ) procurar();
   box.insertAdjacentHTML('beforeend', chipsVista + (V==='resumo' ? `
     <div class="grid two pp-2" style="gap:12px;margin-top:12px">${C.caros(N)}${C.baratos(N)}</div>
     <div class="grid two pp-2" style="gap:12px;margin-top:12px">${C.promo(6)}${C.marg(6)}</div>
